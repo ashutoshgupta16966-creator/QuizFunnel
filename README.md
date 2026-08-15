@@ -1,4 +1,4 @@
-# Freshers Orientation Quiz
+# QuizFunnel
 
 A full-stack, elimination-style multi-level quiz application built for college orientation to shortlist first-year students for activities like presentations and public speaking.
 
