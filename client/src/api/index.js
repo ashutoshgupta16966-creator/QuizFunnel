@@ -7,7 +7,7 @@ import axios from 'axios';
  * - Dispatches a 'api:retry' event so components can show a "Reconnecting…" banner
  */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '',
+  baseURL: import.meta.env.VITE_API_URL || 'https://quizfunnel-rqqp.onrender.com',
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
