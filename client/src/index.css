@@ -132,15 +132,50 @@ a { color: inherit; }
    ENTRY FORM PAGE
    ============================================================ */
 .entry-page {
-  min-height: 100svh; display: flex;
+  min-height: 100svh; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 1.5rem; position: relative; overflow: hidden;
+  padding: 1.5rem 1.5rem 3.5rem; position: relative; overflow: hidden;
 }
 .entry-page::before {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(67,97,238,.18), transparent),
     radial-gradient(ellipse 50% 40% at 90% 110%, rgba(76,201,240,.10), transparent);
+}
+
+/* Footer Attribution Badge */
+.author-attribution-badge {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 10;
+  width: max-content;
+  max-width: 90vw;
+  pointer-events: auto;
+}
+
+.gold-text {
+  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #FFE57F 0%, #FFD700 40%, #D4AF37 80%, #AA7C11 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.4));
+  display: inline-block;
+  opacity: 0.92;
+  transition: opacity var(--t-fast), transform var(--t-fast), filter var(--t-fast);
+  user-select: none;
+}
+
+.gold-text:hover {
+  opacity: 1;
+  transform: scale(1.04);
+  filter: drop-shadow(0 0 14px rgba(255, 215, 0, 0.65));
 }
 
 .entry-card {

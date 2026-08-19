@@ -53,7 +53,6 @@ export default function EntryForm() {
     }
   };
 
-
   return (
     <div className="entry-page">
       <div className="entry-card">
@@ -144,6 +143,11 @@ export default function EntryForm() {
           </div>
         </div>
       </div>
+
+      {/* Footer Attribution Badge */}
+      <footer className="author-attribution-badge">
+        <span className="gold-text">CREATED BY ~ ASHUTOSH GUPTA</span>
+      </footer>
     </div>
   );
 }
