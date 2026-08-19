@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { getLeaderboard } from '../api';
 
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
@@ -12,53 +11,48 @@ function formatTime(seconds) {
 /**
  * Results — shown after elimination or Level 4 completion.
  *
- * Eliminated: warm "Thank you for participating" message + their score.
- * Completed:  shows their rank on the final leaderboard.
+ * Eliminated : warm "Thank you for participating" message + score.
+ * Completed  : final summary with total score and time.
+ *
+ * FIX — "Return to Home" behaviour:
+ *   1. clearStudent() wipes localStorage/sessionStorage via QuizContext.
+ *   2. window.location.replace('/') performs a hard redirect that tears down
+ *      the entire React state tree, so re-visiting "/" always shows a fresh
+ *      registration form even without a full browser reload.
  */
 export default function Results() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
   const { student, lastResult, clearStudent } = useQuiz();
-
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [lbLoading, setLbLoading]     = useState(false);
 
   const isCompleted  = student?.status === 'completed';
   const isEliminated = student?.status === 'eliminated';
 
-  // Fetch leaderboard if student completed Level 4
+  // Guard: if there's no student in context at all, go home
   useEffect(() => {
-    if (!student) { navigate('/'); return; }
-    if (isCompleted) fetchLeaderboard();
-  }, [student]);
-
-  const fetchLeaderboard = async () => {
-    setLbLoading(true);
-    try {
-      // Leaderboard is public-facing (no admin password needed for viewing own rank)
-      // We use admin endpoint here; for a public leaderboard, add a public route.
-      // For now we show the data from lastResult and a simple rank display.
-      setLeaderboard([]);
-    } catch {
-      setLeaderboard([]);
-    } finally {
-      setLbLoading(false);
-    }
-  };
+    if (!student) navigate('/');
+  }, [student, navigate]);
 
   if (!student) return null;
 
-  const score     = lastResult?.score ?? 0;
-  const total     = lastResult?.total ?? 0;
-  const clearedLevel = isCompleted
-    ? 4
-    : (student.currentLevel || 1);
+  const score        = lastResult?.score ?? 0;
+  const total        = lastResult?.total ?? 0;
+  const clearedLevel = isCompleted ? 4 : (student.currentLevel || 1);
 
+  /**
+   * Complete state reset:
+   *  - clearStudent() → removes quiz_student from localStorage and
+   *    admin_pwd from sessionStorage (via QuizContext).
+   *  - window.location.replace('/') → hard-navigates to "/" which
+   *    remounts the entire React app, guaranteeing a blank entry form.
+   */
   const handleReturnHome = () => {
     clearStudent();
-    navigate('/');
+    // Hard reload to root — ensures React state tree is fully reset.
+    // Using replace() so the results page isn't in browser history.
+    window.location.replace('/');
   };
 
-  // ── Eliminated ────────────────────────────────────────────────────────────
+  // ── Eliminated ─────────────────────────────────────────────────────────────
   if (isEliminated) {
     return (
       <div className="results-page">
@@ -95,7 +89,7 @@ export default function Results() {
     );
   }
 
-  // ── Level 4 Completed ─────────────────────────────────────────────────────
+  // ── Level 4 Completed ──────────────────────────────────────────────────────
   if (isCompleted) {
     return (
       <div className="results-page">
@@ -137,11 +131,11 @@ export default function Results() {
     );
   }
 
-  // ── Fallback (shouldn't normally appear) ─────────────────────────────────
+  // ── Fallback ───────────────────────────────────────────────────────────────
   return (
     <div className="centered-page">
       <p>Loading results…</p>
-      <button className="btn btn-secondary" onClick={() => navigate('/')}>Go Home</button>
+      <button className="btn btn-secondary" onClick={handleReturnHome}>Go Home</button>
     </div>
   );
 }

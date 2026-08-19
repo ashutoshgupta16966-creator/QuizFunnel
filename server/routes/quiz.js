@@ -117,6 +117,14 @@ router.get('/questions/:level', async (req, res, next) => {
       });
     }
 
+    // ── ANTI-CHEAT: Shuffle question ORDER (Fisher-Yates) ─────────────────
+    // Each student now sees questions in a unique random sequence.
+    // This is separate from option shuffling (handled per question below).
+    for (let i = allQuestions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+    }
+
     const sessionQuestions = [];
     const clientQuestions = [];
 

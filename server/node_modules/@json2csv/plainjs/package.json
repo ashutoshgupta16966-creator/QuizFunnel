@@ -1,0 +1,54 @@
+{
+  "name": "@json2csv/plainjs",
+  "version": "7.0.8",
+  "description": "Pure Javascript JSON to CSV converter.",
+  "sideEffects": false,
+  "keywords": [
+    "json",
+    "to",
+    "csv",
+    "export",
+    "convert",
+    "parse"
+  ],
+  "homepage": "https://juanjodiaz.github.io/json2csv",
+  "bugs": {
+    "url": "https://github.com/juanjoDiaz/json2csv/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juanjoDiaz/json2csv.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Juanjo Díaz",
+    "email": "juanjo.diazmo@gmail.com"
+  },
+  "type": "module",
+  "exports": {
+    "./*": {
+      "import": "./dist/mjs/*",
+      "require": "./dist/cjs/*"
+    },
+    ".": {
+      "import": "./dist/mjs/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "main": "dist/mjs/index.js",
+  "scripts": {
+    "lint": "biome check src test",
+    "build:cjs": "tsc --module commonjs --moduleResolution bundler --verbatimModuleSyntax false --outDir ./dist/cjs && node ../../build-cjs.js",
+    "build:mjs": "tsc --module nodenext --outDir ./dist/mjs",
+    "build": "npm run build:cjs && npm run build:mjs",
+    "clean": "node -e \"fs.rmSync('dist', {recursive:true, force:true})\"",
+    "pretest": "npm run build",
+    "test": "node test/CommonJS.cjs && vitest run",
+    "dependencies:update-internal": "npm uninstall @json2csv/formatters && npm install @json2csv/formatters",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@json2csv/formatters": "^7.0.8",
+    "@streamparser/json": "^0.0.23"
+  }
+}

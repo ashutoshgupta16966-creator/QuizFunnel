@@ -1,0 +1,48 @@
+{
+  "name": "@json2csv/formatters",
+  "version": "7.0.8",
+  "description": "json2csv built-in formatters. A formatter is a function that receives the raw js value of a given type and formats it as a valid CSV cell.",
+  "sideEffects": false,
+  "keywords": [
+    "json",
+    "to",
+    "csv",
+    "export",
+    "convert",
+    "parse"
+  ],
+  "homepage": "https://juanjodiaz.github.io/json2csv",
+  "bugs": {
+    "url": "https://github.com/juanjoDiaz/json2csv/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juanjoDiaz/json2csv.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Juanjo Díaz",
+    "email": "juanjo.diazmo@gmail.com"
+  },
+  "type": "module",
+  "exports": {
+    "./*": {
+      "import": "./dist/mjs/*",
+      "require": "./dist/cjs/*"
+    },
+    ".": {
+      "import": "./dist/mjs/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "main": "dist/mjs/index.js",
+  "scripts": {
+    "lint": "biome check src",
+    "build:cjs": "tsc --module commonjs --moduleResolution bundler --verbatimModuleSyntax false --outDir ./dist/cjs && node ../../build-cjs.js",
+    "build:mjs": "tsc --module nodenext --outDir ./dist/mjs",
+    "build": "npm run build:cjs && npm run build:mjs",
+    "clean": "node -e \"fs.rmSync('dist', {recursive:true, force:true})\"",
+    "test": "node test/CommonJS.cjs",
+    "prepublishOnly": "npm run build"
+  }
+}

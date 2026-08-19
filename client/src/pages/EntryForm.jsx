@@ -43,12 +43,25 @@ export default function EntryForm() {
       const student = res.data.data;
       saveStudent(student);
 
-      // If resumed and already eliminated/completed, go to results
-      if (student.status === 'eliminated' || student.status === 'completed') {
-        navigate('/results');
-      } else {
-        navigate(`/quiz/${student.currentLevel}`);
+      // If the student has already been eliminated or completed the quiz,
+      // do NOT redirect them back into the quiz or to /results (which would
+      // be blank since lastResult is null on a fresh page load).
+      // Instead, show a friendly message so they know their attempt is done.
+      if (student.status === 'eliminated') {
+        setServerError(
+          'Your previous attempt has ended. Results are final — thank you for participating!'
+        );
+        return;
       }
+      if (student.status === 'completed') {
+        setServerError(
+          'You have already completed all levels! Final results will be shared by faculty.'
+        );
+        return;
+      }
+
+      // Active student — send to their current level
+      navigate(`/quiz/${student.currentLevel}`);
     } catch (err) {
       setServerError(err.response?.data?.error || 'Something went wrong. Please try again.');
     } finally {
@@ -60,7 +73,7 @@ export default function EntryForm() {
     <div className="entry-page">
       <div className="entry-card">
         <div className="entry-logo" aria-hidden>🎓</div>
-        <h1 className="entry-title">Freshers Orientation Quiz</h1>
+        <h1 className="entry-title">Quiz Funnel</h1>
         <p className="entry-subtitle">Fill in your details to begin the challenge</p>
 
         <form onSubmit={handleSubmit} noValidate>

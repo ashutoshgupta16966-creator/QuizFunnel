@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
 import { LEVELS } from '../config';
@@ -21,13 +21,13 @@ function Confetti() {
           key={p.id}
           className="confetti-piece"
           style={{
-            left:            p.left,
-            width:           p.size,
-            height:          p.size,
-            background:      p.color,
-            animationDelay:  p.delay,
+            left:              p.left,
+            width:             p.size,
+            height:            p.size,
+            background:        p.color,
+            animationDelay:    p.delay,
             animationDuration: p.duration,
-            borderRadius:    Math.random() > 0.5 ? '50%' : '2px',
+            borderRadius:      Math.random() > 0.5 ? '50%' : '2px',
           }}
         />
       ))}
@@ -37,41 +37,28 @@ function Confetti() {
 
 /**
  * LevelTransition — shown after a student clears a level.
- * Auto-advances to the next level after 5 seconds (or on button click).
+ *
+ * FIX: Auto-advance (countdown timer) has been REMOVED.
+ * The student must explicitly click "Proceed to Next Level" to continue.
+ * This prevents accidental level skips and gives students time to prepare.
  */
 export default function LevelTransition() {
   const navigate = useNavigate();
   const { student, lastResult } = useQuiz();
-  const [countdown, setCountdown] = useState(5);
 
-  // Guard
+  // Guard: redirect if state is missing or the level was not passed
   useEffect(() => {
     if (!student || !lastResult) { navigate('/'); return; }
     if (!lastResult.passed)      { navigate('/results'); return; }
   }, [student, lastResult, navigate]);
 
-  // Countdown auto-advance
-  useEffect(() => {
-    if (!lastResult?.nextLevel) return;
-    const interval = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(interval);
-          navigate(`/quiz/${lastResult.nextLevel}`);
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [lastResult, navigate]);
-
   if (!student || !lastResult) return null;
 
   const { score, total, nextLevel } = lastResult;
-  const nextConfig = LEVELS[nextLevel];
+  const nextConfig   = LEVELS[nextLevel];
   const clearedLevel = nextLevel - 1;
 
+  // Manual navigation only — user must consciously click to start next level
   const handleContinue = () => navigate(`/quiz/${nextLevel}`);
 
   return (
@@ -96,17 +83,14 @@ export default function LevelTransition() {
           </div>
         )}
 
+        {/* Student must explicitly click this — no auto-advance countdown */}
         <button
           id="continue-btn"
           className="btn btn-primary transition-btn"
           onClick={handleContinue}
         >
-          Start {nextConfig?.label} →
+          Proceed to Next Level →
         </button>
-
-        <p className="countdown-text">
-          Continuing automatically in <strong>{countdown}s</strong>…
-        </p>
       </div>
     </div>
   );
