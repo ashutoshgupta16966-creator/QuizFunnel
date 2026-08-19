@@ -22,7 +22,7 @@ module.exports = {
   },
   3: {
     questions: 10,
-    cutoff: 7,             // minimum correct to advance
+    cutoff: 6,             // minimum correct to advance (6/10 = 60%)
     timeSeconds: 480,      // 8 minutes
     sections: ['Technical', 'Reasoning'],
     questionsPerSection: 5,

@@ -22,7 +22,7 @@ export const LEVELS = {
   },
   3: {
     questions: 10,
-    cutoff: 7,
+    cutoff: 6,
     timeSeconds: 480,   // 8 min
     label: 'Level 3',
     sublabel: 'Advanced Round',

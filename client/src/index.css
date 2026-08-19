@@ -784,6 +784,205 @@ a { color: inherit; }
 }
 
 /* ============================================================
+   MY RESULTS BADGE & HISTORY MODAL
+   ============================================================ */
+.my-results-btn {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  background: rgba(22, 34, 54, 0.85);
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  border-radius: var(--r-full);
+  color: #FFD700;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transition: all var(--t-fast);
+  z-index: 20;
+  cursor: pointer;
+}
+.my-results-btn:hover {
+  background: var(--surface-2);
+  border-color: #FFD700;
+  box-shadow: 0 4px 20px rgba(255, 215, 0, 0.3);
+  transform: translateY(-1px);
+}
+.my-results-btn .btn-text {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Modal Backdrop & Container */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 27, 42, 0.78);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  z-index: 999;
+  animation: fadeIn 0.2s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal-card.history-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: modalPop 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.92) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.4rem;
+  border-bottom: 1px solid var(--border-2);
+  background: var(--surface-2);
+}
+.modal-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0;
+}
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-soft);
+  font-size: 1.1rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.modal-close-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.modal-body {
+  padding: 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Empty State */
+.empty-history-state {
+  text-align: center;
+  padding: 2.5rem 1rem;
+}
+.empty-history-state .empty-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 0.75rem;
+}
+.empty-history-state .empty-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text);
+  margin-bottom: 0.4rem;
+}
+.empty-history-state .empty-subtext {
+  font-size: 0.85rem;
+  color: var(--text-soft);
+  max-width: 320px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* History Item Card */
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+.history-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.history-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.history-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-right: 0.5rem;
+}
+.history-branch-chip {
+  padding: 0.1rem 0.5rem;
+  background: rgba(67, 97, 238, 0.15);
+  border: 1px solid rgba(67, 97, 238, 0.3);
+  border-radius: var(--r-full);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.history-date {
+  font-size: 0.75rem;
+  color: var(--text-soft);
+}
+
+.history-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+.metric-box {
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  padding: 0.45rem 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  text-align: center;
+}
+.metric-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-soft);
+}
+.metric-val {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ============================================================
    RESPONSIVE
    ============================================================ */
 @media (max-width: 480px) {

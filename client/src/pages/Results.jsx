@@ -20,6 +20,8 @@ const CUMULATIVE_MAX = {
   4: 50,
 };
 
+const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
+
 /**
  * Results — shown after elimination or Level 4 completion.
  *
@@ -41,23 +43,49 @@ export default function Results() {
     if (!student) navigate('/');
   }, [student, navigate]);
 
-  if (!student) return null;
-
-  const score  = lastResult?.score ?? 0;
-  const total  = lastResult?.total ?? 0;
-
-  // Cumulative score and time across all completed levels
+  const score          = lastResult?.score ?? 0;
+  const total          = lastResult?.total ?? 0;
   const totalScore     = lastResult?.totalScore ?? student?.totalScore ?? score;
   const totalTimeTaken = lastResult?.totalTimeTaken ?? student?.totalTimeTaken ?? 0;
 
-  const clearedLevel   = isCompleted ? 4 : (student.currentLevel || 1);
+  const clearedLevel   = isCompleted ? 4 : (student?.currentLevel || 1);
   const maxPossible    = CUMULATIVE_MAX[clearedLevel] || 50;
-
   const accuracyPct    = maxPossible > 0
     ? Math.min(100, Math.round((totalScore / maxPossible) * 100))
     : 0;
 
   const formattedTime  = formatTimeMMSS(totalTimeTaken);
+
+  // ── Auto-save attempt to persistent localStorage history ──────────────────
+  useEffect(() => {
+    if (!student || (!isCompleted && !isEliminated)) return;
+    try {
+      const existing = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
+      const attemptId = `${student.mobile}_${clearedLevel}_${totalScore}_${totalTimeTaken}`;
+
+      const alreadySaved = existing.some((a) => a.id === attemptId);
+      if (!alreadySaved) {
+        const newRecord = {
+          id: attemptId,
+          attemptDate: new Date().toISOString(),
+          studentName: student.name,
+          mobile: student.mobile,
+          branch: student.branch,
+          levelReached: clearedLevel,
+          totalScore,
+          maxPossible,
+          accuracyPct,
+          totalTimeTaken,
+          timeFormatted: formattedTime,
+          status: isCompleted ? 'completed' : 'eliminated',
+        };
+        const updated = [newRecord, ...existing].slice(0, 30);
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+      }
+    } catch { /* noop */ }
+  }, [student, clearedLevel, totalScore, totalTimeTaken, maxPossible, accuracyPct, formattedTime, isCompleted, isEliminated]);
+
+  if (!student) return null;
 
   const handleReturnHome = () => {
     clearStudent();

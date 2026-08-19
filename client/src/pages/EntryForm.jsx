@@ -4,6 +4,8 @@ import { registerStudent } from '../api';
 import { useQuiz } from '../context/QuizContext';
 import { BRANCHES, LEVELS } from '../config';
 
+const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
+
 export default function EntryForm() {
   const navigate = useNavigate();
   const { saveStudent } = useQuiz();
@@ -12,6 +14,20 @@ export default function EntryForm() {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
+
+  // History modal state
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [history, setHistory] = useState([]);
+
+  const handleOpenHistoryModal = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
+      setHistory(saved);
+    } catch {
+      setHistory([]);
+    }
+    setShowHistoryModal(true);
+  };
 
   const validate = () => {
     const e = {};
@@ -55,6 +71,16 @@ export default function EntryForm() {
 
   return (
     <div className="entry-page">
+      {/* Sleek Top-Right "My Results" Badge */}
+      <button
+        type="button"
+        className="my-results-btn"
+        onClick={handleOpenHistoryModal}
+        title="View your saved quiz attempts history"
+      >
+        🏆 <span className="btn-text">My Results</span>
+      </button>
+
       <div className="entry-card">
         <div className="entry-logo" aria-hidden>🎓</div>
         <h1 className="entry-title">Quiz Funnel</h1>
@@ -150,6 +176,81 @@ export default function EntryForm() {
           <span className="drop-cap">C</span>REATED <span className="small-word">BY</span> ~ <span className="drop-cap">A</span>SHUTOSH <span className="drop-cap">G</span>UPTA
         </div>
       </footer>
+
+      {/* ── My Results Modal Popup ────────────────────────────────────────── */}
+      {showHistoryModal && (
+        <div className="modal-backdrop" onClick={() => setShowHistoryModal(false)}>
+          <div className="modal-card history-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">🏆 My Quiz Results</h2>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setShowHistoryModal(false)}
+                aria-label="Close modal"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {history.length === 0 ? (
+                <div className="empty-history-state">
+                  <span className="empty-icon">📜</span>
+                  <p className="empty-title">No quiz attempts yet</p>
+                  <p className="empty-subtext">
+                    Complete a quiz attempt to see your saved results and performance metrics here.
+                  </p>
+                </div>
+              ) : (
+                <div className="history-list">
+                  {history.map((item, idx) => (
+                    <div key={item.id || idx} className="history-card">
+                      <div className="history-card-header">
+                        <div>
+                          <strong className="history-name">{item.studentName}</strong>
+                          <span className="history-branch-chip">{item.branch}</span>
+                        </div>
+                        <span className={`status-badge ${item.status}`}>
+                          {item.status === 'completed' ? 'Completed' : 'Attempt Ended'}
+                        </span>
+                      </div>
+
+                      <div className="history-date">
+                        {item.attemptDate
+                          ? new Date(item.attemptDate).toLocaleString(undefined, {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })
+                          : 'Recent Attempt'}
+                      </div>
+
+                      <div className="history-metrics-grid">
+                        <div className="metric-box">
+                          <span className="metric-label">Level Reached</span>
+                          <span className="metric-val">Level {item.levelReached}</span>
+                        </div>
+                        <div className="metric-box">
+                          <span className="metric-label">Total Score</span>
+                          <span className="metric-val">{item.totalScore} / {item.maxPossible}</span>
+                        </div>
+                        <div className="metric-box">
+                          <span className="metric-label">Accuracy</span>
+                          <span className="metric-val">{item.accuracyPct}%</span>
+                        </div>
+                        <div className="metric-box">
+                          <span className="metric-label">Time Taken</span>
+                          <span className="metric-val">{item.timeFormatted}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
