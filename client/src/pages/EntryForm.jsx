@@ -1,6 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { registerStudent, verifyResultsAuth, resetStudentPassword } from '../api';
+import {
+  registerStudent,
+  verifyResultsAuth,
+  sendSmsOtp,
+  verifySmsOtp,
+  resetPasswordWithOtp,
+} from '../api';
 import { useQuiz } from '../context/QuizContext';
 import { BRANCHES, LEVELS } from '../config';
 
@@ -25,18 +31,37 @@ export default function EntryForm() {
 
   // Private "My Results" Modal state
   const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [modalMode, setModalMode] = useState('auth'); // 'auth' | 'dashboard' | 'reset'
-  
+  const [modalMode, setModalMode] = useState('auth');
+  // Modes: 'auth' | 'reset_mobile' | 'reset_otp' | 'reset_new_password' | 'dashboard'
+
   // Auth Form state
   const [authForm, setAuthForm] = useState({ mobile: '', password: '' });
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Reset Password Form state
-  const [resetForm, setResetForm] = useState({ name: '', mobile: '', newPassword: '' });
+  // SMS OTP Reset state
+  const [resetMobile, setResetMobile] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [otpNotice, setOtpNotice] = useState('');
   const [resetError, setResetError] = useState('');
   const [resetSuccess, setResetSuccess] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
+
+  // 30-Second Resend OTP Timer
+  const [resendTimer, setResendTimer] = useState(0);
+
+  useEffect(() => {
+    let interval = null;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [resendTimer]);
 
   // Authenticated Student Performance Data
   const [authedStudentData, setAuthedStudentData] = useState(null);
@@ -123,39 +148,79 @@ export default function EntryForm() {
     }
   };
 
-  // Submit Password Reset Form
-  const handleResetSubmit = async (e) => {
+  // ── Step 1 & 2: Trigger SMS OTP ──────────────────────────────────────────
+  const handleSendOtp = async (e) => {
+    if (e) e.preventDefault();
+    if (!/^\d{10}$/.test(resetMobile)) {
+      setResetError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    setResetLoading(true);
+    setResetError('');
+    setOtpNotice('');
+    try {
+      const res = await sendSmsOtp({ mobile: resetMobile.trim() });
+      const demoOtpMsg = res.data.demoOtp ? ` [Demo OTP: ${res.data.demoOtp}]` : '';
+      setOtpNotice(`4-digit OTP sent to +91 ${resetMobile.trim()}.${demoOtpMsg}`);
+      setResendTimer(30); // 30-second resend countdown
+      setModalMode('reset_otp');
+    } catch (err) {
+      setResetError(err.response?.data?.error || 'Failed to send SMS OTP. Check mobile number.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  // ── Step 3 & 4: Verify SMS OTP ────────────────────────────────────────────
+  const handleVerifyOtp = async (e) => {
     e.preventDefault();
-    if (!resetForm.name.trim()) {
-      setResetError('Full Name is required to verify identity.');
+    if (!/^\d{4}$/.test(otpCode.trim())) {
+      setResetError('Please enter the 4-digit OTP code sent to your mobile.');
       return;
     }
-    if (!/^\d{10}$/.test(resetForm.mobile)) {
-      setResetError('Enter a valid 10-digit mobile number.');
-      return;
+
+    setResetLoading(true);
+    setResetError('');
+    try {
+      await verifySmsOtp({
+        mobile: resetMobile.trim(),
+        otp: otpCode.trim(),
+      });
+      setModalMode('reset_new_password');
+    } catch (err) {
+      setResetError(err.response?.data?.error || 'Invalid OTP code. Please try again.');
+    } finally {
+      setResetLoading(false);
     }
-    if (!resetForm.newPassword.trim() || resetForm.newPassword.trim().length < 4) {
+  };
+
+  // ── Step 5: Update Password & Auto-Login ─────────────────────────────────
+  const handleUpdatePassword = async (e) => {
+    e.preventDefault();
+    if (!newPassword.trim() || newPassword.trim().length < 4) {
       setResetError('New password must be at least 4 characters or digits.');
       return;
     }
 
     setResetLoading(true);
     setResetError('');
-    setResetSuccess('');
     try {
-      const res = await resetStudentPassword({
-        name:        resetForm.name.trim(),
-        mobile:      resetForm.mobile.trim(),
-        newPassword: resetForm.newPassword.trim(),
+      await resetPasswordWithOtp({
+        mobile: resetMobile.trim(),
+        otp: otpCode.trim(),
+        newPassword: newPassword.trim(),
       });
-      setResetSuccess(res.data.message || 'Password reset successfully!');
-      // Switch back to auth mode after 1.5s
-      setTimeout(() => {
-        setAuthForm({ mobile: resetForm.mobile.trim(), password: '' });
-        setModalMode('auth');
-      }, 1500);
+
+      // Auto-login into results dashboard after successful reset
+      const res = await verifyResultsAuth({
+        mobile: resetMobile.trim(),
+        password: newPassword.trim(),
+      });
+      setAuthedStudentData(res.data.data);
+      setModalMode('dashboard');
     } catch (err) {
-      setResetError(err.response?.data?.error || 'Password reset failed. Check details.');
+      setResetError(err.response?.data?.error || 'Password update failed. Please try again.');
     } finally {
       setResetLoading(false);
     }
@@ -303,7 +368,7 @@ export default function EntryForm() {
             <div className="modal-header">
               <h2 className="modal-title">
                 {modalMode === 'dashboard' ? '📊 Private Performance Summary' :
-                 modalMode === 'reset' ? '🔐 Reset / Edit Password' :
+                 modalMode.startsWith('reset') ? '📱 SMS OTP Password Reset' :
                  '🔒 Private Results Authentication'}
               </h2>
               <button
@@ -363,35 +428,24 @@ export default function EntryForm() {
                       type="button"
                       className="link-btn"
                       onClick={() => {
-                        setResetForm({ name: '', mobile: authForm.mobile || '', newPassword: '' });
+                        setResetMobile(authForm.mobile || '');
                         setResetError('');
-                        setResetSuccess('');
-                        setModalMode('reset');
+                        setOtpNotice('');
+                        setModalMode('reset_mobile');
                       }}
                     >
-                      Forgot / Edit Password?
+                      Forgot / Reset Password via SMS OTP?
                     </button>
                   </div>
                 </form>
               )}
 
-              {/* ── MODE 2: Password Reset / Edit Form ── */}
-              {modalMode === 'reset' && (
-                <form onSubmit={handleResetSubmit} className="auth-form" noValidate>
+              {/* ── MODE 2 (Step 1 & 2): SMS Mobile Input ── */}
+              {modalMode === 'reset_mobile' && (
+                <form onSubmit={handleSendOtp} className="auth-form" noValidate>
                   <p className="auth-subtitle">
-                    Verify your Registered Name & Mobile Number to reset your Password/PIN.
+                    Enter your registered 10-digit Mobile Number to receive a 4-digit SMS OTP.
                   </p>
-
-                  <div className="form-group">
-                    <label className="form-label">Full Name (as registered)</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. Ananya Sharma"
-                      value={resetForm.name}
-                      onChange={(e) => setResetForm({ ...resetForm, name: e.target.value })}
-                    />
-                  </div>
 
                   <div className="form-group">
                     <label className="form-label">Registered Mobile Number</label>
@@ -399,32 +453,20 @@ export default function EntryForm() {
                       type="tel"
                       className="form-input"
                       placeholder="10-digit mobile number"
-                      value={resetForm.mobile}
-                      onChange={(e) => setResetForm({ ...resetForm, mobile: e.target.value })}
+                      value={resetMobile}
+                      onChange={(e) => setResetMobile(e.target.value)}
                       maxLength={10}
                     />
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label">New Password / PIN</label>
-                    <input
-                      type="password"
-                      className="form-input"
-                      placeholder="Create a new Password or PIN"
-                      value={resetForm.newPassword}
-                      onChange={(e) => setResetForm({ ...resetForm, newPassword: e.target.value })}
-                    />
-                  </div>
-
                   {resetError && <div className="server-error" role="alert">{resetError}</div>}
-                  {resetSuccess && <div className="form-success-banner">{resetSuccess}</div>}
 
                   <button
                     type="submit"
                     className="btn btn-primary form-submit-btn"
                     disabled={resetLoading}
                   >
-                    {resetLoading ? <><span className="btn-spinner" />Updating…</> : 'Update Password & Return to Login →'}
+                    {resetLoading ? <><span className="btn-spinner" />Sending OTP…</> : 'Send 4-Digit OTP via SMS →'}
                   </button>
 
                   <div className="modal-footer-link">
@@ -439,7 +481,92 @@ export default function EntryForm() {
                 </form>
               )}
 
-              {/* ── MODE 3: Private Performance Dashboard ── */}
+              {/* ── MODE 3 (Step 3 & 4): 4-Digit OTP Verification Screen ── */}
+              {modalMode === 'reset_otp' && (
+                <form onSubmit={handleVerifyOtp} className="auth-form" noValidate>
+                  <p className="auth-subtitle">
+                    Enter the 4-digit OTP code sent to <strong>+91 {resetMobile}</strong>.
+                  </p>
+
+                  {otpNotice && <div className="form-success-banner">{otpNotice}</div>}
+
+                  <div className="form-group">
+                    <label className="form-label">4-Digit SMS OTP</label>
+                    <input
+                      type="text"
+                      className="form-input otp-input"
+                      placeholder="• • • •"
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                      maxLength={4}
+                      inputMode="numeric"
+                      autoFocus
+                    />
+                  </div>
+
+                  {resetError && <div className="server-error" role="alert">{resetError}</div>}
+
+                  <button
+                    type="submit"
+                    className="btn btn-primary form-submit-btn"
+                    disabled={resetLoading}
+                  >
+                    {resetLoading ? <><span className="btn-spinner" />Verifying…</> : 'Verify OTP →'}
+                  </button>
+
+                  {/* 30-Second Resend Timer */}
+                  <div className="resend-timer-wrapper">
+                    {resendTimer > 0 ? (
+                      <span className="resend-timer-text">
+                        Resend OTP in <strong>{resendTimer}s</strong>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="link-btn resend-btn"
+                        onClick={handleSendOtp}
+                        disabled={resetLoading}
+                      >
+                        Didn't receive OTP? <strong>Resend OTP</strong>
+                      </button>
+                    )}
+                  </div>
+                </form>
+              )}
+
+              {/* ── MODE 4 (Step 5): Set New Password Screen ── */}
+              {modalMode === 'reset_new_password' && (
+                <form onSubmit={handleUpdatePassword} className="auth-form" noValidate>
+                  <p className="auth-subtitle">
+                    OTP Verified! Set a new secret Password or PIN for your account.
+                  </p>
+
+                  <div className="form-group">
+                    <label className="form-label">New Password / PIN</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      placeholder="Enter new Password or PIN"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      maxLength={20}
+                      autoFocus
+                    />
+                  </div>
+
+                  {resetError && <div className="server-error" role="alert">{resetError}</div>}
+
+                  <button
+                    type="submit"
+                    className="btn btn-primary form-submit-btn"
+                    disabled={resetLoading}
+                  >
+                    {resetLoading ? <><span className="btn-spinner" />Updating…</> : 'Update Password & View Results →'}
+                  </button>
+                </form>
+              )}
+
+              {/* ── MODE 5: Private Performance Dashboard ── */}
               {modalMode === 'dashboard' && authedStudentData && (
                 <div className="private-dashboard">
                   <div className="dashboard-header-card">

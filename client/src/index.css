@@ -1016,6 +1016,28 @@ a { color: inherit; }
   text-decoration: underline;
 }
 
+/* OTP Input & Resend Timer */
+.otp-input {
+  font-size: 1.5rem !important;
+  letter-spacing: 0.4em !important;
+  text-align: center !important;
+  font-weight: 800 !important;
+  padding: 0.6rem 1rem !important;
+  color: var(--accent) !important;
+}
+
+.resend-timer-wrapper {
+  text-align: center;
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+}
+.resend-timer-text {
+  color: var(--text-soft);
+}
+.resend-timer-text strong {
+  color: var(--warning);
+}
+
 /* Private Performance Dashboard */
 .private-dashboard {
   display: flex;

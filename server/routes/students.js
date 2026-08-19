@@ -2,20 +2,17 @@ const express = require('express');
 const router  = express.Router();
 const Student = require('../models/Student');
 
+// In-memory store for SMS OTPs: mobile -> { otp, expiresAt }
+const otpStore = new Map();
+
 /**
  * POST /api/students/register
- *
- * Behaviour (multiple-attempt mode with Password protection):
- *   - Accepts { name, mobile, branch, password }.
- *   - Every registration call creates a FRESH attempt starting at Level 1.
- *   - If a student record already exists for the given mobile number, the old
- *     record is deleted first so the new attempt is clean.
+ * Accepts { name, mobile, branch, password }.
  */
 router.post('/register', async (req, res, next) => {
   try {
     const { name, mobile, branch, password } = req.body;
 
-    // ── Input validation ───────────────────────────────────────────────────
     if (!name || !mobile || !branch || !password) {
       return res.status(400).json({
         success: false,
@@ -42,10 +39,10 @@ router.post('/register', async (req, res, next) => {
       });
     }
 
-    // ── Delete any previous attempt for this mobile ───
+    // Delete any previous attempt for this mobile
     await Student.deleteOne({ mobile });
 
-    // ── Create a brand-new student record starting at Level 1 ──────────────
+    // Create fresh student record
     const student = await Student.create({
       name,
       mobile,
@@ -73,9 +70,7 @@ router.post('/register', async (req, res, next) => {
 
 /**
  * POST /api/students/verify-results-auth
- * Private results authentication endpoint.
- * Accepts { mobile, password }.
- * Returns student performance details if credentials match.
+ * Private results authentication endpoint. Accepts { mobile, password }.
  */
 router.post('/verify-results-auth', async (req, res, next) => {
   try {
@@ -117,26 +112,17 @@ router.post('/verify-results-auth', async (req, res, next) => {
 });
 
 /**
- * POST /api/students/reset-password
- * Password Reset / Edit endpoint.
- * Accepts { name, mobile, newPassword }.
- * Verifies mobile & registered name before updating password.
+ * POST /api/students/send-otp
+ * Triggers a 4-digit SMS OTP to the user's mobile number.
  */
-router.post('/reset-password', async (req, res, next) => {
+router.post('/send-otp', async (req, res, next) => {
   try {
-    const { name, mobile, newPassword } = req.body;
+    const { mobile } = req.body;
 
-    if (!name || !mobile || !newPassword) {
+    if (!mobile || !/^\d{10}$/.test(mobile)) {
       return res.status(400).json({
         success: false,
-        error: 'Name, mobile number, and new password are required for reset.',
-      });
-    }
-
-    if (newPassword.trim().length < 4) {
-      return res.status(400).json({
-        success: false,
-        error: 'New password must be at least 4 characters or digits.',
+        error: 'Please enter a valid 10-digit mobile number.',
       });
     }
 
@@ -148,20 +134,110 @@ router.post('/reset-password', async (req, res, next) => {
       });
     }
 
-    // Verify name match (case-insensitive)
-    if (student.name.trim().toLowerCase() !== name.trim().toLowerCase()) {
+    // Generate random 4-digit OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 mins validity
+
+    otpStore.set(mobile, { otp, expiresAt });
+
+    console.log(`[SMS OTP] Mobile: ${mobile} -> Generated OTP: ${otp}`);
+
+    res.json({
+      success: true,
+      message: `4-digit OTP sent successfully to +91 ${mobile}`,
+      demoOtp: otp, // Returned for instant dev/demo testing
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/students/verify-otp
+ * Verifies the 4-digit SMS OTP code.
+ */
+router.post('/verify-otp', async (req, res, next) => {
+  try {
+    const { mobile, otp } = req.body;
+
+    if (!mobile || !otp) {
       return res.status(400).json({
         success: false,
-        error: 'Verification failed. Provided name does not match the registered record.',
+        error: 'Mobile number and OTP are required.',
+      });
+    }
+
+    const record = otpStore.get(mobile);
+    if (!record || Date.now() > record.expiresAt) {
+      return res.status(400).json({
+        success: false,
+        error: 'OTP has expired or is invalid. Please request a new one.',
+      });
+    }
+
+    if (record.otp !== otp.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid 4-digit OTP code. Please check and try again.',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'OTP verified successfully.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/students/reset-password-otp
+ * Updates the candidate's password after verifying SMS OTP.
+ */
+router.post('/reset-password-otp', async (req, res, next) => {
+  try {
+    const { mobile, otp, newPassword } = req.body;
+
+    if (!mobile || !otp || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mobile number, OTP, and new password are required.',
+      });
+    }
+
+    if (newPassword.trim().length < 4) {
+      return res.status(400).json({
+        success: false,
+        error: 'New password must be at least 4 characters or digits.',
+      });
+    }
+
+    const record = otpStore.get(mobile);
+    if (!record || record.otp !== otp.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'OTP verification failed or expired. Please restart password reset.',
+      });
+    }
+
+    const student = await Student.findOne({ mobile });
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: 'Candidate record not found.',
       });
     }
 
     student.password = newPassword.trim();
     await student.save();
 
+    // Clear OTP after successful reset
+    otpStore.delete(mobile);
+
     res.json({
       success: true,
-      message: 'Password updated successfully! You can now log in to view your results.',
+      message: 'Password updated successfully! Logging you in...',
     });
   } catch (err) {
     next(err);
@@ -170,7 +246,6 @@ router.post('/reset-password', async (req, res, next) => {
 
 /**
  * GET /api/students/:mobile/status
- * Returns the student's current level, status, and scores.
  */
 router.get('/:mobile/status', async (req, res, next) => {
   try {
