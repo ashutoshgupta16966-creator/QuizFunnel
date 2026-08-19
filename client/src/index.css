@@ -5,7 +5,7 @@
             Hot pink danger · Warm amber warning
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 
 /* ── Design Tokens ────────────────────────────────────────── */
 :root {
@@ -152,30 +152,59 @@ a { color: inherit; }
   text-align: center;
   z-index: 10;
   width: max-content;
-  max-width: 92vw;
+  max-width: 95vw;
   pointer-events: auto;
 }
 
-.gold-text {
-  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
-  font-size: 1.05rem;
-  font-weight: 800;
-  letter-spacing: 1.8px;
-  text-transform: none;
-  background: linear-gradient(135deg, #FFF176 0%, #FFD700 35%, #F39C12 70%, #D4AF37 100%);
+.cinematic-gold-branding {
+  font-family: 'Cinzel', 'Trajan Pro', 'Georgia', serif;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #F3C758;
+  background: linear-gradient(135deg, #FFF5C0 0%, #F5C518 40%, #E2B13C 70%, #B8860B 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 12px rgba(255, 215, 0, 0.55));
-  display: inline-block;
-  opacity: 0.95;
-  transition: opacity var(--t-fast), transform var(--t-fast), filter var(--t-fast);
+  filter: drop-shadow(0 0 10px rgba(245, 197, 24, 0.45));
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.14em;
   user-select: none;
+  transition: transform var(--t-fast), filter var(--t-fast);
 }
 
-.gold-text:hover {
-  opacity: 1;
+.cinematic-gold-branding:hover {
   transform: scale(1.05);
-  filter: drop-shadow(0 0 18px rgba(255, 215, 0, 0.8));
+  filter: drop-shadow(0 0 16px rgba(245, 197, 24, 0.75));
+}
+
+/* Drop-Cap Initial Styling ('C', 'A', 'G') */
+.cinematic-gold-branding .drop-cap {
+  font-family: 'Cinzel', 'Georgia', serif;
+  font-size: 1.85em;
+  font-weight: 900;
+  line-height: 0.8;
+  vertical-align: baseline;
+  background: linear-gradient(135deg, #FFFFFF 0%, #FFE885 30%, #F5C518 70%, #D4AF37 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 12px rgba(255, 232, 133, 0.7));
+  margin-right: 0.02em;
+  margin-left: 0.08em;
+}
+
+.cinematic-gold-branding .drop-cap:first-child {
+  margin-left: 0;
+}
+
+/* Mid-size word styling ('BY', '~') */
+.cinematic-gold-branding .small-word {
+  font-size: 0.85em;
+  letter-spacing: 0.12em;
+  opacity: 0.9;
+  font-weight: 600;
+  margin: 0 0.15em;
 }
 
 .entry-card {
@@ -760,7 +789,8 @@ a { color: inherit; }
 @media (max-width: 480px) {
   .entry-page   { padding: 1.5rem 1rem 5.5rem; }
   .entry-card   { padding: 2rem 1.25rem; }
-  .gold-text    { font-size: 0.92rem; letter-spacing: 1.2px; }
+  .cinematic-gold-branding { font-size: 0.82rem; letter-spacing: 0.1em; }
+  .cinematic-gold-branding .drop-cap { font-size: 1.75em; }
   .author-attribution-badge { bottom: 1.25rem; }
   .transition-title { font-size: 2rem; }
   .results-title    { font-size: 1.6rem; }

@@ -144,9 +144,11 @@ export default function EntryForm() {
         </div>
       </div>
 
-      {/* Footer Attribution Badge */}
+      {/* Footer Attribution Badge with Drop-Cap / Small-Caps Hierarchy */}
       <footer className="author-attribution-badge">
-        <span className="gold-text">Created By ~ Ashutosh Gupta</span>
+        <div className="cinematic-gold-branding">
+          <span className="drop-cap">C</span>REATED <span className="small-word">BY</span> ~ <span className="drop-cap">A</span>SHUTOSH <span className="drop-cap">G</span>UPTA
+        </div>
       </footer>
     </div>
   );
