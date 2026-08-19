@@ -43,24 +43,8 @@ export default function EntryForm() {
       const student = res.data.data;
       saveStudent(student);
 
-      // If the student has already been eliminated or completed the quiz,
-      // do NOT redirect them back into the quiz or to /results (which would
-      // be blank since lastResult is null on a fresh page load).
-      // Instead, show a friendly message so they know their attempt is done.
-      if (student.status === 'eliminated') {
-        setServerError(
-          'Your previous attempt has ended. Results are final — thank you for participating!'
-        );
-        return;
-      }
-      if (student.status === 'completed') {
-        setServerError(
-          'You have already completed all levels! Final results will be shared by faculty.'
-        );
-        return;
-      }
-
-      // Active student — send to their current level
+      // Backend always creates a fresh Level-1 attempt, so we simply
+      // navigate the student straight into the quiz. No status checks needed.
       navigate(`/quiz/${student.currentLevel}`);
     } catch (err) {
       setServerError(err.response?.data?.error || 'Something went wrong. Please try again.');
@@ -68,6 +52,7 @@ export default function EntryForm() {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="entry-page">
