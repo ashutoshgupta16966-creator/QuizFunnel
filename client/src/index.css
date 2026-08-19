@@ -235,6 +235,21 @@ a { color: inherit; }
   border: 1px solid var(--border);
 }
 
+/* No Negative Marking Banner */
+.no-negative-banner {
+  display: flex; align-items: center; gap: 0.75rem;
+  background: rgba(76, 201, 240, 0.08);
+  border: 1px solid rgba(76, 201, 240, 0.25);
+  border-radius: var(--r-md);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+.banner-icon { font-size: 1.25rem; flex-shrink: 0; }
+.banner-text {
+  font-size: 0.85rem; color: var(--text); line-height: 1.45;
+}
+.banner-text strong { color: var(--accent); }
+
 /* ============================================================
    QUIZ PAGE
    ============================================================ */
@@ -294,13 +309,52 @@ a { color: inherit; }
   to   { opacity: 1; transform: translateX(0); }
 }
 
-.question-meta { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+.question-meta { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
 .question-number { font-size: 0.8rem; color: var(--text-dim); font-weight: 500; }
 .question-section-tag {
   padding: 0.15rem 0.6rem;
   background: rgba(76,201,240,.1); border: 1px solid rgba(76,201,240,.22);
   border-radius: var(--r-full); font-size: 0.72rem;
   color: var(--accent); font-weight: 700; letter-spacing: 0.04em;
+}
+
+.clear-choice-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.65rem;
+  transition: all var(--t-fast);
+  cursor: pointer;
+}
+.clear-choice-btn:hover {
+  background: rgba(247, 37, 133, 0.15);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.card-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.875rem;
+}
+.clear-selection-link {
+  background: none;
+  border: none;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--r-sm);
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.clear-selection-link:hover {
+  color: var(--danger);
+  background: rgba(247, 37, 133, 0.08);
 }
 
 .question-text {

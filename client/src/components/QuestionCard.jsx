@@ -22,9 +22,9 @@ const LETTER_LABELS = ['A', 'B', 'C', 'D'];
 /**
  * QuestionCard
  * Props:
- *   question      — { _id, questionText, section, options: string[] }
- *   selectedIndex — currently selected option index (null if none)
- *   onAnswer      — (index: number) => void
+ *   question       — { _id, questionText, section, options: string[] }
+ *   selectedIndex  — currently selected option index (null if none)
+ *   onAnswer       — (index: number | null) => void
  *   questionNumber — display number (1-based)
  */
 export default function QuestionCard({ question, selectedIndex, onAnswer, questionNumber }) {
@@ -41,9 +41,18 @@ export default function QuestionCard({ question, selectedIndex, onAnswer, questi
   }, [question._id]);
 
   const handleOptionClick = (e, idx) => {
-    if (selectedIndex !== null) return; // already answered
     createRipple(e);
-    onAnswer(idx);
+    // If clicking the currently selected option, toggle off / clear selection
+    if (selectedIndex === idx) {
+      onAnswer(null);
+    } else {
+      // Select or change choice
+      onAnswer(idx);
+    }
+  };
+
+  const handleClearSelection = () => {
+    onAnswer(null);
   };
 
   // Format multi-line question text (Level 4 code questions use \n)
@@ -54,6 +63,16 @@ export default function QuestionCard({ question, selectedIndex, onAnswer, questi
       <div className="question-meta">
         <span className="question-number">Q{questionNumber}</span>
         <span className="question-section-tag">{question.section}</span>
+        {selectedIndex !== null && (
+          <button
+            type="button"
+            className="clear-choice-btn"
+            onClick={handleClearSelection}
+            title="Clear selection for this question"
+          >
+            ✕ Clear Answer
+          </button>
+        )}
       </div>
 
       <div className="question-text">
@@ -73,9 +92,9 @@ export default function QuestionCard({ question, selectedIndex, onAnswer, questi
           return (
             <button
               key={idx}
+              type="button"
               className={`option-btn${isSelected ? ' option-selected' : ''}`}
               onClick={(e) => handleOptionClick(e, idx)}
-              disabled={selectedIndex !== null && !isSelected}
               aria-pressed={isSelected}
             >
               <span className="option-letter">{LETTER_LABELS[idx]}</span>
@@ -85,6 +104,18 @@ export default function QuestionCard({ question, selectedIndex, onAnswer, questi
           );
         })}
       </div>
+
+      {selectedIndex !== null && (
+        <div className="card-footer-actions">
+          <button
+            type="button"
+            className="clear-selection-link"
+            onClick={handleClearSelection}
+          >
+            ↺ Clear Selection
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -110,6 +110,14 @@ export default function EntryForm() {
             {errors.branch && <p className="form-error">{errors.branch}</p>}
           </div>
 
+          {/* No negative marking banner */}
+          <div className="no-negative-banner" role="note">
+            <span className="banner-icon" aria-hidden>🎯</span>
+            <div className="banner-text">
+              <strong>Note:</strong> There is <strong>NO negative marking!</strong> Make sure to attempt all questions.
+            </div>
+          </div>
+
           {serverError && (
             <div className="server-error" role="alert">{serverError}</div>
           )}

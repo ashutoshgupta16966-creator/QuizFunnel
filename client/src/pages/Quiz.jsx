@@ -69,9 +69,17 @@ export default function Quiz() {
     }
   };
 
-  // ── Answer selection ──────────────────────────────────────────────────────
+  // ── Answer selection & clearing ───────────────────────────────────────────
   const handleAnswer = useCallback((questionId, idx) => {
-    setAnswers((prev) => ({ ...prev, [questionId]: idx }));
+    setAnswers((prev) => {
+      const next = { ...prev };
+      if (idx === null || idx === undefined) {
+        delete next[questionId]; // deselect / clear choice
+      } else {
+        next[questionId] = idx; // select or modify choice
+      }
+      return next;
+    });
   }, []);
 
   // ── Submit (manual or auto via timer) ────────────────────────────────────
