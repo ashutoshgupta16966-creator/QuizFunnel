@@ -51,6 +51,12 @@ export const registerStudent = (data) =>
 export const getStudentStatus = (mobile) =>
   api.get(`/api/students/${encodeURIComponent(mobile)}/status`);
 
+export const verifyResultsAuth = (data) =>
+  api.post('/api/students/verify-results-auth', data);
+
+export const resetStudentPassword = (data) =>
+  api.post('/api/students/reset-password', data);
+
 // ── Quiz endpoints ───────────────────────────────────────────────────────────
 export const getQuestions = (level, mobile) =>
   api.get(`/api/quiz/questions/${level}`, {

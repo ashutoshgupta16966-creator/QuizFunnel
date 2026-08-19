@@ -1,39 +1,55 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { registerStudent } from '../api';
+import { registerStudent, verifyResultsAuth, resetStudentPassword } from '../api';
 import { useQuiz } from '../context/QuizContext';
 import { BRANCHES, LEVELS } from '../config';
 
-const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
+function formatTimeMMSS(seconds) {
+  if (!seconds && seconds !== 0) return '00:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+const CUMULATIVE_MAX = { 1: 20, 2: 35, 3: 45, 4: 50 };
 
 export default function EntryForm() {
   const navigate = useNavigate();
   const { saveStudent } = useQuiz();
 
-  const [form, setForm] = useState({ name: '', mobile: '', branch: '' });
+  // Registration Form state
+  const [form, setForm] = useState({ name: '', mobile: '', branch: '', password: '' });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
 
-  // History modal state
+  // Private "My Results" Modal state
   const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [history, setHistory] = useState([]);
+  const [modalMode, setModalMode] = useState('auth'); // 'auth' | 'dashboard' | 'reset'
+  
+  // Auth Form state
+  const [authForm, setAuthForm] = useState({ mobile: '', password: '' });
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
 
-  const handleOpenHistoryModal = () => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
-      setHistory(saved);
-    } catch {
-      setHistory([]);
-    }
-    setShowHistoryModal(true);
-  };
+  // Reset Password Form state
+  const [resetForm, setResetForm] = useState({ name: '', mobile: '', newPassword: '' });
+  const [resetError, setResetError] = useState('');
+  const [resetSuccess, setResetSuccess] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
+  // Authenticated Student Performance Data
+  const [authedStudentData, setAuthedStudentData] = useState(null);
+
+  // Registration validation
   const validate = () => {
     const e = {};
-    if (!form.name.trim())            e.name   = 'Full name is required.';
-    if (!/^\d{10}$/.test(form.mobile)) e.mobile = 'Enter a valid 10-digit mobile number.';
-    if (!form.branch)                  e.branch = 'Please select your branch.';
+    if (!form.name.trim())            e.name     = 'Full name is required.';
+    if (!/^\d{10}$/.test(form.mobile)) e.mobile   = 'Enter a valid 10-digit mobile number.';
+    if (!form.branch)                  e.branch   = 'Please select your branch.';
+    if (!form.password.trim() || form.password.trim().length < 4) {
+      e.password = 'Create a Password/PIN (at least 4 digits/characters).';
+    }
     return e;
   };
 
@@ -52,15 +68,14 @@ export default function EntryForm() {
     setLoading(true);
     try {
       const res = await registerStudent({
-        name:   form.name.trim(),
-        mobile: form.mobile.trim(),
-        branch: form.branch,
+        name:     form.name.trim(),
+        mobile:   form.mobile.trim(),
+        branch:   form.branch,
+        password: form.password.trim(),
       });
       const student = res.data.data;
       saveStudent(student);
 
-      // Backend always creates a fresh Level-1 attempt, so we simply
-      // navigate the student straight into the quiz. No status checks needed.
       navigate(`/quiz/${student.currentLevel}`);
     } catch (err) {
       setServerError(err.response?.data?.error || 'Something went wrong. Please try again.');
@@ -69,14 +84,100 @@ export default function EntryForm() {
     }
   };
 
+  // Open My Results Modal
+  const handleOpenResultsModal = () => {
+    setModalMode('auth');
+    setAuthForm({ mobile: form.mobile || '', password: '' });
+    setAuthError('');
+    setResetError('');
+    setResetSuccess('');
+    setShowHistoryModal(true);
+  };
+
+  // Submit Private Auth Form
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    if (!/^\d{10}$/.test(authForm.mobile)) {
+      setAuthError('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!authForm.password.trim()) {
+      setAuthError('Please enter your Password/PIN.');
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await verifyResultsAuth({
+        mobile: authForm.mobile.trim(),
+        password: authForm.password.trim(),
+      });
+      const studentData = res.data.data;
+      setAuthedStudentData(studentData);
+      setModalMode('dashboard');
+    } catch (err) {
+      setAuthError(err.response?.data?.error || 'Invalid Mobile Number or Password/PIN.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Submit Password Reset Form
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    if (!resetForm.name.trim()) {
+      setResetError('Full Name is required to verify identity.');
+      return;
+    }
+    if (!/^\d{10}$/.test(resetForm.mobile)) {
+      setResetError('Enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!resetForm.newPassword.trim() || resetForm.newPassword.trim().length < 4) {
+      setResetError('New password must be at least 4 characters or digits.');
+      return;
+    }
+
+    setResetLoading(true);
+    setResetError('');
+    setResetSuccess('');
+    try {
+      const res = await resetStudentPassword({
+        name:        resetForm.name.trim(),
+        mobile:      resetForm.mobile.trim(),
+        newPassword: resetForm.newPassword.trim(),
+      });
+      setResetSuccess(res.data.message || 'Password reset successfully!');
+      // Switch back to auth mode after 1.5s
+      setTimeout(() => {
+        setAuthForm({ mobile: resetForm.mobile.trim(), password: '' });
+        setModalMode('auth');
+      }, 1500);
+    } catch (err) {
+      setResetError(err.response?.data?.error || 'Password reset failed. Check details.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  // Calculations for private dashboard
+  const isCompleted    = authedStudentData?.status === 'completed';
+  const clearedLevel   = isCompleted ? 4 : (authedStudentData?.currentLevel || 1);
+  const maxPossible    = CUMULATIVE_MAX[clearedLevel] || 50;
+  const totalScore     = authedStudentData?.totalScore ?? 0;
+  const totalTimeTaken = authedStudentData?.totalTimeTaken ?? 0;
+  const accuracyPct    = maxPossible > 0 ? Math.min(100, Math.round((totalScore / maxPossible) * 100)) : 0;
+  const timeFormatted  = formatTimeMMSS(totalTimeTaken);
+
   return (
     <div className="entry-page">
       {/* Sleek Top-Right "My Results" Badge */}
       <button
         type="button"
         className="my-results-btn"
-        onClick={handleOpenHistoryModal}
-        title="View your saved quiz attempts history"
+        onClick={handleOpenResultsModal}
+        title="Access your private quiz results"
       >
         🏆 <span className="btn-text">My Results</span>
       </button>
@@ -135,6 +236,24 @@ export default function EntryForm() {
             {errors.branch && <p className="form-error">{errors.branch}</p>}
           </div>
 
+          {/* Password / PIN Setup */}
+          <div className="form-group">
+            <label className="form-label" htmlFor="password">Create Password / 4-Digit PIN</label>
+            <input
+              id="password" name="password" type="password"
+              className={`form-input${errors.password ? ' form-input-error' : ''}`}
+              placeholder="Set a secret Password or PIN"
+              value={form.password}
+              onChange={handleChange}
+              maxLength={20}
+            />
+            {errors.password ? (
+              <p className="form-error">{errors.password}</p>
+            ) : (
+              <p className="form-hint">Used to privately view your results after the quiz.</p>
+            )}
+          </div>
+
           {/* No negative marking banner */}
           <div className="no-negative-banner" role="note">
             <span className="banner-icon" aria-hidden>🎯</span>
@@ -170,19 +289,23 @@ export default function EntryForm() {
         </div>
       </div>
 
-      {/* Footer Attribution Badge with Drop-Cap / Small-Caps Hierarchy */}
+      {/* Footer Attribution Badge */}
       <footer className="author-attribution-badge">
         <div className="cinematic-gold-branding">
           <span className="drop-cap">C</span>REATED <span className="small-word">BY</span> ~ <span className="drop-cap">A</span>SHUTOSH <span className="drop-cap">G</span>UPTA
         </div>
       </footer>
 
-      {/* ── My Results Modal Popup ────────────────────────────────────────── */}
+      {/* ── Private "My Results" Auth & Performance Modal ──────────────────── */}
       {showHistoryModal && (
         <div className="modal-backdrop" onClick={() => setShowHistoryModal(false)}>
           <div className="modal-card history-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2 className="modal-title">🏆 My Quiz Results</h2>
+              <h2 className="modal-title">
+                {modalMode === 'dashboard' ? '📊 Private Performance Summary' :
+                 modalMode === 'reset' ? '🔐 Reset / Edit Password' :
+                 '🔒 Private Results Authentication'}
+              </h2>
               <button
                 type="button"
                 className="modal-close-btn"
@@ -194,57 +317,184 @@ export default function EntryForm() {
             </div>
 
             <div className="modal-body">
-              {history.length === 0 ? (
-                <div className="empty-history-state">
-                  <span className="empty-icon">📜</span>
-                  <p className="empty-title">No quiz attempts yet</p>
-                  <p className="empty-subtext">
-                    Complete a quiz attempt to see your saved results and performance metrics here.
+              {/* ── MODE 1: Authentication Form ── */}
+              {modalMode === 'auth' && (
+                <form onSubmit={handleAuthSubmit} className="auth-form" noValidate>
+                  <p className="auth-subtitle">
+                    Enter your registered Mobile Number & Password/PIN to view your private results.
                   </p>
-                </div>
-              ) : (
-                <div className="history-list">
-                  {history.map((item, idx) => (
-                    <div key={item.id || idx} className="history-card">
-                      <div className="history-card-header">
-                        <div>
-                          <strong className="history-name">{item.studentName}</strong>
-                          <span className="history-branch-chip">{item.branch}</span>
-                        </div>
-                        <span className={`status-badge ${item.status}`}>
-                          {item.status === 'completed' ? 'Completed' : 'Attempt Ended'}
-                        </span>
-                      </div>
 
-                      <div className="history-date">
-                        {item.attemptDate
-                          ? new Date(item.attemptDate).toLocaleString(undefined, {
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })
-                          : 'Recent Attempt'}
-                      </div>
+                  <div className="form-group">
+                    <label className="form-label">Registered Mobile Number</label>
+                    <input
+                      type="tel"
+                      className="form-input"
+                      placeholder="10-digit mobile number"
+                      value={authForm.mobile}
+                      onChange={(e) => setAuthForm({ ...authForm, mobile: e.target.value })}
+                      maxLength={10}
+                    />
+                  </div>
 
-                      <div className="history-metrics-grid">
-                        <div className="metric-box">
-                          <span className="metric-label">Level Reached</span>
-                          <span className="metric-val">Level {item.levelReached}</span>
-                        </div>
-                        <div className="metric-box">
-                          <span className="metric-label">Total Score</span>
-                          <span className="metric-val">{item.totalScore} / {item.maxPossible}</span>
-                        </div>
-                        <div className="metric-box">
-                          <span className="metric-label">Accuracy</span>
-                          <span className="metric-val">{item.accuracyPct}%</span>
-                        </div>
-                        <div className="metric-box">
-                          <span className="metric-label">Time Taken</span>
-                          <span className="metric-val">{item.timeFormatted}</span>
-                        </div>
-                      </div>
+                  <div className="form-group">
+                    <label className="form-label">Password / PIN</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      placeholder="Enter your secret Password or PIN"
+                      value={authForm.password}
+                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                    />
+                  </div>
+
+                  {authError && <div className="server-error" role="alert">{authError}</div>}
+                  {resetSuccess && <div className="form-success-banner">{resetSuccess}</div>}
+
+                  <button
+                    type="submit"
+                    className="btn btn-primary form-submit-btn"
+                    disabled={authLoading}
+                  >
+                    {authLoading ? <><span className="btn-spinner" />Authenticating…</> : 'View My Results →'}
+                  </button>
+
+                  <div className="modal-footer-link">
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => {
+                        setResetForm({ name: '', mobile: authForm.mobile || '', newPassword: '' });
+                        setResetError('');
+                        setResetSuccess('');
+                        setModalMode('reset');
+                      }}
+                    >
+                      Forgot / Edit Password?
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* ── MODE 2: Password Reset / Edit Form ── */}
+              {modalMode === 'reset' && (
+                <form onSubmit={handleResetSubmit} className="auth-form" noValidate>
+                  <p className="auth-subtitle">
+                    Verify your Registered Name & Mobile Number to reset your Password/PIN.
+                  </p>
+
+                  <div className="form-group">
+                    <label className="form-label">Full Name (as registered)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. Ananya Sharma"
+                      value={resetForm.name}
+                      onChange={(e) => setResetForm({ ...resetForm, name: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Registered Mobile Number</label>
+                    <input
+                      type="tel"
+                      className="form-input"
+                      placeholder="10-digit mobile number"
+                      value={resetForm.mobile}
+                      onChange={(e) => setResetForm({ ...resetForm, mobile: e.target.value })}
+                      maxLength={10}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">New Password / PIN</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      placeholder="Create a new Password or PIN"
+                      value={resetForm.newPassword}
+                      onChange={(e) => setResetForm({ ...resetForm, newPassword: e.target.value })}
+                    />
+                  </div>
+
+                  {resetError && <div className="server-error" role="alert">{resetError}</div>}
+                  {resetSuccess && <div className="form-success-banner">{resetSuccess}</div>}
+
+                  <button
+                    type="submit"
+                    className="btn btn-primary form-submit-btn"
+                    disabled={resetLoading}
+                  >
+                    {resetLoading ? <><span className="btn-spinner" />Updating…</> : 'Update Password & Return to Login →'}
+                  </button>
+
+                  <div className="modal-footer-link">
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => setModalMode('auth')}
+                    >
+                      ← Back to Results Login
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* ── MODE 3: Private Performance Dashboard ── */}
+              {modalMode === 'dashboard' && authedStudentData && (
+                <div className="private-dashboard">
+                  <div className="dashboard-header-card">
+                    <div>
+                      <h3 className="candidate-name">{authedStudentData.name}</h3>
+                      <p className="candidate-sub">
+                        {authedStudentData.branch} · {authedStudentData.mobile}
+                      </p>
                     </div>
-                  ))}
+                    <span className={`status-badge ${authedStudentData.status}`}>
+                      {isCompleted ? 'Completed' : 'Attempt Ended'}
+                    </span>
+                  </div>
+
+                  <div className="dashboard-metrics-grid">
+                    <div className="metric-card">
+                      <span className="metric-title">Level Reached</span>
+                      <span className="metric-value">Level {clearedLevel}</span>
+                    </div>
+
+                    <div className="metric-card">
+                      <span className="metric-title">Total Score</span>
+                      <span className="metric-value">{totalScore} / {maxPossible}</span>
+                    </div>
+
+                    <div className="metric-card">
+                      <span className="metric-title">Accuracy Rate</span>
+                      <span className="metric-value">{accuracyPct}%</span>
+                    </div>
+
+                    <div className="metric-card">
+                      <span className="metric-title">Total Time Taken</span>
+                      <span className="metric-value">{timeFormatted}</span>
+                    </div>
+                  </div>
+
+                  {authedStudentData.updatedAt && (
+                    <div className="dashboard-date">
+                      Attempt Date:{' '}
+                      {new Date(authedStudentData.updatedAt).toLocaleString(undefined, {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                    </div>
+                  )}
+
+                  <div className="dashboard-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setModalMode('auth')}
+                    >
+                      🔒 Lock & Log Out
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

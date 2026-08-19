@@ -59,6 +59,12 @@ const StudentSchema = new mongoose.Schema({
     enum: ['CSE', 'CSE-AIML', 'MBA'],
   },
 
+  password: {
+    type: String,
+    required: true,
+    minlength: [4, 'Password must be at least 4 characters/digits'],
+  },
+
   currentLevel: { type: Number, default: 1, min: 1, max: 4 },
 
   status: {

@@ -969,6 +969,119 @@ a { color: inherit; }
   gap: 0.15rem;
   text-align: center;
 }
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--text-soft);
+  margin-top: 0.25rem;
+}
+
+.form-success-banner {
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: var(--success);
+  border-radius: var(--r-md);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.auth-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+  margin-bottom: 0.25rem;
+}
+.modal-footer-link {
+  text-align: center;
+  margin-top: 0.5rem;
+}
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--r-sm);
+  transition: color var(--t-fast), text-decoration var(--t-fast);
+}
+.link-btn:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+/* Private Performance Dashboard */
+.private-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.dashboard-header-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg);
+  padding: 1rem 1.25rem;
+}
+.candidate-name {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0;
+}
+.candidate-sub {
+  font-size: 0.8rem;
+  color: var(--text-soft);
+  margin-top: 0.15rem;
+}
+
+.dashboard-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.875rem;
+}
+.metric-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: center;
+}
+.metric-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-soft);
+}
+.metric-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.dashboard-date {
+  font-size: 0.78rem;
+  color: var(--text-soft);
+  text-align: center;
+}
+
+.dashboard-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
 .metric-label {
   font-size: 0.65rem;
   font-weight: 600;
