@@ -146,7 +146,7 @@ export default function EntryForm() {
 
       {/* Footer Attribution Badge */}
       <footer className="author-attribution-badge">
-        <span className="gold-text">CREATED BY ~ ASHUTOSH GUPTA</span>
+        <span className="gold-text">Created By ~ Ashutosh Gupta</span>
       </footer>
     </div>
   );

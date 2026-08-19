@@ -134,7 +134,7 @@ a { color: inherit; }
 .entry-page {
   min-height: 100svh; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 1.5rem 1.5rem 3.5rem; position: relative; overflow: hidden;
+  padding: 2rem 1.5rem 5rem; position: relative; overflow: hidden;
 }
 .entry-page::before {
   content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -146,36 +146,36 @@ a { color: inherit; }
 /* Footer Attribution Badge */
 .author-attribution-badge {
   position: absolute;
-  bottom: 1.25rem;
+  bottom: 1.5rem;
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
   z-index: 10;
   width: max-content;
-  max-width: 90vw;
+  max-width: 92vw;
   pointer-events: auto;
 }
 
 .gold-text {
   font-family: 'Outfit', system-ui, -apple-system, sans-serif;
-  font-size: 0.72rem;
+  font-size: 1.05rem;
   font-weight: 800;
-  letter-spacing: 2.5px;
-  text-transform: uppercase;
-  background: linear-gradient(135deg, #FFE57F 0%, #FFD700 40%, #D4AF37 80%, #AA7C11 100%);
+  letter-spacing: 1.8px;
+  text-transform: none;
+  background: linear-gradient(135deg, #FFF176 0%, #FFD700 35%, #F39C12 70%, #D4AF37 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.4));
+  filter: drop-shadow(0 0 12px rgba(255, 215, 0, 0.55));
   display: inline-block;
-  opacity: 0.92;
+  opacity: 0.95;
   transition: opacity var(--t-fast), transform var(--t-fast), filter var(--t-fast);
   user-select: none;
 }
 
 .gold-text:hover {
   opacity: 1;
-  transform: scale(1.04);
-  filter: drop-shadow(0 0 14px rgba(255, 215, 0, 0.65));
+  transform: scale(1.05);
+  filter: drop-shadow(0 0 18px rgba(255, 215, 0, 0.8));
 }
 
 .entry-card {
@@ -758,7 +758,10 @@ a { color: inherit; }
    RESPONSIVE
    ============================================================ */
 @media (max-width: 480px) {
+  .entry-page   { padding: 1.5rem 1rem 5.5rem; }
   .entry-card   { padding: 2rem 1.25rem; }
+  .gold-text    { font-size: 0.92rem; letter-spacing: 1.2px; }
+  .author-attribution-badge { bottom: 1.25rem; }
   .transition-title { font-size: 2rem; }
   .results-title    { font-size: 1.6rem; }
   .question-text    { font-size: 1rem; }
