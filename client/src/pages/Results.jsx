@@ -2,23 +2,32 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
 
-function formatTime(seconds) {
+/**
+ * Format seconds into MM:SS format (e.g. 14:25).
+ */
+function formatTimeMMSS(seconds) {
+  if (!seconds && seconds !== 0) return '00:00';
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  return `${m}m ${s}s`;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
+
+// Cumulative maximum possible questions up to each level
+const CUMULATIVE_MAX = {
+  1: 20,
+  2: 35,
+  3: 45,
+  4: 50,
+};
 
 /**
  * Results — shown after elimination or Level 4 completion.
  *
- * Eliminated : warm "Thank you for participating" message + score.
- * Completed  : final summary with total score and time.
- *
- * FIX — "Return to Home" behaviour:
- *   1. clearStudent() wipes localStorage/sessionStorage via QuizContext.
- *   2. window.location.replace('/') performs a hard redirect that tears down
- *      the entire React state tree, so re-visiting "/" always shows a fresh
- *      registration form even without a full browser reload.
+ * Displays:
+ *  - Final / Level score
+ *  - Total Score across all levels (e.g. 38 / 50)
+ *  - Accuracy Percentage (e.g. 85%)
+ *  - Total Completion Time (MM:SS) for leaderboard ranking
  */
 export default function Results() {
   const navigate  = useNavigate();
@@ -34,21 +43,24 @@ export default function Results() {
 
   if (!student) return null;
 
-  const score        = lastResult?.score ?? 0;
-  const total        = lastResult?.total ?? 0;
-  const clearedLevel = isCompleted ? 4 : (student.currentLevel || 1);
+  const score  = lastResult?.score ?? 0;
+  const total  = lastResult?.total ?? 0;
 
-  /**
-   * Complete state reset:
-   *  - clearStudent() → removes quiz_student from localStorage and
-   *    admin_pwd from sessionStorage (via QuizContext).
-   *  - window.location.replace('/') → hard-navigates to "/" which
-   *    remounts the entire React app, guaranteeing a blank entry form.
-   */
+  // Cumulative score and time across all completed levels
+  const totalScore     = lastResult?.totalScore ?? student?.totalScore ?? score;
+  const totalTimeTaken = lastResult?.totalTimeTaken ?? student?.totalTimeTaken ?? 0;
+
+  const clearedLevel   = isCompleted ? 4 : (student.currentLevel || 1);
+  const maxPossible    = CUMULATIVE_MAX[clearedLevel] || 50;
+
+  const accuracyPct    = maxPossible > 0
+    ? Math.min(100, Math.round((totalScore / maxPossible) * 100))
+    : 0;
+
+  const formattedTime  = formatTimeMMSS(totalTimeTaken);
+
   const handleReturnHome = () => {
     clearStudent();
-    // Hard reload to root — ensures React state tree is fully reset.
-    // Using replace() so the results page isn't in browser history.
     window.location.replace('/');
   };
 
@@ -65,14 +77,22 @@ export default function Results() {
         </p>
 
         <div className="score-card">
-          <p className="score-card-title">Your Score — Level {clearedLevel}</p>
+          <p className="score-card-title">Performance Summary — Level {clearedLevel}</p>
           <div className="score-row">
-            <span className="score-label">Correct Answers</span>
+            <span className="score-label">Level {clearedLevel} Score</span>
             <span className="score-value">{score} / {total}</span>
           </div>
           <div className="score-row">
-            <span className="score-label">Level reached</span>
-            <span className="score-value">Level {student.currentLevel}</span>
+            <span className="score-label">Total Score (Cumulative)</span>
+            <span className="score-value">{totalScore} / {maxPossible}</span>
+          </div>
+          <div className="score-row">
+            <span className="score-label">Accuracy</span>
+            <span className="score-value">{accuracyPct}%</span>
+          </div>
+          <div className="score-row">
+            <span className="score-label">Total Time Taken</span>
+            <span className="score-value">{formattedTime}</span>
           </div>
           {lastResult?.cutoff > 0 && (
             <div className="score-row">
@@ -108,15 +128,17 @@ export default function Results() {
             <span className="score-value">{score} / {total}</span>
           </div>
           <div className="score-row">
-            <span className="score-label">Total Score (all levels)</span>
-            <span className="score-value">{student.totalScore ?? '—'}</span>
+            <span className="score-label">Total Score (All 4 Levels)</span>
+            <span className="score-value">{totalScore} / 50</span>
           </div>
-          {student.totalTimeTaken != null && (
-            <div className="score-row">
-              <span className="score-label">Total Time Taken</span>
-              <span className="score-value">{formatTime(student.totalTimeTaken)}</span>
-            </div>
-          )}
+          <div className="score-row">
+            <span className="score-label">Accuracy Rate</span>
+            <span className="score-value">{accuracyPct}%</span>
+          </div>
+          <div className="score-row">
+            <span className="score-label">Total Time Taken</span>
+            <span className="score-value">{formattedTime}</span>
+          </div>
         </div>
 
         <div className="results-note">

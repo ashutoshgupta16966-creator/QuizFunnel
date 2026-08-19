@@ -108,10 +108,12 @@ export default function Quiz() {
       const result = res.data.data;
       setLastResult(result);
 
-      // Update context so resumed state is accurate
+      // Update context so student object has updated totals
       updateStudent({
         currentLevel: result.nextLevel ?? student.currentLevel,
         status:       result.status,
+        totalScore:   result.totalScore,
+        totalTimeTaken: result.totalTimeTaken,
       });
 
       if (result.passed && result.nextLevel) {

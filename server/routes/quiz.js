@@ -100,14 +100,22 @@ router.get('/questions/:level', async (req, res, next) => {
 
     // ── NEW SESSION: fetch questions, shuffle, store session ──────────────
     const levelConfig = LEVELS[level];
-    const allQuestions = [];
+    let allQuestions = [];
 
-    // Fetch questionsPerSection from each section (avoids N+1 with one loop)
+    // Attempt section-wise fetching first
     for (const section of levelConfig.sections) {
       const qs = await Question.find({ level, section }).lean();
-      // Randomly pick questionsPerSection from available
       const picked = qs.sort(() => Math.random() - 0.5).slice(0, levelConfig.questionsPerSection);
       allQuestions.push(...picked);
+    }
+
+    // Fallback: If section breakdown didn't yield exact required count (e.g. 20 for L1),
+    // fetch all questions for this level directly from DB to guarantee exact count
+    if (allQuestions.length < levelConfig.questions) {
+      const allLevelQuestions = await Question.find({ level }).lean();
+      allQuestions = allLevelQuestions
+        .sort(() => Math.random() - 0.5)
+        .slice(0, levelConfig.questions);
     }
 
     if (allQuestions.length === 0) {
@@ -119,7 +127,6 @@ router.get('/questions/:level', async (req, res, next) => {
 
     // ── ANTI-CHEAT: Shuffle question ORDER (Fisher-Yates) ─────────────────
     // Each student now sees questions in a unique random sequence.
-    // This is separate from option shuffling (handled per question below).
     for (let i = allQuestions.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
@@ -288,6 +295,9 @@ router.post('/submit', async (req, res, next) => {
 
     await Student.updateOne({ mobile }, updateDoc);
 
+    // Fetch updated totals after calculation
+    const updatedStudent = await Student.findOne({ mobile }).lean();
+
     res.json({
       success: true,
       data: {
@@ -298,6 +308,8 @@ router.post('/submit', async (req, res, next) => {
         status: newStatus,
         nextLevel: passed && !isLastLevel ? level + 1 : null,
         isLastLevel,
+        totalScore: updatedStudent ? updatedStudent.totalScore : score,
+        totalTimeTaken: updatedStudent ? updatedStudent.totalTimeTaken : elapsed,
       },
     });
   } catch (err) {
