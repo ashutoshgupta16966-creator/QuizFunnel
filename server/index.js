@@ -35,6 +35,22 @@ app.use('/api/students', studentsRouter);
 app.use('/api/quiz',     quizRouter);
 app.use('/api/admin',    adminRouter);
 
+// AI Question Generation Top-Level Route
+const { generateAndPopulateQuestions } = require('./controllers/aiQuestionController');
+app.post('/api/generate-questions', async (req, res, next) => {
+  try {
+    const { topic, difficultyLevel, level, count } = req.body;
+    const result = await generateAndPopulateQuestions({
+      topic,
+      difficultyLevel: difficultyLevel || level || 1,
+      count: count || 5,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Health check — useful for Render's uptime monitoring
 app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 

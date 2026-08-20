@@ -342,4 +342,29 @@ router.post('/submit', async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/quiz/generate-questions (and /api/generate-questions)
+ * Generates new questions via Gemini AI and auto-populates MongoDB.
+ * Accepts { topic, difficultyLevel, count }.
+ * Fallback: If AI fails or no API key, fetches existing questions from MongoDB.
+ */
+const { generateAndPopulateQuestions } = require('../controllers/aiQuestionController');
+
+router.post('/generate-questions', async (req, res, next) => {
+  try {
+    const { topic, difficultyLevel, level, count } = req.body;
+    const targetLevel = difficultyLevel || level || 1;
+
+    const result = await generateAndPopulateQuestions({
+      topic,
+      difficultyLevel: targetLevel,
+      count: count || 5,
+    });
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

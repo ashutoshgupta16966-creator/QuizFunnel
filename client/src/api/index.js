@@ -78,6 +78,9 @@ export const getQuestions = (level, mobile) =>
 export const submitQuiz = (payload) =>
   api.post('/api/quiz/submit', payload);
 
+export const generateAiQuestions = (data) =>
+  api.post('/api/generate-questions', data);
+
 // ── Admin endpoints ──────────────────────────────────────────────────────────
 const adminHeaders = (password) => ({ Authorization: `Bearer ${password}` });
 
