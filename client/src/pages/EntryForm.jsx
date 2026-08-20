@@ -53,11 +53,11 @@ export default function EntryForm() {
   // 30-Second Resend OTP Timer
   const [resendTimer, setResendTimer] = useState(0);
 
-  // Multi-Attempt Dashboard & Detail State
+  // Multi-Attempt Dashboard & Detail View State
   const [authedStudentData, setAuthedStudentData] = useState(null);
   const [attemptsList, setAttemptsList] = useState([]);
-  const [expandedAttemptId, setExpandedAttemptId] = useState(null);
-  const [deleteConfirmAttempt, setDeleteConfirmAttempt] = useState(null); // attempt object to delete
+  const [selectedAttemptDetail, setSelectedAttemptDetail] = useState(null); // Clicked attempt for full detail view
+  const [deleteConfirmAttempt, setDeleteConfirmAttempt] = useState(null); // Attempt object to delete
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
@@ -119,6 +119,7 @@ export default function EntryForm() {
   const handleOpenResultsModal = () => {
     setModalMode('auth');
     setAuthForm({ mobile: form.mobile || '', password: '' });
+    setSelectedAttemptDetail(null);
     setAuthError('');
     setResetError('');
     setResetSuccess('');
@@ -153,7 +154,6 @@ export default function EntryForm() {
         const localSaved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
         const matchingLocal = localSaved.filter((a) => a.mobile === authForm.mobile.trim());
         
-        // Merge and deduplicate by attemptId or timestamp
         const combinedMap = new Map();
         [...matchingLocal, ...combined].forEach((item) => {
           const key = item._id || item.id || item.attemptId || `${item.totalScore}_${item.totalTimeTaken}`;
@@ -162,7 +162,6 @@ export default function EntryForm() {
         combined = Array.from(combinedMap.values());
       } catch { /* noop */ }
 
-      // If no history array yet, fallback to single current result
       if (combined.length === 0 && studentData.status && studentData.status !== 'in-progress') {
         const isCompleted  = studentData.status === 'completed';
         const clearedLevel = isCompleted ? 4 : (studentData.currentLevel || 1);
@@ -186,7 +185,6 @@ export default function EntryForm() {
         }];
       }
 
-      // Sort newest first
       combined.sort((a, b) => new Date(b.attemptDate || b.createdAt) - new Date(a.attemptDate || a.createdAt));
       setAttemptsList(combined);
       setModalMode('dashboard');
@@ -261,7 +259,6 @@ export default function EntryForm() {
         newPassword: newPassword.trim(),
       });
 
-      // Auto-login after successful reset
       const res = await verifyResultsAuth({
         mobile: resetMobile.trim(),
         password: newPassword.trim(),
@@ -284,7 +281,6 @@ export default function EntryForm() {
 
     setDeleteLoading(true);
     try {
-      // 1. Delete from backend database
       try {
         await deleteStudentAttempt({
           mobile: authedStudentData.mobile,
@@ -293,7 +289,6 @@ export default function EntryForm() {
         });
       } catch { /* noop fallback */ }
 
-      // 2. Delete from localStorage history
       try {
         const localSaved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
         const updatedLocal = localSaved.filter((a) => {
@@ -303,11 +298,15 @@ export default function EntryForm() {
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedLocal));
       } catch { /* noop */ }
 
-      // 3. Update React state UI list
       setAttemptsList((prev) => prev.filter((a) => {
         const id = a._id || a.id || a.attemptId;
         return id !== targetId && a.attemptDate !== deleteConfirmAttempt.attemptDate;
       }));
+
+      // Close detail view if currently open attempt was deleted
+      if (selectedAttemptDetail && (selectedAttemptDetail._id || selectedAttemptDetail.attemptId) === targetId) {
+        setSelectedAttemptDetail(null);
+      }
 
       setDeleteConfirmAttempt(null);
     } catch (err) {
@@ -449,14 +448,21 @@ export default function EntryForm() {
           <div className="modal-card history-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">
-                {modalMode === 'dashboard' ? '🏆 Attempt History Dashboard' :
+                {selectedAttemptDetail ? `📊 Attempt #${selectedAttemptDetail.attemptNum} Detailed Report` :
+                 modalMode === 'dashboard' ? '🏆 Attempt History Dashboard' :
                  modalMode.startsWith('reset') ? '📱 SMS OTP Password Reset' :
                  '🔒 Private Results Authentication'}
               </h2>
               <button
                 type="button"
                 className="modal-close-btn"
-                onClick={() => setShowHistoryModal(false)}
+                onClick={() => {
+                  if (selectedAttemptDetail) {
+                    setSelectedAttemptDetail(null);
+                  } else {
+                    setShowHistoryModal(false);
+                  }
+                }}
                 aria-label="Close modal"
               >
                 ✕
@@ -646,134 +652,222 @@ export default function EntryForm() {
                 </form>
               )}
 
-              {/* ── MODE 5: Multi-Attempt History Dashboard ── */}
+              {/* ── MODE 5: Multi-Attempt History Dashboard / Detailed View ── */}
               {modalMode === 'dashboard' && authedStudentData && (
                 <div className="multi-attempt-dashboard">
-                  <div className="dashboard-user-bar">
-                    <div>
-                      <h3 className="user-name">{authedStudentData.name}</h3>
-                      <p className="user-sub">
-                        {authedStudentData.branch} · {authedStudentData.mobile}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => setModalMode('auth')}
-                    >
-                      🔒 Log Out
-                    </button>
-                  </div>
+                  {/* If an individual attempt card is clicked, show Detailed Performance Summary Modal */}
+                  {selectedAttemptDetail ? (
+                    <div className="attempt-detail-view">
+                      <div className="detail-view-header">
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setSelectedAttemptDetail(null)}
+                        >
+                          ← Back to History List
+                        </button>
+                        <span className={`status-badge ${selectedAttemptDetail.status}`}>
+                          {selectedAttemptDetail.status === 'completed' ? 'Completed' : 'Attempt Ended'}
+                        </span>
+                      </div>
 
-                  {attemptsList.length === 0 ? (
-                    <div className="empty-history-state">
-                      <span className="empty-icon">📜</span>
-                      <p className="empty-title">No completed attempts recorded</p>
-                      <p className="empty-subtext">
-                        Complete a quiz round to see your attempt history listed here.
-                      </p>
+                      {/* Hero Summary Card */}
+                      <div className="detail-hero-card">
+                        <div className="detail-hero-icon">
+                          {selectedAttemptDetail.status === 'completed' ? '🏆' : '⚡'}
+                        </div>
+                        <h3 className="detail-hero-title">
+                          {selectedAttemptDetail.status === 'completed'
+                            ? 'Quiz Completed Successfully!'
+                            : `Attempt Ended at Level ${selectedAttemptDetail.clearedLvl}`}
+                        </h3>
+                        <p className="detail-hero-meta">
+                          {authedStudentData.name} ({authedStudentData.branch}) ·{' '}
+                          {selectedAttemptDetail.attemptDate
+                            ? new Date(selectedAttemptDetail.attemptDate).toLocaleString(undefined, {
+                                dateStyle: 'medium',
+                                timeStyle: 'short',
+                              })
+                            : 'Recent Attempt'}
+                        </p>
+                      </div>
+
+                      {/* Performance Metrics Grid */}
+                      <div className="detail-metrics-grid">
+                        <div className="detail-metric-card">
+                          <span className="detail-metric-label">Level Reached</span>
+                          <span className="detail-metric-val">Level {selectedAttemptDetail.clearedLvl} of 4</span>
+                        </div>
+                        <div className="detail-metric-card">
+                          <span className="detail-metric-label">Total Score (All Levels)</span>
+                          <span className="detail-metric-val">{selectedAttemptDetail.score} / {selectedAttemptDetail.maxPoss}</span>
+                        </div>
+                        <div className="detail-metric-card">
+                          <span className="detail-metric-label">Accuracy Rate</span>
+                          <span className="detail-metric-val">{selectedAttemptDetail.accuracy}%</span>
+                        </div>
+                        <div className="detail-metric-card">
+                          <span className="detail-metric-label">Total Time Taken</span>
+                          <span className="detail-metric-val">{formatTimeMMSS(selectedAttemptDetail.timeSecs)}</span>
+                        </div>
+                      </div>
+
+                      {/* Per-Level Breakdown */}
+                      <div className="detail-breakdown-card">
+                        <h4 className="breakdown-title">📋 Level-by-Level Breakdown</h4>
+                        {selectedAttemptDetail.levelsSummary && selectedAttemptDetail.levelsSummary.length > 0 ? (
+                          <div className="level-summary-list">
+                            {selectedAttemptDetail.levelsSummary.map((lvlItem, i) => (
+                              <div key={i} className="level-summary-item">
+                                <div>
+                                  <strong>Level {lvlItem.level}</strong>
+                                  <span className="level-subtext">
+                                    Time: {formatTimeMMSS(lvlItem.timeTaken || 0)}
+                                  </span>
+                                </div>
+                                <span className="level-score-pill">
+                                  Score: {lvlItem.score} pts
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="breakdown-simple-rows">
+                            <div className="report-row">
+                              <span>Highest Level Cleared:</span>
+                              <strong>Level {selectedAttemptDetail.clearedLvl}</strong>
+                            </div>
+                            <div className="report-row">
+                              <span>Questions Attempted:</span>
+                              <strong>{selectedAttemptDetail.maxPoss} Questions</strong>
+                            </div>
+                            <div className="report-row">
+                              <span>Total Score Earned:</span>
+                              <strong>{selectedAttemptDetail.score} / {selectedAttemptDetail.maxPoss} Correct</strong>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ) : (
-                    <div className="attempts-history-list">
-                      {attemptsList.map((attempt, index) => {
-                        const attemptId = attempt._id || attempt.id || attempt.attemptId || index;
-                        const attemptNum = attempt.attemptNumber || (attemptsList.length - index);
-                        const isExpanded = expandedAttemptId === attemptId;
-                        const isCompletedAttempt = attempt.status === 'completed';
-                        const clearedLvl = isCompletedAttempt ? 4 : (attempt.levelReached || 1);
-                        const maxPoss = attempt.maxPossible || CUMULATIVE_MAX[clearedLvl] || 50;
-                        const score = attempt.totalScore ?? 0;
-                        const timeSecs = attempt.totalTimeTaken ?? 0;
-                        const accuracy = attempt.accuracyPct ?? (maxPoss > 0 ? Math.round((score / maxPoss) * 100) : 0);
+                    /* Attempt Cards History List */
+                    <>
+                      <div className="dashboard-user-bar">
+                        <div>
+                          <h3 className="user-name">{authedStudentData.name}</h3>
+                          <p className="user-sub">
+                            {authedStudentData.branch} · {authedStudentData.mobile}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setModalMode('auth')}
+                        >
+                          🔒 Log Out
+                        </button>
+                      </div>
 
-                        return (
-                          <div key={attemptId} className="attempt-history-card">
-                            <div className="attempt-card-main">
-                              <div className="attempt-card-header">
-                                <div className="attempt-badge-title">
-                                  <span className="attempt-number-badge">Attempt #{attemptNum}</span>
-                                  <span className="attempt-timestamp">
-                                    {attempt.attemptDate || attempt.createdAt
-                                      ? new Date(attempt.attemptDate || attempt.createdAt).toLocaleString(undefined, {
-                                          dateStyle: 'medium',
-                                          timeStyle: 'short',
-                                        })
-                                      : 'Recent Attempt'}
-                                  </span>
-                                </div>
+                      {attemptsList.length === 0 ? (
+                        <div className="empty-history-state">
+                          <span className="empty-icon">📜</span>
+                          <p className="empty-title">No completed attempts recorded</p>
+                          <p className="empty-subtext">
+                            Complete a quiz round to see your attempt history listed here.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="attempts-history-list">
+                          {attemptsList.map((attempt, index) => {
+                            const attemptId = attempt._id || attempt.id || attempt.attemptId || index;
+                            const attemptNum = attempt.attemptNumber || (attemptsList.length - index);
+                            const isCompletedAttempt = attempt.status === 'completed';
+                            const clearedLvl = isCompletedAttempt ? 4 : (attempt.levelReached || 1);
+                            const maxPoss = attempt.maxPossible || CUMULATIVE_MAX[clearedLvl] || 50;
+                            const score = attempt.totalScore ?? 0;
+                            const timeSecs = attempt.totalTimeTaken ?? 0;
+                            const accuracy = attempt.accuracyPct ?? (maxPoss > 0 ? Math.round((score / maxPoss) * 100) : 0);
 
-                                <div className="attempt-actions-row">
-                                  <span className={`status-badge ${attempt.status}`}>
-                                    {isCompletedAttempt ? 'Completed' : 'Attempt Ended'}
-                                  </span>
-                                  {/* Delete Attempt Button */}
-                                  <button
-                                    type="button"
-                                    className="delete-attempt-btn"
-                                    onClick={() => setDeleteConfirmAttempt({ ...attempt, attemptNum })}
-                                    title="Delete this attempt record"
-                                  >
-                                    🗑️
-                                  </button>
-                                </div>
-                              </div>
+                            const cardDetailData = {
+                              ...attempt,
+                              attemptNum,
+                              clearedLvl,
+                              maxPoss,
+                              score,
+                              timeSecs,
+                              accuracy,
+                            };
 
-                              {/* Metrics Grid */}
-                              <div className="attempt-metrics-grid">
-                                <div className="metric-box">
-                                  <span className="metric-label">Level Reached</span>
-                                  <span className="metric-val">Level {clearedLvl}</span>
-                                </div>
-                                <div className="metric-box">
-                                  <span className="metric-label">Total Score</span>
-                                  <span className="metric-val">{score} / {maxPoss}</span>
-                                </div>
-                                <div className="metric-box">
-                                  <span className="metric-label">Accuracy</span>
-                                  <span className="metric-val">{accuracy}%</span>
-                                </div>
-                                <div className="metric-box">
-                                  <span className="metric-label">Time Taken</span>
-                                  <span className="metric-val">{formatTimeMMSS(timeSecs)}</span>
-                                </div>
-                              </div>
-
-                              {/* Detailed Report Expand/Collapse Toggle */}
-                              <button
-                                type="button"
-                                className="toggle-report-btn"
-                                onClick={() => setExpandedAttemptId(isExpanded ? null : attemptId)}
+                            return (
+                              <div
+                                key={attemptId}
+                                className="attempt-history-card"
+                                onClick={() => setSelectedAttemptDetail(cardDetailData)}
+                                title="Click to view full detailed performance summary"
                               >
-                                {isExpanded ? '▲ Hide Report Details' : '🔍 View Detailed Report'}
-                              </button>
-                            </div>
+                                <div className="attempt-card-main">
+                                  <div className="attempt-card-header">
+                                    <div className="attempt-badge-title">
+                                      <span className="attempt-number-badge">Attempt #{attemptNum}</span>
+                                      <span className="attempt-timestamp">
+                                        {attempt.attemptDate || attempt.createdAt
+                                          ? new Date(attempt.attemptDate || attempt.createdAt).toLocaleString(undefined, {
+                                              dateStyle: 'medium',
+                                              timeStyle: 'short',
+                                            })
+                                          : 'Recent Attempt'}
+                                      </span>
+                                    </div>
 
-                            {/* Detailed Report Drawer */}
-                            {isExpanded && (
-                              <div className="attempt-detailed-report">
-                                <h4 className="report-title">📋 Detailed Performance Breakdown</h4>
-                                <div className="report-row">
-                                  <span>Final Outcome:</span>
-                                  <strong>{isCompletedAttempt ? 'Cleared All 4 Levels (Winner)' : `Eliminated at Level ${clearedLvl}`}</strong>
-                                </div>
-                                <div className="report-row">
-                                  <span>Total Questions Attempted:</span>
-                                  <strong>{maxPoss} Questions</strong>
-                                </div>
-                                <div className="report-row">
-                                  <span>Total Correct Answers:</span>
-                                  <strong>{score} Correct ({accuracy}%)</strong>
-                                </div>
-                                <div className="report-row">
-                                  <span>Completion Speed:</span>
-                                  <strong>{formatTimeMMSS(timeSecs)} ({timeSecs} seconds total)</strong>
+                                    <div className="attempt-actions-row">
+                                      <span className={`status-badge ${attempt.status}`}>
+                                        {isCompletedAttempt ? 'Completed' : 'Attempt Ended'}
+                                      </span>
+                                      {/* Delete Attempt Button — stops event propagation */}
+                                      <button
+                                        type="button"
+                                        className="delete-attempt-btn"
+                                        onClick={(e) => {
+                                          e.stopPropagation(); // Prevents card click / detail modal trigger
+                                          setDeleteConfirmAttempt({ ...attempt, attemptNum });
+                                        }}
+                                        title="Delete this attempt record"
+                                      >
+                                        🗑️
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Metrics Grid */}
+                                  <div className="attempt-metrics-grid">
+                                    <div className="metric-box">
+                                      <span className="metric-label">Level Reached</span>
+                                      <span className="metric-val">Level {clearedLvl}</span>
+                                    </div>
+                                    <div className="metric-box">
+                                      <span className="metric-label">Total Score</span>
+                                      <span className="metric-val">{score} / {maxPoss}</span>
+                                    </div>
+                                    <div className="metric-box">
+                                      <span className="metric-label">Accuracy</span>
+                                      <span className="metric-val">{accuracy}%</span>
+                                    </div>
+                                    <div className="metric-box">
+                                      <span className="metric-label">Time Taken</span>
+                                      <span className="metric-val">{formatTimeMMSS(timeSecs)}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="click-view-hint">
+                                    <span>🔍 Click card for full detailed report →</span>
+                                  </div>
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
