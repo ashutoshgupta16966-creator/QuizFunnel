@@ -7,7 +7,11 @@ const otpStore = new Map();
 
 /**
  * POST /api/students/register
- * Accepts { name, mobile, branch, password }.
+ *
+ * Behaviour (Multi-Attempt History Preserved):
+ *   - Accepts { name, mobile, branch, password }.
+ *   - Resets active quiz state to Level 1, but DOES NOT delete or overwrite
+ *     the candidate's past attemptHistory array!
  */
 router.post('/register', async (req, res, next) => {
   try {
@@ -39,16 +43,31 @@ router.post('/register', async (req, res, next) => {
       });
     }
 
-    // Delete any previous attempt for this mobile
-    await Student.deleteOne({ mobile });
+    // Check if student already exists for this mobile number
+    let student = await Student.findOne({ mobile });
 
-    // Create fresh student record
-    const student = await Student.create({
-      name,
-      mobile,
-      branch,
-      password: password.trim(),
-    });
+    if (student) {
+      // Preserve attemptHistory! Reset only current active session fields for fresh level 1 attempt
+      student.name = name.trim();
+      student.branch = branch;
+      student.password = password.trim();
+      student.currentLevel = 1;
+      student.status = 'in-progress';
+      student.levels = [];
+      student.quizSession = null;
+      student.totalScore = 0;
+      student.totalTimeTaken = 0;
+      student.startedAt = new Date();
+      await student.save();
+    } else {
+      // Create new student document
+      student = await Student.create({
+        name: name.trim(),
+        mobile: mobile.trim(),
+        branch,
+        password: password.trim(),
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -71,6 +90,7 @@ router.post('/register', async (req, res, next) => {
 /**
  * POST /api/students/verify-results-auth
  * Private results authentication endpoint. Accepts { mobile, password }.
+ * Returns student performance details & full attemptHistory array.
  */
 router.post('/verify-results-auth', async (req, res, next) => {
   try {
@@ -103,8 +123,50 @@ router.post('/verify-results-auth', async (req, res, next) => {
         totalScore:     student.totalScore,
         totalTimeTaken: student.totalTimeTaken,
         levels:         student.levels,
+        attemptHistory: student.attemptHistory || [],
         updatedAt:      student.updatedAt,
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/students/delete-attempt
+ * Deletes a specific attempt record from MongoDB.
+ * Accepts { mobile, password, attemptId }.
+ */
+router.post('/delete-attempt', async (req, res, next) => {
+  try {
+    const { mobile, password, attemptId } = req.body;
+
+    if (!mobile || !password || !attemptId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mobile number, password, and attemptId are required.',
+      });
+    }
+
+    const student = await Student.findOne({ mobile });
+    if (!student || student.password !== password.trim()) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication failed. Incorrect password.',
+      });
+    }
+
+    // Filter out attempt with matching _id or attemptId
+    student.attemptHistory = student.attemptHistory.filter(
+      (a) => (a._id ? a._id.toString() !== attemptId.toString() : a.attemptId !== attemptId)
+    );
+
+    await student.save();
+
+    res.json({
+      success: true,
+      message: 'Attempt record deleted successfully from database.',
+      attemptHistory: student.attemptHistory,
     });
   } catch (err) {
     next(err);
@@ -134,9 +196,8 @@ router.post('/send-otp', async (req, res, next) => {
       });
     }
 
-    // Generate random 4-digit OTP
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 mins validity
+    const expiresAt = Date.now() + 5 * 60 * 1000;
 
     otpStore.set(mobile, { otp, expiresAt });
 
@@ -145,7 +206,7 @@ router.post('/send-otp', async (req, res, next) => {
     res.json({
       success: true,
       message: `4-digit OTP sent successfully to +91 ${mobile}`,
-      demoOtp: otp, // Returned for instant dev/demo testing
+      demoOtp: otp,
     });
   } catch (err) {
     next(err);
@@ -232,7 +293,6 @@ router.post('/reset-password-otp', async (req, res, next) => {
     student.password = newPassword.trim();
     await student.save();
 
-    // Clear OTP after successful reset
     otpStore.delete(mobile);
 
     res.json({

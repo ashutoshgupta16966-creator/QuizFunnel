@@ -14,8 +14,7 @@ const AnswerSchema = new mongoose.Schema({
 }, { _id: false });
 
 /**
- * One entry per submitted level.
- * Kept immutable after submission to prevent tampering.
+ * One entry per submitted level within an attempt.
  */
 const LevelAttemptSchema = new mongoose.Schema({
   level:       { type: Number, required: true },
@@ -26,13 +25,30 @@ const LevelAttemptSchema = new mongoose.Schema({
 }, { _id: false });
 
 /**
+ * Complete attempt history record saved across multiple quiz sessions.
+ * Preserves past quiz attempts without overwriting.
+ */
+const AttemptHistorySchema = new mongoose.Schema({
+  attemptId:      { type: String, required: true },
+  attemptNumber:  { type: Number, required: true },
+  attemptDate:    { type: Date, default: Date.now },
+  levelReached:   { type: Number, default: 1 },
+  totalScore:     { type: Number, default: 0 },
+  maxPossible:    { type: Number, default: 50 },
+  accuracyPct:    { type: Number, default: 0 },
+  totalTimeTaken: { type: Number, default: 0 }, // seconds
+  status:         { type: String, enum: ['completed', 'eliminated', 'in-progress'], default: 'in-progress' },
+  levelsSummary:  [LevelAttemptSchema],
+}, { timestamps: true });
+
+/**
  * Active quiz session — created when GET /questions/:level is called,
  * cleared on submit. Stores which questions were served and in what
  * shuffle order so scoring can be done server-side.
  */
 const SessionQuestionSchema = new mongoose.Schema({
   questionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Question' },
-  shuffleMap: [Number], // 4 elements: shuffleMap[shuffledPos] = originalPos
+  shuffleMap: [Number],
 }, { _id: false });
 
 const QuizSessionSchema = new mongoose.Schema({
@@ -44,7 +60,7 @@ const QuizSessionSchema = new mongoose.Schema({
 const StudentSchema = new mongoose.Schema({
   name:   { type: String, required: true, trim: true },
 
-  // Mobile is the unique identifier (no roll numbers for freshers yet)
+  // Mobile is the unique identifier
   mobile: {
     type: String,
     required: true,
@@ -73,8 +89,9 @@ const StudentSchema = new mongoose.Schema({
     default: 'in-progress',
   },
 
-  levels:      [LevelAttemptSchema],   // submitted level attempts
-  quizSession: QuizSessionSchema,      // active session (null when not in quiz)
+  levels:         [LevelAttemptSchema],   // active level attempts
+  attemptHistory: [AttemptHistorySchema], // persistent list of all completed/past attempts
+  quizSession:    QuizSessionSchema,      // active session (null when not in quiz)
 
   // Running totals used for tie-break sorting in the final leaderboard
   totalScore:     { type: Number, default: 0 },

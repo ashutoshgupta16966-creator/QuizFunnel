@@ -6,6 +6,7 @@ import {
   sendSmsOtp,
   verifySmsOtp,
   resetPasswordWithOtp,
+  deleteStudentAttempt,
 } from '../api';
 import { useQuiz } from '../context/QuizContext';
 import { BRANCHES, LEVELS } from '../config';
@@ -18,6 +19,7 @@ function formatTimeMMSS(seconds) {
 }
 
 const CUMULATIVE_MAX = { 1: 20, 2: 35, 3: 45, 4: 50 };
+const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
 
 export default function EntryForm() {
   const navigate = useNavigate();
@@ -51,6 +53,13 @@ export default function EntryForm() {
   // 30-Second Resend OTP Timer
   const [resendTimer, setResendTimer] = useState(0);
 
+  // Multi-Attempt Dashboard & Detail State
+  const [authedStudentData, setAuthedStudentData] = useState(null);
+  const [attemptsList, setAttemptsList] = useState([]);
+  const [expandedAttemptId, setExpandedAttemptId] = useState(null);
+  const [deleteConfirmAttempt, setDeleteConfirmAttempt] = useState(null); // attempt object to delete
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   useEffect(() => {
     let interval = null;
     if (resendTimer > 0) {
@@ -62,9 +71,6 @@ export default function EntryForm() {
       if (interval) clearInterval(interval);
     };
   }, [resendTimer]);
-
-  // Authenticated Student Performance Data
-  const [authedStudentData, setAuthedStudentData] = useState(null);
 
   // Registration validation
   const validate = () => {
@@ -119,7 +125,7 @@ export default function EntryForm() {
     setShowHistoryModal(true);
   };
 
-  // Submit Private Auth Form
+  // Submit Private Auth Form -> opens Attempt History Dashboard
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     if (!/^\d{10}$/.test(authForm.mobile)) {
@@ -140,6 +146,49 @@ export default function EntryForm() {
       });
       const studentData = res.data.data;
       setAuthedStudentData(studentData);
+
+      // Merge backend database attemptHistory with localStorage attempts
+      let combined = studentData.attemptHistory || [];
+      try {
+        const localSaved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
+        const matchingLocal = localSaved.filter((a) => a.mobile === authForm.mobile.trim());
+        
+        // Merge and deduplicate by attemptId or timestamp
+        const combinedMap = new Map();
+        [...matchingLocal, ...combined].forEach((item) => {
+          const key = item._id || item.id || item.attemptId || `${item.totalScore}_${item.totalTimeTaken}`;
+          if (!combinedMap.has(key)) combinedMap.set(key, item);
+        });
+        combined = Array.from(combinedMap.values());
+      } catch { /* noop */ }
+
+      // If no history array yet, fallback to single current result
+      if (combined.length === 0 && studentData.status && studentData.status !== 'in-progress') {
+        const isCompleted  = studentData.status === 'completed';
+        const clearedLevel = isCompleted ? 4 : (studentData.currentLevel || 1);
+        const maxPossible  = CUMULATIVE_MAX[clearedLevel] || 50;
+        const totalScore   = studentData.totalScore ?? 0;
+        const totalTime    = studentData.totalTimeTaken ?? 0;
+        const accuracyPct  = maxPossible > 0 ? Math.min(100, Math.round((totalScore / maxPossible) * 100)) : 0;
+
+        combined = [{
+          attemptId: `${studentData.mobile}_${Date.now()}`,
+          attemptNumber: 1,
+          attemptDate: studentData.updatedAt || new Date().toISOString(),
+          levelReached: clearedLevel,
+          totalScore,
+          maxPossible,
+          accuracyPct,
+          totalTimeTaken: totalTime,
+          timeFormatted: formatTimeMMSS(totalTime),
+          status: studentData.status,
+          levelsSummary: studentData.levels || [],
+        }];
+      }
+
+      // Sort newest first
+      combined.sort((a, b) => new Date(b.attemptDate || b.createdAt) - new Date(a.attemptDate || a.createdAt));
+      setAttemptsList(combined);
       setModalMode('dashboard');
     } catch (err) {
       setAuthError(err.response?.data?.error || 'Invalid Mobile Number or Password/PIN.');
@@ -148,7 +197,7 @@ export default function EntryForm() {
     }
   };
 
-  // ── Step 1 & 2: Trigger SMS OTP ──────────────────────────────────────────
+  // Step 1 & 2: Trigger SMS OTP
   const handleSendOtp = async (e) => {
     if (e) e.preventDefault();
     if (!/^\d{10}$/.test(resetMobile)) {
@@ -163,7 +212,7 @@ export default function EntryForm() {
       const res = await sendSmsOtp({ mobile: resetMobile.trim() });
       const demoOtpMsg = res.data.demoOtp ? ` [Demo OTP: ${res.data.demoOtp}]` : '';
       setOtpNotice(`4-digit OTP sent to +91 ${resetMobile.trim()}.${demoOtpMsg}`);
-      setResendTimer(30); // 30-second resend countdown
+      setResendTimer(30);
       setModalMode('reset_otp');
     } catch (err) {
       setResetError(err.response?.data?.error || 'Failed to send SMS OTP. Check mobile number.');
@@ -172,7 +221,7 @@ export default function EntryForm() {
     }
   };
 
-  // ── Step 3 & 4: Verify SMS OTP ────────────────────────────────────────────
+  // Step 3 & 4: Verify SMS OTP
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     if (!/^\d{4}$/.test(otpCode.trim())) {
@@ -195,7 +244,7 @@ export default function EntryForm() {
     }
   };
 
-  // ── Step 5: Update Password & Auto-Login ─────────────────────────────────
+  // Step 5: Update Password & Auto-Login
   const handleUpdatePassword = async (e) => {
     e.preventDefault();
     if (!newPassword.trim() || newPassword.trim().length < 4) {
@@ -212,12 +261,14 @@ export default function EntryForm() {
         newPassword: newPassword.trim(),
       });
 
-      // Auto-login into results dashboard after successful reset
+      // Auto-login after successful reset
       const res = await verifyResultsAuth({
         mobile: resetMobile.trim(),
         password: newPassword.trim(),
       });
-      setAuthedStudentData(res.data.data);
+      const studentData = res.data.data;
+      setAuthedStudentData(studentData);
+      setAttemptsList(studentData.attemptHistory || []);
       setModalMode('dashboard');
     } catch (err) {
       setResetError(err.response?.data?.error || 'Password update failed. Please try again.');
@@ -226,14 +277,45 @@ export default function EntryForm() {
     }
   };
 
-  // Calculations for private dashboard
-  const isCompleted    = authedStudentData?.status === 'completed';
-  const clearedLevel   = isCompleted ? 4 : (authedStudentData?.currentLevel || 1);
-  const maxPossible    = CUMULATIVE_MAX[clearedLevel] || 50;
-  const totalScore     = authedStudentData?.totalScore ?? 0;
-  const totalTimeTaken = authedStudentData?.totalTimeTaken ?? 0;
-  const accuracyPct    = maxPossible > 0 ? Math.min(100, Math.round((totalScore / maxPossible) * 100)) : 0;
-  const timeFormatted  = formatTimeMMSS(totalTimeTaken);
+  // Delete Attempt Handler
+  const handleDeleteAttemptConfirm = async () => {
+    if (!deleteConfirmAttempt || !authedStudentData) return;
+    const targetId = deleteConfirmAttempt._id || deleteConfirmAttempt.id || deleteConfirmAttempt.attemptId;
+
+    setDeleteLoading(true);
+    try {
+      // 1. Delete from backend database
+      try {
+        await deleteStudentAttempt({
+          mobile: authedStudentData.mobile,
+          password: authForm.password.trim(),
+          attemptId: targetId,
+        });
+      } catch { /* noop fallback */ }
+
+      // 2. Delete from localStorage history
+      try {
+        const localSaved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
+        const updatedLocal = localSaved.filter((a) => {
+          const id = a._id || a.id || a.attemptId;
+          return id !== targetId && a.attemptDate !== deleteConfirmAttempt.attemptDate;
+        });
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedLocal));
+      } catch { /* noop */ }
+
+      // 3. Update React state UI list
+      setAttemptsList((prev) => prev.filter((a) => {
+        const id = a._id || a.id || a.attemptId;
+        return id !== targetId && a.attemptDate !== deleteConfirmAttempt.attemptDate;
+      }));
+
+      setDeleteConfirmAttempt(null);
+    } catch (err) {
+      alert('Failed to delete attempt: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   return (
     <div className="entry-page">
@@ -242,7 +324,7 @@ export default function EntryForm() {
         type="button"
         className="my-results-btn"
         onClick={handleOpenResultsModal}
-        title="Access your private quiz results"
+        title="Access your private quiz attempts history"
       >
         🏆 <span className="btn-text">My Results</span>
       </button>
@@ -361,13 +443,13 @@ export default function EntryForm() {
         </div>
       </footer>
 
-      {/* ── Private "My Results" Auth & Performance Modal ──────────────────── */}
+      {/* ── Private "My Results" Auth & Multi-Attempt History Modal ───────────── */}
       {showHistoryModal && (
         <div className="modal-backdrop" onClick={() => setShowHistoryModal(false)}>
           <div className="modal-card history-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">
-                {modalMode === 'dashboard' ? '📊 Private Performance Summary' :
+                {modalMode === 'dashboard' ? '🏆 Attempt History Dashboard' :
                  modalMode.startsWith('reset') ? '📱 SMS OTP Password Reset' :
                  '🔒 Private Results Authentication'}
               </h2>
@@ -386,7 +468,7 @@ export default function EntryForm() {
               {modalMode === 'auth' && (
                 <form onSubmit={handleAuthSubmit} className="auth-form" noValidate>
                   <p className="auth-subtitle">
-                    Enter your registered Mobile Number & Password/PIN to view your private results.
+                    Enter your registered Mobile Number & Password/PIN to access your private Attempt History.
                   </p>
 
                   <div className="form-group">
@@ -413,14 +495,13 @@ export default function EntryForm() {
                   </div>
 
                   {authError && <div className="server-error" role="alert">{authError}</div>}
-                  {resetSuccess && <div className="form-success-banner">{resetSuccess}</div>}
 
                   <button
                     type="submit"
                     className="btn btn-primary form-submit-btn"
                     disabled={authLoading}
                   >
-                    {authLoading ? <><span className="btn-spinner" />Authenticating…</> : 'View My Results →'}
+                    {authLoading ? <><span className="btn-spinner" />Authenticating…</> : 'View Attempt History →'}
                   </button>
 
                   <div className="modal-footer-link">
@@ -514,7 +595,6 @@ export default function EntryForm() {
                     {resetLoading ? <><span className="btn-spinner" />Verifying…</> : 'Verify OTP →'}
                   </button>
 
-                  {/* 30-Second Resend Timer */}
                   <div className="resend-timer-wrapper">
                     {resendTimer > 0 ? (
                       <span className="resend-timer-text">
@@ -561,69 +641,175 @@ export default function EntryForm() {
                     className="btn btn-primary form-submit-btn"
                     disabled={resetLoading}
                   >
-                    {resetLoading ? <><span className="btn-spinner" />Updating…</> : 'Update Password & View Results →'}
+                    {resetLoading ? <><span className="btn-spinner" />Updating…</> : 'Update Password & View History →'}
                   </button>
                 </form>
               )}
 
-              {/* ── MODE 5: Private Performance Dashboard ── */}
+              {/* ── MODE 5: Multi-Attempt History Dashboard ── */}
               {modalMode === 'dashboard' && authedStudentData && (
-                <div className="private-dashboard">
-                  <div className="dashboard-header-card">
+                <div className="multi-attempt-dashboard">
+                  <div className="dashboard-user-bar">
                     <div>
-                      <h3 className="candidate-name">{authedStudentData.name}</h3>
-                      <p className="candidate-sub">
+                      <h3 className="user-name">{authedStudentData.name}</h3>
+                      <p className="user-sub">
                         {authedStudentData.branch} · {authedStudentData.mobile}
                       </p>
                     </div>
-                    <span className={`status-badge ${authedStudentData.status}`}>
-                      {isCompleted ? 'Completed' : 'Attempt Ended'}
-                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setModalMode('auth')}
+                    >
+                      🔒 Log Out
+                    </button>
                   </div>
 
-                  <div className="dashboard-metrics-grid">
-                    <div className="metric-card">
-                      <span className="metric-title">Level Reached</span>
-                      <span className="metric-value">Level {clearedLevel}</span>
+                  {attemptsList.length === 0 ? (
+                    <div className="empty-history-state">
+                      <span className="empty-icon">📜</span>
+                      <p className="empty-title">No completed attempts recorded</p>
+                      <p className="empty-subtext">
+                        Complete a quiz round to see your attempt history listed here.
+                      </p>
                     </div>
+                  ) : (
+                    <div className="attempts-history-list">
+                      {attemptsList.map((attempt, index) => {
+                        const attemptId = attempt._id || attempt.id || attempt.attemptId || index;
+                        const attemptNum = attempt.attemptNumber || (attemptsList.length - index);
+                        const isExpanded = expandedAttemptId === attemptId;
+                        const isCompletedAttempt = attempt.status === 'completed';
+                        const clearedLvl = isCompletedAttempt ? 4 : (attempt.levelReached || 1);
+                        const maxPoss = attempt.maxPossible || CUMULATIVE_MAX[clearedLvl] || 50;
+                        const score = attempt.totalScore ?? 0;
+                        const timeSecs = attempt.totalTimeTaken ?? 0;
+                        const accuracy = attempt.accuracyPct ?? (maxPoss > 0 ? Math.round((score / maxPoss) * 100) : 0);
 
-                    <div className="metric-card">
-                      <span className="metric-title">Total Score</span>
-                      <span className="metric-value">{totalScore} / {maxPossible}</span>
-                    </div>
+                        return (
+                          <div key={attemptId} className="attempt-history-card">
+                            <div className="attempt-card-main">
+                              <div className="attempt-card-header">
+                                <div className="attempt-badge-title">
+                                  <span className="attempt-number-badge">Attempt #{attemptNum}</span>
+                                  <span className="attempt-timestamp">
+                                    {attempt.attemptDate || attempt.createdAt
+                                      ? new Date(attempt.attemptDate || attempt.createdAt).toLocaleString(undefined, {
+                                          dateStyle: 'medium',
+                                          timeStyle: 'short',
+                                        })
+                                      : 'Recent Attempt'}
+                                  </span>
+                                </div>
 
-                    <div className="metric-card">
-                      <span className="metric-title">Accuracy Rate</span>
-                      <span className="metric-value">{accuracyPct}%</span>
-                    </div>
+                                <div className="attempt-actions-row">
+                                  <span className={`status-badge ${attempt.status}`}>
+                                    {isCompletedAttempt ? 'Completed' : 'Attempt Ended'}
+                                  </span>
+                                  {/* Delete Attempt Button */}
+                                  <button
+                                    type="button"
+                                    className="delete-attempt-btn"
+                                    onClick={() => setDeleteConfirmAttempt({ ...attempt, attemptNum })}
+                                    title="Delete this attempt record"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </div>
 
-                    <div className="metric-card">
-                      <span className="metric-title">Total Time Taken</span>
-                      <span className="metric-value">{timeFormatted}</span>
-                    </div>
-                  </div>
+                              {/* Metrics Grid */}
+                              <div className="attempt-metrics-grid">
+                                <div className="metric-box">
+                                  <span className="metric-label">Level Reached</span>
+                                  <span className="metric-val">Level {clearedLvl}</span>
+                                </div>
+                                <div className="metric-box">
+                                  <span className="metric-label">Total Score</span>
+                                  <span className="metric-val">{score} / {maxPoss}</span>
+                                </div>
+                                <div className="metric-box">
+                                  <span className="metric-label">Accuracy</span>
+                                  <span className="metric-val">{accuracy}%</span>
+                                </div>
+                                <div className="metric-box">
+                                  <span className="metric-label">Time Taken</span>
+                                  <span className="metric-val">{formatTimeMMSS(timeSecs)}</span>
+                                </div>
+                              </div>
 
-                  {authedStudentData.updatedAt && (
-                    <div className="dashboard-date">
-                      Attempt Date:{' '}
-                      {new Date(authedStudentData.updatedAt).toLocaleString(undefined, {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
+                              {/* Detailed Report Expand/Collapse Toggle */}
+                              <button
+                                type="button"
+                                className="toggle-report-btn"
+                                onClick={() => setExpandedAttemptId(isExpanded ? null : attemptId)}
+                              >
+                                {isExpanded ? '▲ Hide Report Details' : '🔍 View Detailed Report'}
+                              </button>
+                            </div>
+
+                            {/* Detailed Report Drawer */}
+                            {isExpanded && (
+                              <div className="attempt-detailed-report">
+                                <h4 className="report-title">📋 Detailed Performance Breakdown</h4>
+                                <div className="report-row">
+                                  <span>Final Outcome:</span>
+                                  <strong>{isCompletedAttempt ? 'Cleared All 4 Levels (Winner)' : `Eliminated at Level ${clearedLvl}`}</strong>
+                                </div>
+                                <div className="report-row">
+                                  <span>Total Questions Attempted:</span>
+                                  <strong>{maxPoss} Questions</strong>
+                                </div>
+                                <div className="report-row">
+                                  <span>Total Correct Answers:</span>
+                                  <strong>{score} Correct ({accuracy}%)</strong>
+                                </div>
+                                <div className="report-row">
+                                  <span>Completion Speed:</span>
+                                  <strong>{formatTimeMMSS(timeSecs)} ({timeSecs} seconds total)</strong>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
                       })}
                     </div>
                   )}
-
-                  <div className="dashboard-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => setModalMode('auth')}
-                    >
-                      🔒 Lock & Log Out
-                    </button>
-                  </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Attempt Confirmation Modal ───────────────────────────────── */}
+      {deleteConfirmAttempt && (
+        <div className="modal-backdrop confirm-delete-backdrop">
+          <div className="modal-card confirm-delete-card">
+            <div className="delete-modal-icon">⚠️</div>
+            <h3 className="delete-modal-title">Delete Attempt Record?</h3>
+            <p className="delete-modal-text">
+              Are you sure you want to permanently delete <strong>Attempt #{deleteConfirmAttempt.attemptNum}</strong>?
+              This record will be permanently removed from your results history and cannot be recovered.
+            </p>
+
+            <div className="delete-modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setDeleteConfirmAttempt(null)}
+                disabled={deleteLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={handleDeleteAttemptConfirm}
+                disabled={deleteLoading}
+              >
+                {deleteLoading ? 'Deleting…' : 'Delete Permanently 🗑️'}
+              </button>
             </div>
           </div>
         </div>

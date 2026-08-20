@@ -1038,26 +1038,195 @@ a { color: inherit; }
   color: var(--warning);
 }
 
-/* Private Performance Dashboard */
-.private-dashboard {
+/* Multi-Attempt History Dashboard */
+.multi-attempt-dashboard {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
 }
-.dashboard-header-card {
+.dashboard-user-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   background: var(--surface-2);
   border: 1px solid var(--border-2);
   border-radius: var(--r-lg);
-  padding: 1rem 1.25rem;
+  padding: 0.875rem 1.1rem;
 }
-.candidate-name {
-  font-size: 1.1rem;
+.user-name {
+  font-size: 1.05rem;
   font-weight: 800;
   color: var(--text);
   margin: 0;
+}
+.user-sub {
+  font-size: 0.78rem;
+  color: var(--text-soft);
+  margin-top: 0.15rem;
+}
+.btn-sm {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+}
+
+.attempts-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.attempt-history-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.attempt-history-card:hover {
+  border-color: var(--border);
+}
+
+.attempt-card-main {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.attempt-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.attempt-badge-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.attempt-number-badge {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--accent);
+  background: rgba(76, 201, 240, 0.12);
+  border: 1px solid rgba(76, 201, 240, 0.3);
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--r-full);
+}
+.attempt-timestamp {
+  font-size: 0.75rem;
+  color: var(--text-soft);
+}
+
+.attempt-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.delete-attempt-btn {
+  background: rgba(247, 37, 133, 0.1);
+  border: 1px solid rgba(247, 37, 133, 0.3);
+  color: var(--danger);
+  font-size: 0.9rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.delete-attempt-btn:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.attempt-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+.toggle-report-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+  padding: 0.3rem 0;
+  transition: color var(--t-fast);
+}
+.toggle-report-btn:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.attempt-detailed-report {
+  background: var(--surface);
+  border-top: 1px solid var(--border-2);
+  padding: 0.875rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  animation: slideDown 0.2s ease-out;
+}
+.report-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.report-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: var(--text-soft);
+}
+.report-row strong {
+  color: var(--text);
+}
+
+/* Confirm Delete Modal */
+.confirm-delete-backdrop {
+  z-index: 10000;
+}
+.confirm-delete-card {
+  max-width: 400px;
+  text-align: center;
+  padding: 1.75rem 1.5rem;
+}
+.delete-modal-icon {
+  font-size: 2.75rem;
+  margin-bottom: 0.5rem;
+}
+.delete-modal-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+.delete-modal-text {
+  font-size: 0.875rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+}
+.delete-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+}
+.btn-danger:hover {
+  background: #d81b60;
 }
 .candidate-sub {
   font-size: 0.8rem;

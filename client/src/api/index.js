@@ -66,6 +66,9 @@ export const verifySmsOtp = (data) =>
 export const resetPasswordWithOtp = (data) =>
   api.post('/api/students/reset-password-otp', data);
 
+export const deleteStudentAttempt = (data) =>
+  api.post('/api/students/delete-attempt', data);
+
 // ── Quiz endpoints ───────────────────────────────────────────────────────────
 export const getQuestions = (level, mobile) =>
   api.get(`/api/quiz/questions/${level}`, {

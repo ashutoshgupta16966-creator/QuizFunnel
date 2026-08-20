@@ -293,6 +293,31 @@ router.post('/submit', async (req, res, next) => {
     };
     if (completedAt) updateDoc.$set.completedAt = completedAt;
 
+    // ── MULTI-ATTEMPT PERSISTENCE: Save finished attempt into history array ──
+    if (newStatus === 'completed' || newStatus === 'eliminated') {
+      const CUMULATIVE_MAX = { 1: 20, 2: 35, 3: 45, 4: 50 };
+      const clearedLevel = newStatus === 'completed' ? 4 : level;
+      const maxPossible = CUMULATIVE_MAX[clearedLevel] || 50;
+      const cumScore = (student.totalScore || 0) + score;
+      const cumTime = (student.totalTimeTaken || 0) + elapsed;
+      const accuracyPct = maxPossible > 0 ? Math.min(100, Math.round((cumScore / maxPossible) * 100)) : 0;
+
+      const historyRecord = {
+        attemptId: `${mobile}_${Date.now()}`,
+        attemptNumber: (student.attemptHistory?.length || 0) + 1,
+        attemptDate: new Date(),
+        levelReached: clearedLevel,
+        totalScore: cumScore,
+        maxPossible,
+        accuracyPct,
+        totalTimeTaken: cumTime,
+        status: newStatus,
+        levelsSummary: [...(student.levels || []), levelAttempt],
+      };
+
+      updateDoc.$push.attemptHistory = historyRecord;
+    }
+
     await Student.updateOne({ mobile }, updateDoc);
 
     // Fetch updated totals after calculation
