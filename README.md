@@ -21,7 +21,3 @@ An interactive, responsive, and dynamic web application designed to take customi
 - **AI Integration:** Google Gemini API
 
 ---
-
-```bash
-git clone [https://github.com/ashutoshgupta16966-creator/quizfunnel.git](https://github.com/ashutoshgupta16966-creator/quizfunnel.git)
-cd quizfunnel
