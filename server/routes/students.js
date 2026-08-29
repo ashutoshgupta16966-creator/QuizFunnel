@@ -15,7 +15,7 @@ const otpStore = new Map();
  */
 router.post('/register', async (req, res, next) => {
   try {
-    const { name, mobile, branch, password } = req.body;
+    const { name, mobile, branch, password, confirmDuplicate } = req.body;
 
     if (!name || !mobile || !branch || !password) {
       return res.status(400).json({
@@ -42,8 +42,6 @@ router.post('/register', async (req, res, next) => {
         error: 'Invalid branch selected.',
       });
     }
-
-    const { name, mobile, branch, password, confirmDuplicate } = req.body;
 
     // Check if student already exists for this mobile number
     let student = await Student.findOne({ mobile: mobile.trim() });
