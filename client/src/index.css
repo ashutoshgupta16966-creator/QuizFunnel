@@ -1594,7 +1594,7 @@ a { color: inherit; }
   right: 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.95rem;
   align-items: flex-end;
   z-index: 50;
 }

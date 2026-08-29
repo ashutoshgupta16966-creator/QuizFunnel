@@ -9,7 +9,6 @@ import ProgressBar from '../components/ProgressBar';
 import Toast from '../components/Toast';
 import ExitConfirmModal from '../components/ExitConfirmModal';
 import ThemeToggle from '../components/ThemeToggle';
-import QuestionTimer from '../components/QuestionTimer';
 
 export default function Quiz() {
   const { level: levelParam } = useParams();
@@ -27,6 +26,21 @@ export default function Quiz() {
   const [toast, setToast]               = useState(null);
   const [startedAt, setStartedAt]       = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
+
+  // Intercept browser back button & mobile swipe-back gesture to trigger Exit Confirmation modal
+  useEffect(() => {
+    window.history.pushState(null, '', window.location.href);
+
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+      setShowExitModal(true);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
 
   // Storage key for auto-saving progress
   const progressKey = student?.mobile ? `quiz_progress_${student.mobile}_${levelNum}` : null;
@@ -267,14 +281,6 @@ export default function Quiz() {
         total={questions.length}
         answered={answeredCount}
       />
-
-      {/* ── Visual Per-Question Pace Indicator (No auto-move) ── */}
-      {!loading && currentQuestion && (
-        <QuestionTimer
-          durationSeconds={30}
-          questionIndex={currentIndex}
-        />
-      )}
 
       {/* ── Question card (slides in on change) ── */}
       {currentQuestion && (
