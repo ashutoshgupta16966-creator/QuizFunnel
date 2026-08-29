@@ -1578,14 +1578,45 @@ a { color: inherit; }
 /* ============================================================
    FEATURE 1: HEADER TOP ACTIONS & QR CODE MODAL
    ============================================================ */
-.entry-top-actions {
+/* ============================================================
+   FIX 1 & FIX 3: HEADER TOP ACTIONS & QUIZ BOTTOM CONTROLS
+   ============================================================ */
+.entry-top-left {
+  position: absolute;
+  top: 1.25rem;
+  left: 1.25rem;
+  z-index: 50;
+}
+
+.entry-top-right {
   position: absolute;
   top: 1.25rem;
   right: 1.25rem;
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
   z-index: 50;
+}
+
+.quiz-bottom-controls {
+  width: 100%;
+  max-width: 640px;
+  margin: 0.5rem auto 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.5rem;
+}
+
+.quiz-bottom-left {
+  display: flex;
+  align-items: center;
+}
+
+.quiz-bottom-right {
+  display: flex;
+  align-items: center;
 }
 
 .qr-trigger-btn,

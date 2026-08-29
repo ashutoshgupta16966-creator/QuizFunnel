@@ -43,22 +43,41 @@ router.post('/register', async (req, res, next) => {
       });
     }
 
-    // Check if student already exists for this mobile number (Duplicate Attempt Check)
-    const existingStudent = await Student.findOne({ mobile: mobile.trim() });
-    if (existingStudent) {
-      return res.status(400).json({
+    const { name, mobile, branch, password, confirmDuplicate } = req.body;
+
+    // Check if student already exists for this mobile number
+    let student = await Student.findOne({ mobile: mobile.trim() });
+
+    if (student && !confirmDuplicate) {
+      return res.status(409).json({
         success: false,
-        error: 'Is mobile number se pehle hi ek attempt ho chuka hai. Dobara quiz nahi de sakte.',
+        requiresConfirmation: true,
+        error: 'You have already attempted this quiz with this number. Do you want to continue anyway?',
       });
     }
 
-    // Create new student document
-    const student = await Student.create({
-      name: name.trim(),
-      mobile: mobile.trim(),
-      branch,
-      password: password.trim(),
-    });
+    if (student) {
+      // Re-attempt confirmed: Preserve attemptHistory! Reset active session fields for fresh attempt
+      student.name = name.trim();
+      student.branch = branch;
+      student.password = password.trim();
+      student.currentLevel = 1;
+      student.status = 'in-progress';
+      student.levels = [];
+      student.quizSession = null;
+      student.totalScore = 0;
+      student.totalTimeTaken = 0;
+      student.startedAt = new Date();
+      await student.save();
+    } else {
+      // Create new student document
+      student = await Student.create({
+        name: name.trim(),
+        mobile: mobile.trim(),
+        branch,
+        password: password.trim(),
+      });
+    }
 
     return res.status(201).json({
       success: true,

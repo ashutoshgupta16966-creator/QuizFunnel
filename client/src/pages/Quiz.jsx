@@ -246,7 +246,7 @@ export default function Quiz() {
 
   return (
     <div className="quiz-page">
-      {/* ── Sticky header with timer & actions ── */}
+      {/* ── Sticky header with overall level timer ── */}
       <header className="quiz-header">
         <div className="quiz-header-left">
           <span className="quiz-level-badge">{levelConfig.label}</span>
@@ -259,17 +259,6 @@ export default function Quiz() {
             onTimeUp={handleTimeUp}
           />
         )}
-        <div className="quiz-header-right">
-          <ThemeToggle />
-          <button
-            className="exit-quiz-btn"
-            onClick={() => setShowExitModal(true)}
-            title="Exit Quiz"
-            aria-label="Exit Quiz"
-          >
-            🚪 Exit
-          </button>
-        </div>
       </header>
 
       {/* ── Progress bar ── */}
@@ -279,12 +268,11 @@ export default function Quiz() {
         answered={answeredCount}
       />
 
-      {/* ── 30-Second Per-Question Timer ── */}
+      {/* ── Visual Per-Question Pace Indicator (No auto-move) ── */}
       {!loading && currentQuestion && (
         <QuestionTimer
           durationSeconds={30}
           questionIndex={currentIndex}
-          onTimeUp={handleQuestionTimeUp}
         />
       )}
 
@@ -298,6 +286,23 @@ export default function Quiz() {
           questionNumber={currentIndex + 1}
         />
       )}
+
+      {/* ── Bottom Controls: Left ThemeToggle (above Prev), Right Exit (above Next) ── */}
+      <div className="quiz-bottom-controls">
+        <div className="quiz-bottom-left">
+          <ThemeToggle />
+        </div>
+        <div className="quiz-bottom-right">
+          <button
+            className="exit-quiz-btn"
+            onClick={() => setShowExitModal(true)}
+            title="Exit Quiz"
+            aria-label="Exit Quiz"
+          >
+            🚪 Exit
+          </button>
+        </div>
+      </div>
 
       {/* ── Navigation ── */}
       <nav className="quiz-nav">

@@ -1,42 +1,32 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 
-export default function QuestionTimer({ durationSeconds = 30, questionIndex, onTimeUp }) {
+export default function QuestionTimer({ durationSeconds = 30, questionIndex }) {
   const [timeLeft, setTimeLeft] = useState(durationSeconds);
-  const onTimeUpRef = useRef(onTimeUp);
-
-  useEffect(() => {
-    onTimeUpRef.current = onTimeUp;
-  }, [onTimeUp]);
 
   // Reset timer on question change or duration change
   useEffect(() => {
     setTimeLeft(durationSeconds);
   }, [questionIndex, durationSeconds]);
 
-  // Decrement timer
+  // Decrement timer for visual progress only (no forced auto-move)
   useEffect(() => {
-    if (timeLeft <= 0) {
-      if (onTimeUpRef.current) {
-        onTimeUpRef.current();
-      }
-      return;
-    }
+    if (timeLeft <= 0) return;
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
+      setTimeLeft((prev) => Math.max(0, prev - 1));
     }, 1000);
 
     return () => clearInterval(timer);
   }, [timeLeft]);
 
   const pct = Math.max(0, Math.min(100, (timeLeft / durationSeconds) * 100));
-  const isUrgent = timeLeft <= 5;
+  const isUrgent = timeLeft <= 5 && timeLeft > 0;
 
   return (
     <div className={`question-timer-wrapper ${isUrgent ? 'urgent' : ''}`}>
       <div className="question-timer-header">
-        <span className="question-timer-label">⏱️ Question Timer</span>
-        <span className="question-timer-time">{timeLeft}s</span>
+        <span className="question-timer-label">⏱️ Question Pace</span>
+        <span className="question-timer-time">{timeLeft > 0 ? `${timeLeft}s` : 'Time Elapsed'}</span>
       </div>
       <div className="question-timer-track">
         <div

@@ -12,6 +12,7 @@ import { useQuiz } from '../context/QuizContext';
 import { BRANCHES, LEVELS } from '../config';
 import QrModal from '../components/QrModal';
 import ThemeToggle from '../components/ThemeToggle';
+import DuplicateConfirmModal from '../components/DuplicateConfirmModal';
 
 function formatTimeMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -29,6 +30,8 @@ export default function EntryForm() {
 
   // QR Modal state
   const [showQrModal, setShowQrModal] = useState(false);
+  // Soft Duplicate Attempt Warning Modal state
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
 
   // Registration Form state
   const [form, setForm] = useState({ name: '', mobile: '', branch: '', password: '' });
@@ -96,28 +99,41 @@ export default function EntryForm() {
     setServerError('');
   };
 
+  const executeRegistration = async (isConfirmed = false) => {
+    setLoading(true);
+    setServerError('');
+    try {
+      const res = await registerStudent({
+        name:             form.name.trim(),
+        mobile:           form.mobile.trim(),
+        branch:           form.branch,
+        password:         form.password.trim(),
+        confirmDuplicate: isConfirmed,
+      });
+      const student = res.data.data;
+      saveStudent(student);
+      setShowDuplicateModal(false);
+      navigate(`/quiz/${student.currentLevel}`);
+    } catch (err) {
+      if (err.response?.status === 409 || err.response?.data?.requiresConfirmation) {
+        setShowDuplicateModal(true);
+      } else {
+        setServerError(err.response?.data?.error || 'Something went wrong. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
+    await executeRegistration(false);
+  };
 
-    setLoading(true);
-    try {
-      const res = await registerStudent({
-        name:     form.name.trim(),
-        mobile:   form.mobile.trim(),
-        branch:   form.branch,
-        password: form.password.trim(),
-      });
-      const student = res.data.data;
-      saveStudent(student);
-
-      navigate(`/quiz/${student.currentLevel}`);
-    } catch (err) {
-      setServerError(err.response?.data?.error || 'Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+  const handleConfirmDuplicateAttempt = async () => {
+    await executeRegistration(true);
   };
 
   // Open My Results Modal
@@ -323,9 +339,13 @@ export default function EntryForm() {
 
   return (
     <div className="entry-page">
-      {/* Top Action Bar: Theme Toggle, QR Code, My Results */}
-      <div className="entry-top-actions">
+      {/* Top Left: Compact Theme Toggle */}
+      <div className="entry-top-left">
         <ThemeToggle />
+      </div>
+
+      {/* Top Right Stacked Actions: QR Code (Top) & My Results (Below) */}
+      <div className="entry-top-right">
         <button
           type="button"
           className="qr-trigger-btn"
@@ -345,6 +365,11 @@ export default function EntryForm() {
       </div>
 
       <QrModal isOpen={showQrModal} onClose={() => setShowQrModal(false)} />
+      <DuplicateConfirmModal
+        isOpen={showDuplicateModal}
+        onConfirm={handleConfirmDuplicateAttempt}
+        onCancel={() => setShowDuplicateModal(false)}
+      />
 
       <div className="entry-card">
         <div className="entry-logo" aria-hidden>🎓</div>
