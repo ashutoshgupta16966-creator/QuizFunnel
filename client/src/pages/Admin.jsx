@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getAdminStudents, getAdminStats, getLeaderboard, exportCSV } from '../api';
+import QrModal from '../components/QrModal';
+import ThemeToggle from '../components/ThemeToggle';
 
 const STATUS_LABELS = {
   'in-progress': 'In Progress',
@@ -98,6 +100,7 @@ export default function Admin() {
   const [stats, setStats]       = useState(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
+  const [showQrModal, setShowQrModal] = useState(false);
 
   // Filters for student list
   const [search, setSearch]     = useState('');
@@ -154,6 +157,8 @@ export default function Admin() {
 
   return (
     <div className="admin-page">
+      <QrModal isOpen={showQrModal} onClose={() => setShowQrModal(false)} />
+
       {/* Header */}
       <div className="admin-header">
         <div>
@@ -162,7 +167,11 @@ export default function Admin() {
             Freshers Orientation Quiz — Live Results
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <ThemeToggle />
+          <button className="btn btn-secondary" onClick={() => setShowQrModal(true)}>
+            📱 Quiz QR Code
+          </button>
           <button className="btn btn-secondary" onClick={() => load(password)} disabled={loading}>
             {loading ? 'Refreshing…' : '↻ Refresh'}
           </button>

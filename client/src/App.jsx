@@ -5,10 +5,12 @@ import Quiz            from './pages/Quiz';
 import LevelTransition from './pages/LevelTransition';
 import Results         from './pages/Results';
 import Admin           from './pages/Admin';
+import OfflineBanner   from './components/OfflineBanner';
 
 export default function App() {
   return (
     <QuizProvider>
+      <OfflineBanner />
       <BrowserRouter>
         <Routes>
           <Route path="/"          element={<EntryForm />} />

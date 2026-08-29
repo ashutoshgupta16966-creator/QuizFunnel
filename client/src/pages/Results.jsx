@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import confetti from 'canvas-confetti';
 import { useQuiz } from '../context/QuizContext';
+import ThemeToggle from '../components/ThemeToggle';
 
 /**
  * Format seconds into MM:SS format (e.g. 14:25).
@@ -24,12 +26,6 @@ const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
 
 /**
  * Results — shown after elimination or Level 4 completion.
- *
- * Displays:
- *  - Final / Level score
- *  - Total Score across all levels (e.g. 38 / 50)
- *  - Accuracy Percentage (e.g. 85%)
- *  - Total Completion Time (MM:SS) for leaderboard ranking
  */
 export default function Results() {
   const navigate  = useNavigate();
@@ -55,6 +51,38 @@ export default function Results() {
     : 0;
 
   const formattedTime  = formatTimeMMSS(totalTimeTaken);
+
+  // ── Win Celebration Confetti Effect ───────────────────────────────────────
+  useEffect(() => {
+    if (isCompleted) {
+      // Cannon bursts from left & right
+      const duration = 3 * 1000;
+      const animationEnd = Date.now() + duration;
+
+      const frame = () => {
+        confetti({
+          particleCount: 4,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.65 },
+          colors: ['#4361ee', '#4cc9f0', '#10b981', '#fbbf24', '#f72585'],
+        });
+        confetti({
+          particleCount: 4,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.65 },
+          colors: ['#4361ee', '#4cc9f0', '#10b981', '#fbbf24', '#f72585'],
+        });
+
+        if (Date.now() < animationEnd) {
+          requestAnimationFrame(frame);
+        }
+      };
+
+      frame();
+    }
+  }, [isCompleted]);
 
   // ── Auto-save attempt to persistent localStorage history ──────────────────
   useEffect(() => {
@@ -96,6 +124,9 @@ export default function Results() {
   if (isEliminated) {
     return (
       <div className="results-page">
+        <div className="results-top-bar">
+          <ThemeToggle />
+        </div>
         <div className="results-icon" role="img" aria-label="Thank you">🙏</div>
         <h1 className="results-title eliminated">Thank You for Participating!</h1>
         <p className="results-message">
@@ -137,26 +168,33 @@ export default function Results() {
     );
   }
 
-  // ── Level 4 Completed ──────────────────────────────────────────────────────
+  // ── Level 4 Completed (WINNER) ─────────────────────────────────────────────
   if (isCompleted) {
     return (
-      <div className="results-page">
-        <div className="results-icon" role="img" aria-label="Trophy">🏆</div>
-        <h1 className="results-title completed">You Completed All 4 Levels!</h1>
+      <div className="results-page win-celebration-page">
+        <div className="results-top-bar">
+          <ThemeToggle />
+        </div>
+
+        <div className="win-banner-badge">
+          🎉 VICTORY UNLOCKED 🎉
+        </div>
+
+        <div className="results-icon win-trophy-pop" role="img" aria-label="Trophy">🏆</div>
+        <h1 className="results-title completed win-title-glow">Congratulations! You Won!</h1>
         <p className="results-message">
-          Exceptional performance! You've made it through the entire quiz.
-          Final results and selection announcements will be shared by the
-          faculty after orientation.
+          Exceptional performance, <strong>{student.name}</strong>! You cleared all 4 levels of the Quiz Funnel.
+          Your score has been registered for the final leaderboard rankings.
         </p>
 
-        <div className="score-card">
-          <p className="score-card-title">Final Performance Summary</p>
+        <div className="score-card win-score-card">
+          <p className="score-card-title">🏆 Champion Performance Summary</p>
           <div className="score-row">
-            <span className="score-label">Level 4 Score</span>
+            <span className="score-label">Level 4 Final Score</span>
             <span className="score-value">{score} / {total}</span>
           </div>
           <div className="score-row">
-            <span className="score-label">Total Score (All 4 Levels)</span>
+            <span className="score-label">Grand Total Score</span>
             <span className="score-value">{totalScore} / 50</span>
           </div>
           <div className="score-row">
@@ -164,17 +202,17 @@ export default function Results() {
             <span className="score-value">{accuracyPct}%</span>
           </div>
           <div className="score-row">
-            <span className="score-label">Total Time Taken</span>
+            <span className="score-label">Total Completion Speed</span>
             <span className="score-value">{formattedTime}</span>
           </div>
         </div>
 
-        <div className="results-note">
-          <span>📋</span>
+        <div className="results-note win-note">
+          <span>👑</span>
           <span>Rankings will be finalized after all students complete the quiz.</span>
         </div>
 
-        <button className="btn btn-secondary" onClick={handleReturnHome}>
+        <button className="btn btn-primary win-home-btn" onClick={handleReturnHome}>
           Return to Home
         </button>
       </div>

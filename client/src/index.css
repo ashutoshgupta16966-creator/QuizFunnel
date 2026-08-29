@@ -1518,3 +1518,429 @@ a { color: inherit; }
     transition-duration:  0.01ms !important;
   }
 }
+
+/* ============================================================
+   LIGHT MODE DESIGN TOKENS
+   ============================================================ */
+[data-theme="light"] {
+  --bg:        #F4F6FB;
+  --surface:   #FFFFFF;
+  --surface-2: #EBF0F7;
+  --border:    #CBD5E1;
+  --border-2:  #E2E8F0;
+
+  --text:      #0F172A;
+  --text-soft: #475569;
+  --text-dim:  #64748B;
+
+  --shadow-card: 0 4px 24px rgba(15, 23, 42, 0.08);
+  --shadow-btn:  0 4px 16px rgba(67, 97, 238, 0.25);
+}
+
+[data-theme="light"] body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+[data-theme="light"] .entry-card,
+[data-theme="light"] .question-wrapper,
+[data-theme="light"] .score-card,
+[data-theme="light"] .modal-content,
+[data-theme="light"] .admin-gate-card,
+[data-theme="light"] .stat-card,
+[data-theme="light"] .attempt-history-card {
+  background: #FFFFFF;
+  border-color: var(--border-2);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+}
+
+[data-theme="light"] .quiz-header {
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom-color: var(--border-2);
+}
+
+[data-theme="light"] .quiz-nav {
+  background: rgba(255, 255, 255, 0.95);
+  border-top-color: var(--border-2);
+}
+
+[data-theme="light"] .option-btn {
+  background: #F8FAFC;
+  border-color: #CBD5E1;
+  color: #1E293B;
+}
+
+[data-theme="light"] .option-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: #EFF6FF;
+}
+
+/* ============================================================
+   FEATURE 1: HEADER TOP ACTIONS & QR CODE MODAL
+   ============================================================ */
+.entry-top-actions {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  z-index: 50;
+}
+
+.qr-trigger-btn,
+.my-results-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.qr-trigger-btn:hover,
+.my-results-btn:hover {
+  transform: translateY(-2px) scale(1.03);
+  border-color: var(--primary);
+  box-shadow: 0 4px 14px var(--primary-glow);
+}
+
+.theme-toggle-btn {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 1.1rem;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+}
+
+.theme-toggle-btn:hover {
+  transform: scale(1.1) rotate(12deg);
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.qr-modal-content {
+  max-width: 420px;
+  text-align: center;
+}
+
+.qr-modal-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 0.5rem 0;
+}
+
+.qr-subtitle {
+  font-size: 0.88rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.qr-code-wrapper {
+  background: #FFFFFF;
+  padding: 1.25rem;
+  border-radius: var(--r-lg);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.qr-url-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #0D1B2A;
+  background: #F1F5F9;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--r-full);
+  word-break: break-all;
+}
+
+.qr-actions {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  justify-content: center;
+}
+
+/* ============================================================
+   FEATURE 2: QUIZ HEADER RIGHT & EXIT CONFIRM MODAL
+   ============================================================ */
+.quiz-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+.exit-quiz-btn {
+  background: rgba(247, 37, 133, 0.12);
+  border: 1px solid rgba(247, 37, 133, 0.35);
+  color: var(--danger);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.exit-quiz-btn:hover {
+  background: var(--danger);
+  color: #FFFFFF;
+  transform: scale(1.05);
+}
+
+.exit-modal-content {
+  max-width: 400px;
+  text-align: center;
+  padding: 1.75rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.exit-icon {
+  font-size: 2.75rem;
+  animation: bounce 1.5s infinite;
+}
+
+.exit-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0;
+}
+
+.exit-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.exit-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.exit-modal-actions button {
+  flex: 1;
+}
+
+/* ============================================================
+   FEATURE 4: WIN CELEBRATION EFFECT
+   ============================================================ */
+.win-celebration-page {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.results-top-bar {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+}
+
+.win-banner-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #FBBF24, #F59E0B);
+  color: #0F172A;
+  font-size: 0.85rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 0.4rem 1.25rem;
+  border-radius: var(--r-full);
+  box-shadow: 0 4px 18px rgba(251, 191, 36, 0.45);
+  margin-bottom: 0.75rem;
+  animation: pulseGlow 2s infinite;
+}
+
+.win-trophy-pop {
+  font-size: 4.5rem;
+  animation: trophyPop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.win-title-glow {
+  background: linear-gradient(135deg, #4CC9F0, #10B981, #FBBF24);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 30px rgba(76, 201, 240, 0.35);
+}
+
+.win-score-card {
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 8px 32px rgba(16, 185, 129, 0.15);
+}
+
+.win-note {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--success);
+}
+
+.win-home-btn {
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  box-shadow: 0 6px 20px var(--primary-glow);
+}
+
+@keyframes trophyPop {
+  0% { transform: scale(0.2) rotate(-15deg); opacity: 0; }
+  60% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(1); box-shadow: 0 4px 18px rgba(251, 191, 36, 0.45); }
+  50% { transform: scale(1.04); box-shadow: 0 6px 26px rgba(251, 191, 36, 0.75); }
+}
+
+/* Print Styles for QR Code */
+@media print {
+  body * { visibility: hidden; }
+  #printable-qr, #printable-qr * { visibility: visible; }
+  #printable-qr {
+    position: absolute;
+    left: 50%;
+    top: 30%;
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* ============================================================
+   FEATURE 5: QUESTION TIMER WIDGET
+   ============================================================ */
+.question-timer-wrapper {
+  width: 100%;
+  max-width: 640px;
+  margin: 0.5rem auto 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  padding: 0.5rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.question-timer-wrapper.urgent {
+  border-color: var(--danger);
+  box-shadow: 0 0 12px rgba(247, 37, 133, 0.3);
+  animation: pulseUrgent 1s infinite alternate;
+}
+
+.question-timer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.question-timer-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+}
+
+.question-timer-time {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.question-timer-wrapper.urgent .question-timer-time {
+  color: var(--danger);
+}
+
+.question-timer-track {
+  width: 100%;
+  height: 6px;
+  background: var(--surface);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+
+.question-timer-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--primary));
+  border-radius: var(--r-full);
+  transition: width 1s linear, background var(--t-fast);
+}
+
+.question-timer-wrapper.urgent .question-timer-fill {
+  background: linear-gradient(90deg, var(--warning), var(--danger));
+}
+
+@keyframes pulseUrgent {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.01); }
+}
+
+/* ============================================================
+   FEATURE 6: OFFLINE / ONLINE CONNECTION BANNERS
+   ============================================================ */
+.offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #F72585;
+  color: #FFFFFF;
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 0.6rem 1rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  z-index: 9999;
+  box-shadow: 0 4px 16px rgba(247, 37, 133, 0.4);
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.online-restored-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #10B981;
+  color: #FFFFFF;
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 0.6rem 1rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  z-index: 9999;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideDown {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(0); }
+}
+
+

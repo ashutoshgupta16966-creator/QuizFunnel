@@ -7,13 +7,16 @@ import QuestionCard from '../components/QuestionCard';
 import TimerBar from '../components/TimerBar';
 import ProgressBar from '../components/ProgressBar';
 import Toast from '../components/Toast';
+import ExitConfirmModal from '../components/ExitConfirmModal';
+import ThemeToggle from '../components/ThemeToggle';
+import QuestionTimer from '../components/QuestionTimer';
 
 export default function Quiz() {
   const { level: levelParam } = useParams();
   const levelNum = parseInt(levelParam, 10);
   const levelConfig = LEVELS[levelNum];
   const navigate = useNavigate();
-  const { student, updateStudent, setLastResult } = useQuiz();
+  const { student, updateStudent, setLastResult, clearStudent } = useQuiz();
 
   const [questions, setQuestions]       = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -23,6 +26,10 @@ export default function Quiz() {
   const [submitting, setSubmitting]     = useState(false);
   const [toast, setToast]               = useState(null);
   const [startedAt, setStartedAt]       = useState(null);
+  const [showExitModal, setShowExitModal] = useState(false);
+
+  // Storage key for auto-saving progress
+  const progressKey = student?.mobile ? `quiz_progress_${student.mobile}_${levelNum}` : null;
 
   // Prevent double-submit (timer + manual button race)
   const hasSubmitted = useRef(false);
@@ -40,6 +47,48 @@ export default function Quiz() {
     loadQuestions();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [levelNum]);
+
+  // ── Auto-save progress restoration ───────────────────────────────────────
+  const restoreSavedProgress = (qs) => {
+    if (!progressKey) return;
+    try {
+      const saved = localStorage.getItem(progressKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.answers && typeof parsed.answers === 'object') {
+          setAnswers(parsed.answers);
+        }
+        if (typeof parsed?.currentIndex === 'number' && parsed.currentIndex < qs.length) {
+          setCurrentIndex(parsed.currentIndex);
+        }
+      }
+    } catch { /* noop */ }
+  };
+
+  // ── Auto-save progress change listener ───────────────────────────────────
+  useEffect(() => {
+    if (!progressKey || loading || questions.length === 0 || hasSubmitted.current) return;
+    try {
+      localStorage.setItem(progressKey, JSON.stringify({
+        currentIndex,
+        answers,
+        updatedAt: Date.now(),
+      }));
+    } catch { /* noop */ }
+  }, [answers, currentIndex, progressKey, loading, questions]);
+
+  // ── Browser unload / navigation protection ────────────────────────────────
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (!hasSubmitted.current && !loading && questions.length > 0) {
+        e.preventDefault();
+        e.returnValue = 'Are you sure you want to exit? Your quiz progress will be lost.';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [loading, questions]);
 
   // ── Show reconnecting toast on API retry ──────────────────────────────────
   useEffect(() => {
@@ -62,6 +111,7 @@ export default function Quiz() {
       const { questions: qs, startedAt: sAt } = res.data.data;
       setQuestions(qs);
       setStartedAt(new Date(sAt));
+      restoreSavedProgress(qs);
     } catch (err) {
       setLoadError(err.response?.data?.error || 'Failed to load questions. Check your connection and refresh.');
     } finally {
@@ -82,11 +132,19 @@ export default function Quiz() {
     });
   }, []);
 
+  // ── Clear saved progress ──────────────────────────────────────────────────
+  const clearSavedProgress = () => {
+    if (progressKey) {
+      try { localStorage.removeItem(progressKey); } catch { /* noop */ }
+    }
+  };
+
   // ── Submit (manual or auto via timer) ────────────────────────────────────
   const handleSubmit = useCallback(async (isAutoSubmit = false) => {
     if (hasSubmitted.current) return;
     hasSubmitted.current = true;
     setSubmitting(true);
+    clearSavedProgress();
 
     const elapsed = startedAt
       ? Math.floor((Date.now() - startedAt.getTime()) / 1000)
@@ -134,11 +192,29 @@ export default function Quiz() {
     }
   }, [answers, questions, startedAt, levelNum, student, navigate, setLastResult, updateStudent, levelConfig]);
 
-  // Auto-submit when timer fires
+  // Auto-submit when level timer fires
   const handleTimeUp = useCallback(() => {
     setToast({ type: 'warning', message: "Time's up! Submitting your answers…", duration: 2000 });
     setTimeout(() => handleSubmit(true), 2000);
   }, [handleSubmit]);
+
+  // Per-question timer auto-advance (30 seconds per question)
+  const handleQuestionTimeUp = useCallback(() => {
+    if (currentIndex < questions.length - 1) {
+      setToast({ type: 'warning', message: 'Question timer expired! Moving to next question…', duration: 1500 });
+      setCurrentIndex((i) => i + 1);
+    } else {
+      setToast({ type: 'warning', message: 'Question timer expired! Submitting level…', duration: 1500 });
+      handleSubmit(true);
+    }
+  }, [currentIndex, questions.length, handleSubmit]);
+
+  // Handle confirmed exit
+  const handleConfirmExit = () => {
+    clearSavedProgress();
+    clearStudent();
+    navigate('/');
+  };
 
   // ── Render states ─────────────────────────────────────────────────────────
   if (!student || !levelConfig) return null;
@@ -170,7 +246,7 @@ export default function Quiz() {
 
   return (
     <div className="quiz-page">
-      {/* ── Sticky header with timer ── */}
+      {/* ── Sticky header with timer & actions ── */}
       <header className="quiz-header">
         <div className="quiz-header-left">
           <span className="quiz-level-badge">{levelConfig.label}</span>
@@ -183,6 +259,17 @@ export default function Quiz() {
             onTimeUp={handleTimeUp}
           />
         )}
+        <div className="quiz-header-right">
+          <ThemeToggle />
+          <button
+            className="exit-quiz-btn"
+            onClick={() => setShowExitModal(true)}
+            title="Exit Quiz"
+            aria-label="Exit Quiz"
+          >
+            🚪 Exit
+          </button>
+        </div>
       </header>
 
       {/* ── Progress bar ── */}
@@ -191,6 +278,15 @@ export default function Quiz() {
         total={questions.length}
         answered={answeredCount}
       />
+
+      {/* ── 30-Second Per-Question Timer ── */}
+      {!loading && currentQuestion && (
+        <QuestionTimer
+          durationSeconds={30}
+          questionIndex={currentIndex}
+          onTimeUp={handleQuestionTimeUp}
+        />
+      )}
 
       {/* ── Question card (slides in on change) ── */}
       {currentQuestion && (
@@ -252,6 +348,12 @@ export default function Quiz() {
           />
         ))}
       </div>
+
+      <ExitConfirmModal
+        isOpen={showExitModal}
+        onConfirm={handleConfirmExit}
+        onCancel={() => setShowExitModal(false)}
+      />
 
       {toast && (
         <Toast

@@ -10,6 +10,8 @@ import {
 } from '../api';
 import { useQuiz } from '../context/QuizContext';
 import { BRANCHES, LEVELS } from '../config';
+import QrModal from '../components/QrModal';
+import ThemeToggle from '../components/ThemeToggle';
 
 function formatTimeMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -24,6 +26,9 @@ const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
 export default function EntryForm() {
   const navigate = useNavigate();
   const { saveStudent } = useQuiz();
+
+  // QR Modal state
+  const [showQrModal, setShowQrModal] = useState(false);
 
   // Registration Form state
   const [form, setForm] = useState({ name: '', mobile: '', branch: '', password: '' });
@@ -318,15 +323,28 @@ export default function EntryForm() {
 
   return (
     <div className="entry-page">
-      {/* Sleek Top-Right "My Results" Badge */}
-      <button
-        type="button"
-        className="my-results-btn"
-        onClick={handleOpenResultsModal}
-        title="Access your private quiz attempts history"
-      >
-        🏆 <span className="btn-text">My Results</span>
-      </button>
+      {/* Top Action Bar: Theme Toggle, QR Code, My Results */}
+      <div className="entry-top-actions">
+        <ThemeToggle />
+        <button
+          type="button"
+          className="qr-trigger-btn"
+          onClick={() => setShowQrModal(true)}
+          title="Show Quiz Direct Access QR Code"
+        >
+          📱 <span className="btn-text">QR Code</span>
+        </button>
+        <button
+          type="button"
+          className="my-results-btn"
+          onClick={handleOpenResultsModal}
+          title="Access your private quiz attempts history"
+        >
+          🏆 <span className="btn-text">My Results</span>
+        </button>
+      </div>
+
+      <QrModal isOpen={showQrModal} onClose={() => setShowQrModal(false)} />
 
       <div className="entry-card">
         <div className="entry-logo" aria-hidden>🎓</div>
