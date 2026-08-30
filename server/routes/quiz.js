@@ -367,4 +367,92 @@ router.post('/generate-questions', async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/quiz/review/:mobile
+ * Returns detailed question review for all attempted levels of the candidate.
+ */
+router.get('/review/:mobile', async (req, res, next) => {
+  try {
+    const { mobile } = req.params;
+    if (!mobile) {
+      return res.status(400).json({ success: false, error: 'Mobile number is required.' });
+    }
+
+    const student = await Student.findOne({ mobile }).lean();
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student record not found.' });
+    }
+
+    let levelsToReview = student.levels && student.levels.length > 0
+      ? student.levels
+      : (student.attemptHistory && student.attemptHistory.length > 0
+          ? student.attemptHistory[student.attemptHistory.length - 1].levelsSummary
+          : []);
+
+    if (!levelsToReview || levelsToReview.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // Collect all question IDs
+    const allQIds = [];
+    levelsToReview.forEach((lvl) => {
+      if (Array.isArray(lvl.answers)) {
+        lvl.answers.forEach((ans) => {
+          if (ans.questionId) allQIds.push(ans.questionId);
+        });
+      }
+    });
+
+    const dbQuestions = await Question.find({ _id: { $in: allQIds } }).lean();
+    const qMap = Object.fromEntries(dbQuestions.map((q) => [q._id.toString(), q]));
+
+    const reviewData = levelsToReview.map((lvl) => {
+      const reviewedQuestions = (lvl.answers || []).map((ans, idx) => {
+        const q = qMap[ans.questionId ? ans.questionId.toString() : ''];
+        if (!q) return null;
+
+        // Map student's chosen shuffled index back to original index
+        let originalSelected = null;
+        if (Number.isInteger(ans.selectedIndex) && ans.selectedIndex >= 0 && Array.isArray(ans.shuffleMap)) {
+          originalSelected = ans.shuffleMap[ans.selectedIndex];
+        }
+
+        const isUnattempted = originalSelected === null || originalSelected === undefined || originalSelected === -1;
+        const isCorrect = !isUnattempted && originalSelected === q.correctAnswerIndex;
+
+        const explanation = q.explanation ||
+          `The correct answer is "${q.options[q.correctAnswerIndex]}". This is the accurate choice for this ${q.section} problem based on core logical principles and standardized subject facts.`;
+
+        return {
+          questionId: q._id,
+          questionNumber: idx + 1,
+          section: q.section,
+          difficulty: q.difficulty,
+          questionText: q.questionText,
+          options: q.options,
+          correctAnswerIndex: q.correctAnswerIndex,
+          correctAnswerText: q.options[q.correctAnswerIndex],
+          selectedOptionIndex: originalSelected,
+          selectedOptionText: !isUnattempted && q.options[originalSelected] ? q.options[originalSelected] : null,
+          isCorrect,
+          isUnattempted,
+          explanation,
+        };
+      }).filter(Boolean);
+
+      return {
+        level: lvl.level,
+        score: lvl.score,
+        timeTaken: lvl.timeTaken,
+        submittedAt: lvl.submittedAt,
+        questions: reviewedQuestions,
+      };
+    });
+
+    res.json({ success: true, data: reviewData });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

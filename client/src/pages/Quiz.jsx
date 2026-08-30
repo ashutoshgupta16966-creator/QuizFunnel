@@ -9,6 +9,7 @@ import ProgressBar from '../components/ProgressBar';
 import Toast from '../components/Toast';
 import ExitConfirmModal from '../components/ExitConfirmModal';
 import ThemeToggle from '../components/ThemeToggle';
+import AntiCheatModal from '../components/AntiCheatModal';
 
 export default function Quiz() {
   const { level: levelParam } = useParams();
@@ -26,6 +27,18 @@ export default function Quiz() {
   const [toast, setToast]               = useState(null);
   const [startedAt, setStartedAt]       = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
+
+  // ── Anti-Cheating & Tab Switching State ──────────────────────────────────
+  const [tabSwitchCount, setTabSwitchCount] = useState(() => {
+    try {
+      if (student?.mobile) {
+        return parseInt(localStorage.getItem(`quiz_tab_switches_${student.mobile}`) || '0', 10);
+      }
+    } catch { /* noop */ }
+    return 0;
+  });
+  const [showAntiCheatModal, setShowAntiCheatModal] = useState(false);
+  const [isAntiCheatTerminal, setIsAntiCheatTerminal] = useState(false);
 
   // Intercept browser back button & mobile swipe-back gesture to trigger Exit Confirmation modal
   useEffect(() => {
@@ -212,19 +225,61 @@ export default function Quiz() {
     setTimeout(() => handleSubmit(true), 2000);
   }, [handleSubmit]);
 
-  // Per-question timer auto-advance (30 seconds per question)
-  const handleQuestionTimeUp = useCallback(() => {
-    if (currentIndex < questions.length - 1) {
-      setToast({ type: 'warning', message: 'Question timer expired! Moving to next question…', duration: 1500 });
-      setCurrentIndex((i) => i + 1);
-    } else {
-      setToast({ type: 'warning', message: 'Question timer expired! Submitting level…', duration: 1500 });
-      handleSubmit(true);
-    }
-  }, [currentIndex, questions.length, handleSubmit]);
+  // ── Tab-Switching & Visibility Monitoring ───────────────────────────────
+  useEffect(() => {
+    if (loading || submitting || hasSubmitted.current) return;
+
+    let lastSwitchTime = 0;
+
+    const handleSwitchViolation = () => {
+      if (hasSubmitted.current) return;
+      const now = Date.now();
+      if (now - lastSwitchTime < 800) return; // Debounce blur + visibilitychange
+      lastSwitchTime = now;
+
+      setTabSwitchCount((prev) => {
+        const nextCount = prev + 1;
+        if (student?.mobile) {
+          try {
+            localStorage.setItem(`quiz_tab_switches_${student.mobile}`, String(nextCount));
+          } catch { /* noop */ }
+        }
+
+        if (nextCount >= 12) {
+          setIsAntiCheatTerminal(true);
+          setShowAntiCheatModal(true);
+          handleSubmit(true);
+        } else {
+          setShowAntiCheatModal(true);
+        }
+        return nextCount;
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        handleSwitchViolation();
+      }
+    };
+
+    const handleWindowBlur = () => {
+      handleSwitchViolation();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [loading, submitting, student?.mobile, handleSubmit]);
 
   // Handle confirmed exit
   const handleConfirmExit = () => {
+    if (student?.mobile) {
+      try { localStorage.removeItem(`quiz_tab_switches_${student.mobile}`); } catch { /* noop */ }
+    }
     clearSavedProgress();
     clearStudent();
     navigate('/');
@@ -364,6 +419,15 @@ export default function Quiz() {
         isOpen={showExitModal}
         onConfirm={handleConfirmExit}
         onCancel={() => setShowExitModal(false)}
+      />
+
+      <AntiCheatModal
+        isOpen={showAntiCheatModal}
+        count={tabSwitchCount}
+        maxLimit={12}
+        isLimitReached={isAntiCheatTerminal}
+        onAcknowledge={() => setShowAntiCheatModal(false)}
+        onTerminalProceed={() => navigate('/results')}
       />
 
       {toast && (

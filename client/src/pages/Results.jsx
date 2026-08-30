@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { useQuiz } from '../context/QuizContext';
 import ThemeToggle from '../components/ThemeToggle';
+import ReviewSection from '../components/ReviewSection';
 
 /**
  * Format seconds into MM:SS format (e.g. 14:25).
@@ -161,6 +162,9 @@ export default function Results() {
           )}
         </div>
 
+        {/* Detailed Question Review & AI Explanations */}
+        <ReviewSection mobile={student.mobile} />
+
         <button className="btn btn-secondary" onClick={handleReturnHome}>
           Return to Home
         </button>
@@ -211,6 +215,9 @@ export default function Results() {
           <span>👑</span>
           <span>Rankings will be finalized after all students complete the quiz.</span>
         </div>
+
+        {/* Detailed Question Review & AI Explanations */}
+        <ReviewSection mobile={student.mobile} />
 
         <button className="btn btn-primary win-home-btn" onClick={handleReturnHome}>
           Return to Home

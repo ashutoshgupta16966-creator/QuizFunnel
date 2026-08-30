@@ -78,6 +78,9 @@ export const getQuestions = (level, mobile) =>
 export const submitQuiz = (payload) =>
   api.post('/api/quiz/submit', payload);
 
+export const getQuizReview = (mobile) =>
+  api.get(`/api/quiz/review/${encodeURIComponent(mobile)}`);
+
 export const generateAiQuestions = (data) =>
   api.post('/api/generate-questions', data);
 

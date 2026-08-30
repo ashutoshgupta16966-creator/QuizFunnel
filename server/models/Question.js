@@ -43,6 +43,10 @@ const QuestionSchema = new mongoose.Schema({
     enum: ['easy', 'medium', 'hard'],
     default: 'medium',
   },
+  explanation: {
+    type: String,
+    trim: true,
+  },
 }, { timestamps: true });
 
 // Compound index for fast level+section queries
