@@ -1,0 +1,405 @@
+import { useState, useEffect } from 'react';
+import { getQuizReview, submitFeedback, getAttemptFeedback } from '../api';
+
+function formatTimeMMSS(seconds) {
+  if (!seconds && seconds !== 0) return '00:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+export default function AttemptDetailView({ attemptDetail, studentData, onBack }) {
+  const mobile = attemptDetail?.mobile || studentData?.mobile;
+  const attemptId = attemptDetail?._id || attemptDetail?.id || attemptDetail?.attemptId || `attempt_${mobile}_${attemptDetail?.clearedLvl}`;
+
+  // ── Level Accordion State ────────────────────────────────────────────────
+  const [expandedLevels, setExpandedLevels] = useState(() => {
+    // Default open first level
+    return { 1: true };
+  });
+
+  const toggleLevel = (lvlNum) => {
+    setExpandedLevels((prev) => ({
+      ...prev,
+      [lvlNum]: !prev[lvlNum],
+    }));
+  };
+
+  // ── Detailed Review Questions Fetching ──────────────────────────────────
+  const [reviewData, setReviewData] = useState([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+
+  useEffect(() => {
+    if (!mobile) return;
+    let isMounted = true;
+
+    const loadReview = async () => {
+      try {
+        setReviewLoading(true);
+        setReviewError('');
+        const res = await getQuizReview(mobile);
+        if (isMounted) {
+          setReviewData(res.data.data || []);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setReviewError(err.response?.data?.error || 'Could not load detailed solutions.');
+        }
+      } finally {
+        if (isMounted) setReviewLoading(false);
+      }
+    };
+
+    loadReview();
+    return () => { isMounted = false; };
+  }, [mobile]);
+
+  // ── Feedback State (Immutable) ───────────────────────────────────────────
+  const [feedback, setFeedback] = useState(null);
+  const [feedbackRating, setFeedbackRating] = useState(5);
+  const [feedbackHoverRating, setFeedbackHoverRating] = useState(0);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState('');
+
+  // Load existing feedback for this attempt
+  useEffect(() => {
+    if (!attemptId) return;
+    let isMounted = true;
+
+    const loadFeedback = async () => {
+      try {
+        const res = await getAttemptFeedback(attemptId, mobile);
+        if (isMounted && res.data.data) {
+          setFeedback(res.data.data);
+        }
+      } catch { /* noop */ }
+    };
+
+    loadFeedback();
+    return () => { isMounted = false; };
+  }, [attemptId, mobile]);
+
+  const handleSubmitFeedback = async (e) => {
+    e.preventDefault();
+    if (feedback || feedbackSubmitting) return; // Immutable check
+
+    try {
+      setFeedbackSubmitting(true);
+      setFeedbackMsg('');
+      const res = await submitFeedback({
+        mobile,
+        attemptId,
+        rating: feedbackRating,
+        comment: feedbackComment.trim(),
+      });
+
+      setFeedback(res.data.data);
+      setFeedbackMsg('Thank you! Your feedback has been recorded permanently.');
+    } catch (err) {
+      setFeedbackMsg(err.response?.data?.error || 'Failed to submit feedback. Try again.');
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
+
+  const isCompleted = attemptDetail.status === 'completed';
+
+  // Map review data by level for fast lookup
+  const reviewMapByLevel = {};
+  reviewData.forEach((lvl) => {
+    reviewMapByLevel[lvl.level] = lvl.questions || [];
+  });
+
+  const levelsList = attemptDetail.levelsSummary && attemptDetail.levelsSummary.length > 0
+    ? attemptDetail.levelsSummary
+    : [{ level: attemptDetail.clearedLvl || 1, score: attemptDetail.score, timeTaken: attemptDetail.timeSecs }];
+
+  return (
+    <div className="attempt-detail-view">
+      {/* Top Header */}
+      <div className="detail-view-header">
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={onBack}
+        >
+          ← Back to History List
+        </button>
+        <span className={`status-badge ${attemptDetail.status}`}>
+          {isCompleted ? 'Completed' : 'Attempt Ended'}
+        </span>
+      </div>
+
+      {/* Hero Summary Card */}
+      <div className="detail-hero-card">
+        <div className="detail-hero-icon">
+          {isCompleted ? '🏆' : '⚡'}
+        </div>
+        <h3 className="detail-hero-title">
+          {isCompleted
+            ? 'Quiz Completed Successfully!'
+            : `Attempt Ended at Level ${attemptDetail.clearedLvl}`}
+        </h3>
+        <p className="detail-hero-meta">
+          {studentData?.name || attemptDetail.studentName} ({studentData?.branch || attemptDetail.branch}) ·{' '}
+          {attemptDetail.attemptDate
+            ? new Date(attemptDetail.attemptDate).toLocaleString(undefined, {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })
+            : 'Recent Attempt'}
+        </p>
+      </div>
+
+      {/* Performance Metrics Grid */}
+      <div className="detail-metrics-grid">
+        <div className="detail-metric-card">
+          <span className="detail-metric-label">Level Reached</span>
+          <span className="detail-metric-val">Level {attemptDetail.clearedLvl} of 4</span>
+        </div>
+        <div className="detail-metric-card">
+          <span className="detail-metric-label">Total Score (All Levels)</span>
+          <span className="detail-metric-val">{attemptDetail.score} / {attemptDetail.maxPoss}</span>
+        </div>
+        <div className="detail-metric-card">
+          <span className="detail-metric-label">Accuracy Rate</span>
+          <span className="detail-metric-val">{attemptDetail.accuracy}%</span>
+        </div>
+        <div className="detail-metric-card">
+          <span className="detail-metric-label">Total Time Taken</span>
+          <span className="detail-metric-val">{formatTimeMMSS(attemptDetail.timeSecs)}</span>
+        </div>
+      </div>
+
+      {/* ── Interactive Level-by-Level Breakdown & Inline Solutions ── */}
+      <div className="detail-breakdown-card">
+        <h4 className="breakdown-title">📋 Level-by-Level Breakdown &amp; Solutions</h4>
+        <p className="breakdown-subtitle">
+          Click any level to expand and review attempted questions with attached solutions.
+        </p>
+
+        {reviewLoading && (
+          <div className="level-review-loading">
+            <div className="spinner" />
+            <span>Loading attached solutions…</span>
+          </div>
+        )}
+
+        {reviewError && (
+          <div className="level-review-error">
+            <span>⚠️ {reviewError}</span>
+          </div>
+        )}
+
+        <div className="level-accordion-container">
+          {levelsList.map((lvlItem) => {
+            const lvlNum = lvlItem.level;
+            const isOpen = !!expandedLevels[lvlNum];
+            const lvlQuestions = reviewMapByLevel[lvlNum] || [];
+
+            return (
+              <div key={lvlNum} className={`level-accordion-item ${isOpen ? 'is-open' : ''}`}>
+                {/* Level Row Header (Clickable Accordion) */}
+                <button
+                  type="button"
+                  className="level-accordion-header"
+                  onClick={() => toggleLevel(lvlNum)}
+                  aria-expanded={isOpen}
+                >
+                  <div className="level-header-left">
+                    <span className="level-indicator-pill">Level {lvlNum}</span>
+                    <span className="level-header-score">
+                      Score: <strong>{lvlItem.score} pts</strong>
+                    </span>
+                    <span className="level-header-time">
+                      ⏱️ {formatTimeMMSS(lvlItem.timeTaken || 0)}
+                    </span>
+                  </div>
+                  <span className={`level-header-chevron ${isOpen ? 'open' : ''}`}>▼</span>
+                </button>
+
+                {/* Level Questions & Attached Solutions */}
+                {isOpen && (
+                  <div className="level-accordion-body">
+                    {lvlQuestions.length === 0 ? (
+                      <div className="level-questions-empty">
+                        <p>No questions recorded for Level {lvlNum}.</p>
+                      </div>
+                    ) : (
+                      <div className="level-questions-list">
+                        {lvlQuestions.map((q, qIndex) => {
+                          const isCorrect = q.isCorrect;
+                          const isUnattempted = q.isUnattempted;
+
+                          return (
+                            <div
+                              key={q.questionId || qIndex}
+                              className={`level-question-card ${
+                                isCorrect
+                                  ? 'card-correct'
+                                  : isUnattempted
+                                  ? 'card-unattempted'
+                                  : 'card-wrong'
+                              }`}
+                            >
+                              {/* Question Top Bar */}
+                              <div className="qcard-top-bar">
+                                <div className="qcard-meta">
+                                  <span className="qcard-num">Q{qIndex + 1}</span>
+                                  <span className="qcard-section">{q.section}</span>
+                                </div>
+                                <div className="qcard-status">
+                                  {isCorrect && (
+                                    <span className="qstatus-pill correct">✅ Correct (+1)</span>
+                                  )}
+                                  {!isCorrect && !isUnattempted && (
+                                    <span className="qstatus-pill wrong">❌ Incorrect (0)</span>
+                                  )}
+                                  {isUnattempted && (
+                                    <span className="qstatus-pill unattempted">⚪ Unattempted</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Question Text */}
+                              <p className="qcard-text">{q.questionText}</p>
+
+                              {/* 4 Options Grid */}
+                              <div className="qcard-options-grid">
+                                {q.options.map((optText, optIdx) => {
+                                  const isCorrectOpt = optIdx === q.correctAnswerIndex;
+                                  const isChosenOpt = optIdx === q.selectedOptionIndex;
+
+                                  let optClass = 'opt-neutral';
+                                  let tagText = null;
+
+                                  if (isCorrectOpt && isChosenOpt) {
+                                    optClass = 'opt-correct-chosen';
+                                    tagText = '✅ Your Choice (Correct)';
+                                  } else if (isCorrectOpt) {
+                                    optClass = 'opt-correct';
+                                    tagText = '✅ Correct Answer';
+                                  } else if (isChosenOpt) {
+                                    optClass = 'opt-wrong-chosen';
+                                    tagText = '❌ Your Choice (Incorrect)';
+                                  }
+
+                                  return (
+                                    <div key={optIdx} className={`qcard-option-item ${optClass}`}>
+                                      <span className="opt-prefix">{String.fromCharCode(65 + optIdx)}.</span>
+                                      <span className="opt-text">{optText}</span>
+                                      {tagText && <span className="opt-tag">{tagText}</span>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Inline Attached Solution / Explanation Box */}
+                              <div className="qcard-solution-box">
+                                <div className="solution-header">
+                                  <span className="solution-icon">💡</span>
+                                  <span className="solution-title">Attached Solution &amp; AI Explanation</span>
+                                </div>
+                                <p className="solution-text">
+                                  {q.explanation}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── IMMUTABLE FEEDBACK / EXPERIENCE REVIEW SECTION ── */}
+      <div className="detail-feedback-card">
+        <h4 className="feedback-title">🌟 Experience Feedback &amp; Review</h4>
+
+        {feedback ? (
+          /* Locked / Immutable Feedback Display */
+          <div className="feedback-locked-view">
+            <div className="feedback-locked-header">
+              <span className="feedback-badge-locked">🔒 Feedback Recorded (Immutable)</span>
+              <span className="feedback-stars-locked">
+                {'★'.repeat(feedback.rating)}
+                {'☆'.repeat(5 - feedback.rating)}
+                <span className="rating-num"> ({feedback.rating}/5)</span>
+              </span>
+            </div>
+            {feedback.comment ? (
+              <p className="feedback-comment-locked">"{feedback.comment}"</p>
+            ) : (
+              <p className="feedback-comment-empty">No written comment provided.</p>
+            )}
+            <p className="feedback-locked-note">
+              Submitted on {new Date(feedback.submittedAt || feedback.createdAt).toLocaleDateString(undefined, {
+                dateStyle: 'medium',
+              })}. Feedback is permanently attached to this attempt.
+            </p>
+          </div>
+        ) : (
+          /* Interactive Feedback Form */
+          <form onSubmit={handleSubmitFeedback} className="feedback-form">
+            <p className="feedback-prompt">
+              How was your experience taking this quiz attempt? Your feedback helps us improve!
+            </p>
+
+            <div className="feedback-rating-row">
+              <span className="rating-label">Rating:</span>
+              <div className="star-rating-controls" role="radiogroup" aria-label="5 star rating">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    className={`star-btn ${
+                      star <= (feedbackHoverRating || feedbackRating) ? 'filled' : ''
+                    }`}
+                    onClick={() => setFeedbackRating(star)}
+                    onMouseEnter={() => setFeedbackHoverRating(star)}
+                    onMouseLeave={() => setFeedbackHoverRating(0)}
+                    aria-label={`${star} star`}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+              <span className="rating-value-badge">{feedbackRating}/5 Stars</span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Comments / Experience Review (Optional)</label>
+              <textarea
+                className="form-input feedback-textarea"
+                rows={3}
+                placeholder="Share your thoughts about question difficulty, test experience, or suggestions..."
+                value={feedbackComment}
+                onChange={(e) => setFeedbackComment(e.target.value)}
+                maxLength={500}
+              />
+            </div>
+
+            {feedbackMsg && (
+              <div className="feedback-status-msg">{feedbackMsg}</div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-primary btn-submit-feedback"
+              disabled={feedbackSubmitting}
+            >
+              {feedbackSubmitting ? <><span className="btn-spinner" /> Submitting…</> : 'Submit Feedback ✓'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}

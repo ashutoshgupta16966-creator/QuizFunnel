@@ -7,6 +7,7 @@ const morgan = require('morgan');
 const studentsRouter = require('./routes/students');
 const quizRouter = require('./routes/quiz');
 const adminRouter = require('./routes/admin');
+const feedbackRouter = require('./routes/feedback');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -19,9 +20,12 @@ const allowedOrigins = (process.env.CLIENT_URL || '*').split(',').map((s) => s.t
 app.use(cors({
   origin: allowedOrigins.length === 1 && allowedOrigins[0] === '*'
     ? '*'
-    : (origin, cb) => {
-        if (!origin || allowedOrigins.includes(origin)) cb(null, true);
-        else cb(new Error(`CORS: origin ${origin} not allowed`));
+    : (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
       },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Student-Mobile'],
@@ -34,6 +38,7 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use('/api/students', studentsRouter);
 app.use('/api/quiz',     quizRouter);
 app.use('/api/admin',    adminRouter);
+app.use('/api/feedback', feedbackRouter);
 
 // AI Question Generation Top-Level Route
 const { generateAndPopulateQuestions } = require('./controllers/aiQuestionController');

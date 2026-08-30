@@ -13,6 +13,7 @@ import { BRANCHES, LEVELS } from '../config';
 import QrModal from '../components/QrModal';
 import ThemeToggle from '../components/ThemeToggle';
 import DuplicateConfirmModal from '../components/DuplicateConfirmModal';
+import AttemptDetailView from '../components/AttemptDetailView';
 
 function formatTimeMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -698,100 +699,13 @@ export default function EntryForm() {
               {/* ── MODE 5: Multi-Attempt History Dashboard / Detailed View ── */}
               {modalMode === 'dashboard' && authedStudentData && (
                 <div className="multi-attempt-dashboard">
-                  {/* If an individual attempt card is clicked, show Detailed Performance Summary Modal */}
+                  {/* If an individual attempt card is clicked, show Detailed Performance Summary View */}
                   {selectedAttemptDetail ? (
-                    <div className="attempt-detail-view">
-                      <div className="detail-view-header">
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setSelectedAttemptDetail(null)}
-                        >
-                          ← Back to History List
-                        </button>
-                        <span className={`status-badge ${selectedAttemptDetail.status}`}>
-                          {selectedAttemptDetail.status === 'completed' ? 'Completed' : 'Attempt Ended'}
-                        </span>
-                      </div>
-
-                      {/* Hero Summary Card */}
-                      <div className="detail-hero-card">
-                        <div className="detail-hero-icon">
-                          {selectedAttemptDetail.status === 'completed' ? '🏆' : '⚡'}
-                        </div>
-                        <h3 className="detail-hero-title">
-                          {selectedAttemptDetail.status === 'completed'
-                            ? 'Quiz Completed Successfully!'
-                            : `Attempt Ended at Level ${selectedAttemptDetail.clearedLvl}`}
-                        </h3>
-                        <p className="detail-hero-meta">
-                          {authedStudentData.name} ({authedStudentData.branch}) ·{' '}
-                          {selectedAttemptDetail.attemptDate
-                            ? new Date(selectedAttemptDetail.attemptDate).toLocaleString(undefined, {
-                                dateStyle: 'medium',
-                                timeStyle: 'short',
-                              })
-                            : 'Recent Attempt'}
-                        </p>
-                      </div>
-
-                      {/* Performance Metrics Grid */}
-                      <div className="detail-metrics-grid">
-                        <div className="detail-metric-card">
-                          <span className="detail-metric-label">Level Reached</span>
-                          <span className="detail-metric-val">Level {selectedAttemptDetail.clearedLvl} of 4</span>
-                        </div>
-                        <div className="detail-metric-card">
-                          <span className="detail-metric-label">Total Score (All Levels)</span>
-                          <span className="detail-metric-val">{selectedAttemptDetail.score} / {selectedAttemptDetail.maxPoss}</span>
-                        </div>
-                        <div className="detail-metric-card">
-                          <span className="detail-metric-label">Accuracy Rate</span>
-                          <span className="detail-metric-val">{selectedAttemptDetail.accuracy}%</span>
-                        </div>
-                        <div className="detail-metric-card">
-                          <span className="detail-metric-label">Total Time Taken</span>
-                          <span className="detail-metric-val">{formatTimeMMSS(selectedAttemptDetail.timeSecs)}</span>
-                        </div>
-                      </div>
-
-                      {/* Per-Level Breakdown */}
-                      <div className="detail-breakdown-card">
-                        <h4 className="breakdown-title">📋 Level-by-Level Breakdown</h4>
-                        {selectedAttemptDetail.levelsSummary && selectedAttemptDetail.levelsSummary.length > 0 ? (
-                          <div className="level-summary-list">
-                            {selectedAttemptDetail.levelsSummary.map((lvlItem, i) => (
-                              <div key={i} className="level-summary-item">
-                                <div>
-                                  <strong>Level {lvlItem.level}</strong>
-                                  <span className="level-subtext">
-                                    Time: {formatTimeMMSS(lvlItem.timeTaken || 0)}
-                                  </span>
-                                </div>
-                                <span className="level-score-pill">
-                                  Score: {lvlItem.score} pts
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="breakdown-simple-rows">
-                            <div className="report-row">
-                              <span>Highest Level Cleared:</span>
-                              <strong>Level {selectedAttemptDetail.clearedLvl}</strong>
-                            </div>
-                            <div className="report-row">
-                              <span>Questions Attempted:</span>
-                              <strong>{selectedAttemptDetail.maxPoss} Questions</strong>
-                            </div>
-                            <div className="report-row">
-                              <span>Total Score Earned:</span>
-                              <strong>{selectedAttemptDetail.score} / {selectedAttemptDetail.maxPoss} Correct</strong>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <AttemptDetailView
+                      attemptDetail={selectedAttemptDetail}
+                      studentData={authedStudentData}
+                      onBack={() => setSelectedAttemptDetail(null)}
+                    />
                   ) : (
                     /* Attempt Cards History List */
                     <>

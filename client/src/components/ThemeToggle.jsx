@@ -34,8 +34,9 @@ export default function ThemeToggle() {
       aria-label="Toggle dark/light mode"
       type="button"
     >
-      <span className="theme-switch-icon">{isLight ? '☀️' : '🌙'}</span>
-      <span className="theme-switch-track">
+      <span className="theme-switch-icon" aria-hidden>{isLight ? '☀️' : '🌙'}</span>
+      <span className="theme-switch-label">{isLight ? 'Light' : 'Dark'}</span>
+      <span className="theme-switch-track" aria-hidden>
         <span className="theme-switch-thumb" />
       </span>
     </button>

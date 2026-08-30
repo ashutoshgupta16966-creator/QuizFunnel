@@ -10,6 +10,7 @@ import Toast from '../components/Toast';
 import ExitConfirmModal from '../components/ExitConfirmModal';
 import ThemeToggle from '../components/ThemeToggle';
 import AntiCheatModal from '../components/AntiCheatModal';
+import QuestionPalette from '../components/QuestionPalette';
 
 export default function Quiz() {
   const { level: levelParam } = useParams();
@@ -27,6 +28,35 @@ export default function Quiz() {
   const [toast, setToast]               = useState(null);
   const [startedAt, setStartedAt]       = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
+
+  // Storage keys for auto-saving progress & bookmarks
+  const progressKey = student?.mobile ? `quiz_progress_${student.mobile}_${levelNum}` : null;
+  const bookmarkKey = student?.mobile ? `quiz_bookmarks_${student.mobile}_${levelNum}` : null;
+
+  // ── Question Bookmarks State ─────────────────────────────────────────────
+  const [bookmarks, setBookmarks] = useState(() => {
+    try {
+      if (bookmarkKey) {
+        return JSON.parse(localStorage.getItem(bookmarkKey) || '{}');
+      }
+    } catch { /* noop */ }
+    return {};
+  });
+
+  const handleToggleBookmark = useCallback((qId) => {
+    setBookmarks((prev) => {
+      const next = { ...prev };
+      if (next[qId]) {
+        delete next[qId];
+      } else {
+        next[qId] = true;
+      }
+      if (bookmarkKey) {
+        try { localStorage.setItem(bookmarkKey, JSON.stringify(next)); } catch { /* noop */ }
+      }
+      return next;
+    });
+  }, [bookmarkKey]);
 
   // ── Anti-Cheating & Tab Switching State ──────────────────────────────────
   const [tabSwitchCount, setTabSwitchCount] = useState(() => {
@@ -54,9 +84,6 @@ export default function Quiz() {
       window.removeEventListener('popstate', handlePopState);
     };
   }, []);
-
-  // Storage key for auto-saving progress
-  const progressKey = student?.mobile ? `quiz_progress_${student.mobile}_${levelNum}` : null;
 
   // Prevent double-submit (timer + manual button race)
   const hasSubmitted = useRef(false);
@@ -163,6 +190,9 @@ export default function Quiz() {
   const clearSavedProgress = () => {
     if (progressKey) {
       try { localStorage.removeItem(progressKey); } catch { /* noop */ }
+    }
+    if (bookmarkKey) {
+      try { localStorage.removeItem(bookmarkKey); } catch { /* noop */ }
     }
   };
 
@@ -345,8 +375,19 @@ export default function Quiz() {
           selectedIndex={answers[currentQuestion._id] ?? null}
           onAnswer={(idx) => handleAnswer(currentQuestion._id, idx)}
           questionNumber={currentIndex + 1}
+          isBookmarked={!!bookmarks[currentQuestion._id]}
+          onToggleBookmark={handleToggleBookmark}
         />
       )}
+
+      {/* ── Interactive Question Palette Grid (1 to N) ── */}
+      <QuestionPalette
+        questions={questions}
+        currentIndex={currentIndex}
+        answers={answers}
+        bookmarks={bookmarks}
+        onSelectQuestion={(i) => setCurrentIndex(i)}
+      />
 
       {/* ── Bottom Controls: Left ThemeToggle (above Prev), Right Exit (above Next) ── */}
       <div className="quiz-bottom-controls">
@@ -401,19 +442,6 @@ export default function Quiz() {
           </button>
         )}
       </nav>
-
-      {/* Question dot navigator */}
-      <div className="question-dots" aria-label="Question navigator">
-        {questions.map((q, i) => (
-          <button
-            key={q._id}
-            className={`dot${i === currentIndex ? ' dot-current' : ''}${answers[q._id] !== undefined ? ' dot-answered' : ''}`}
-            onClick={() => setCurrentIndex(i)}
-            aria-label={`Question ${i + 1}${answers[q._id] !== undefined ? ' (answered)' : ''}`}
-            title={`Q${i + 1}`}
-          />
-        ))}
-      </div>
 
       <ExitConfirmModal
         isOpen={showExitModal}

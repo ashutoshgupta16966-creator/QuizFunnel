@@ -27,7 +27,14 @@ const LETTER_LABELS = ['A', 'B', 'C', 'D'];
  *   onAnswer       — (index: number | null) => void
  *   questionNumber — display number (1-based)
  */
-export default function QuestionCard({ question, selectedIndex, onAnswer, questionNumber }) {
+export default function QuestionCard({
+  question,
+  selectedIndex,
+  onAnswer,
+  questionNumber,
+  isBookmarked = false,
+  onToggleBookmark,
+}) {
   const cardRef = useRef(null);
 
   // Slide-in animation resets when question changes
@@ -61,18 +68,35 @@ export default function QuestionCard({ question, selectedIndex, onAnswer, questi
   return (
     <div className="question-wrapper" ref={cardRef}>
       <div className="question-meta">
-        <span className="question-number">Q{questionNumber}</span>
-        <span className="question-section-tag">{question.section}</span>
-        {selectedIndex !== null && (
+        <div className="question-meta-left">
+          <span className="question-number">Q{questionNumber}</span>
+          <span className="question-section-tag">{question.section}</span>
+        </div>
+
+        <div className="question-meta-right">
+          {/* Bookmark / Save for Later ribbon */}
           <button
             type="button"
-            className="clear-choice-btn"
-            onClick={handleClearSelection}
-            title="Clear selection for this question"
+            className={`bookmark-ribbon-btn ${isBookmarked ? 'is-bookmarked' : ''}`}
+            onClick={() => onToggleBookmark && onToggleBookmark(question._id)}
+            title={isBookmarked ? 'Question Bookmarked — click to unmark' : 'Bookmark / Save for Later'}
+            aria-pressed={isBookmarked}
           >
-            ✕ Clear Answer
+            <span className="bookmark-icon">🔖</span>
+            <span className="bookmark-label">{isBookmarked ? 'Bookmarked' : 'Bookmark'}</span>
           </button>
-        )}
+
+          {selectedIndex !== null && (
+            <button
+              type="button"
+              className="clear-choice-btn"
+              onClick={handleClearSelection}
+              title="Clear selection for this question"
+            >
+              ✕ Clear Answer
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="question-text">

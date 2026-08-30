@@ -84,6 +84,13 @@ export const getQuizReview = (mobile) =>
 export const generateAiQuestions = (data) =>
   api.post('/api/generate-questions', data);
 
+// ── Feedback endpoints ────────────────────────────────────────────────────────
+export const submitFeedback = (payload) =>
+  api.post('/api/feedback', payload);
+
+export const getAttemptFeedback = (attemptId, mobile) =>
+  api.get(`/api/feedback/${encodeURIComponent(attemptId)}`, { params: { mobile } });
+
 // ── Admin endpoints ──────────────────────────────────────────────────────────
 const adminHeaders = (password) => ({ Authorization: `Bearer ${password}` });
 
