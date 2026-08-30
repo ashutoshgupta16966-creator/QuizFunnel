@@ -3223,6 +3223,36 @@ a { color: inherit; }
   margin: 0;
 }
 
+/* ── Anti-Cheat Disqualification Box on Results Screen ── */
+.anti-cheat-disqualified-box {
+  width: 100%;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 2px solid rgba(239, 68, 68, 0.4);
+  border-radius: var(--r-lg);
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);
+}
+
+.anti-cheat-disqualified-box .results-icon {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+  animation: pulse 1.5s infinite;
+}
+
+.anti-cheat-notice-text {
+  font-size: 0.88rem;
+  color: var(--text-soft);
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--surface);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-2);
+  display: inline-block;
+  line-height: 1.45;
+}
+
 
 
 

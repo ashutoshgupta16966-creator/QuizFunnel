@@ -14,6 +14,7 @@ import QrModal from '../components/QrModal';
 import ThemeToggle from '../components/ThemeToggle';
 import DuplicateConfirmModal from '../components/DuplicateConfirmModal';
 import AttemptDetailView from '../components/AttemptDetailView';
+import ExitConfirmModal from '../components/ExitConfirmModal';
 
 function formatTimeMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -33,6 +34,19 @@ export default function EntryForm() {
   const [showQrModal, setShowQrModal] = useState(false);
   // Soft Duplicate Attempt Warning Modal state
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  // Home screen back-button / swipe-back exit guard
+  const [showHomeExitModal, setShowHomeExitModal] = useState(false);
+
+  // Intercept browser back button & mobile swipe-back on home screen
+  useEffect(() => {
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+      setShowHomeExitModal(true);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Registration Form state
   const [form, setForm] = useState({ name: '', mobile: '', branch: '', password: '' });
@@ -370,6 +384,16 @@ export default function EntryForm() {
         isOpen={showDuplicateModal}
         onConfirm={handleConfirmDuplicateAttempt}
         onCancel={() => setShowDuplicateModal(false)}
+      />
+      <ExitConfirmModal
+        isOpen={showHomeExitModal}
+        title="Are you sure you want to exit?"
+        subtitle="Are you sure you want to leave Quiz Funnel?"
+        onCancel={() => setShowHomeExitModal(false)}
+        onConfirm={() => {
+          setShowHomeExitModal(false);
+          window.history.go(-2);
+        }}
       />
 
       <div className="entry-card">

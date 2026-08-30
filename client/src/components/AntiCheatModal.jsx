@@ -1,7 +1,7 @@
 export default function AntiCheatModal({
   isOpen,
   count = 1,
-  maxLimit = 12,
+  maxLimit = 10,
   isLimitReached = false,
   onAcknowledge,
   onTerminalProceed,

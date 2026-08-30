@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { useQuiz } from '../context/QuizContext';
 import ThemeToggle from '../components/ThemeToggle';
 import ReviewSection from '../components/ReviewSection';
+import ExitConfirmModal from '../components/ExitConfirmModal';
 
 /**
  * Format seconds into MM:SS format (e.g. 14:25).
@@ -31,9 +32,23 @@ const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
 export default function Results() {
   const navigate  = useNavigate();
   const { student, lastResult, clearStudent } = useQuiz();
+  const [showExitModal, setShowExitModal] = useState(false);
 
   const isCompleted  = student?.status === 'completed';
   const isEliminated = student?.status === 'eliminated';
+
+  const isAntiCheated = !!(student?.mobile && localStorage.getItem(`quiz_anti_cheated_${student.mobile}`) === '1');
+
+  // Intercept browser back button & swipe gestures
+  useEffect(() => {
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+      setShowExitModal(true);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Guard: if there's no student in context at all, go home
   useEffect(() => {
@@ -128,13 +143,29 @@ export default function Results() {
         <div className="results-top-bar">
           <ThemeToggle />
         </div>
-        <div className="results-icon" role="img" aria-label="Thank you">🙏</div>
-        <h1 className="results-title eliminated">Thank You for Participating!</h1>
-        <p className="results-message">
-          You gave it your best shot — and that's what matters. Every attempt
-          is a step toward growth. We appreciate your enthusiasm and hope to
-          see you excel next time!
-        </p>
+
+        {isAntiCheated ? (
+          <div className="anti-cheat-disqualified-box" role="alert">
+            <div className="results-icon" role="img" aria-label="Disqualified">🚨</div>
+            <h1 className="results-title eliminated">Assessment Disqualified</h1>
+            <p className="results-message" style={{ color: '#ef4444', fontWeight: 600 }}>
+              Your quiz session was terminated due to exceeding the maximum allowed limit of 10 tab switches.
+            </p>
+            <p className="anti-cheat-notice-text">
+              ⚠️ In accordance with academic integrity guidelines, detailed question &amp; solution review is disabled for disqualified attempts.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="results-icon" role="img" aria-label="Thank you">🙏</div>
+            <h1 className="results-title eliminated">Thank You for Participating!</h1>
+            <p className="results-message">
+              You gave it your best shot — and that's what matters. Every attempt
+              is a step toward growth. We appreciate your enthusiasm and hope to
+              see you excel next time!
+            </p>
+          </>
+        )}
 
         <div className="score-card">
           <p className="score-card-title">Performance Summary — Level {clearedLevel}</p>
@@ -162,12 +193,20 @@ export default function Results() {
           )}
         </div>
 
-        {/* Detailed Question Review & AI Explanations */}
-        <ReviewSection mobile={student.mobile} />
+        {/* Detailed Question Review — ONLY unlocked if user was not disqualified */}
+        {!isAntiCheated && <ReviewSection mobile={student.mobile} />}
 
         <button className="btn btn-secondary" onClick={handleReturnHome}>
           Return to Home
         </button>
+
+        <ExitConfirmModal
+          isOpen={showExitModal}
+          title="Return to Home Screen?"
+          subtitle="Are you sure you want to leave the results screen and return to the main entry page?"
+          onCancel={() => setShowExitModal(false)}
+          onConfirm={handleReturnHome}
+        />
       </div>
     );
   }
@@ -216,12 +255,20 @@ export default function Results() {
           <span>Rankings will be finalized after all students complete the quiz.</span>
         </div>
 
-        {/* Detailed Question Review & AI Explanations */}
-        <ReviewSection mobile={student.mobile} />
+        {/* Detailed Question Review */}
+        {!isAntiCheated && <ReviewSection mobile={student.mobile} />}
 
         <button className="btn btn-primary win-home-btn" onClick={handleReturnHome}>
           Return to Home
         </button>
+
+        <ExitConfirmModal
+          isOpen={showExitModal}
+          title="Return to Home Screen?"
+          subtitle="Are you sure you want to leave the results screen and return to the main entry page?"
+          onCancel={() => setShowExitModal(false)}
+          onConfirm={handleReturnHome}
+        />
       </div>
     );
   }
@@ -231,6 +278,13 @@ export default function Results() {
     <div className="centered-page">
       <p>Loading results…</p>
       <button className="btn btn-secondary" onClick={handleReturnHome}>Go Home</button>
+      <ExitConfirmModal
+        isOpen={showExitModal}
+        title="Return to Home Screen?"
+        subtitle="Are you sure you want to return to the main entry page?"
+        onCancel={() => setShowExitModal(false)}
+        onConfirm={handleReturnHome}
+      />
     </div>
   );
 }

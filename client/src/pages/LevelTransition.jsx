@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
 import { LEVELS } from '../config';
+import ExitConfirmModal from '../components/ExitConfirmModal';
 
 // Simple CSS confetti burst — no library needed
 function Confetti() {
@@ -44,7 +45,19 @@ function Confetti() {
  */
 export default function LevelTransition() {
   const navigate = useNavigate();
-  const { student, lastResult } = useQuiz();
+  const { student, lastResult, clearStudent } = useQuiz();
+  const [showExitModal, setShowExitModal] = useState(false);
+
+  // Intercept browser back button & swipe gestures
+  useEffect(() => {
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+      setShowExitModal(true);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Guard: redirect if state is missing or the level was not passed
   useEffect(() => {
@@ -60,6 +73,11 @@ export default function LevelTransition() {
 
   // Manual navigation only — user must consciously click to start next level
   const handleContinue = () => navigate(`/quiz/${nextLevel}`);
+
+  const handleConfirmExit = () => {
+    clearStudent();
+    navigate('/');
+  };
 
   return (
     <div className="transition-page">
@@ -92,6 +110,14 @@ export default function LevelTransition() {
           Proceed to Next Level →
         </button>
       </div>
+
+      <ExitConfirmModal
+        isOpen={showExitModal}
+        title="Are you sure you want to exit?"
+        subtitle="If you exit now, your current quiz progress will be reset and you will return to the home screen."
+        onCancel={() => setShowExitModal(false)}
+        onConfirm={handleConfirmExit}
+      />
     </div>
   );
 }

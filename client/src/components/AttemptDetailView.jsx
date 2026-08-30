@@ -44,7 +44,7 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
         }
       } catch (err) {
         if (isMounted) {
-          setReviewError(err.response?.data?.error || 'Could not load detailed solutions.');
+          setReviewError(err.response?.data?.error || 'Could not load detailed performance review.');
         }
       } finally {
         if (isMounted) setReviewLoading(false);
@@ -186,17 +186,17 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
         </div>
       </div>
 
-      {/* ── Interactive Level-by-Level Breakdown & Inline Solutions ── */}
+      {/* ── Interactive Level-by-Level Breakdown ── */}
       <div className="detail-breakdown-card">
-        <h4 className="breakdown-title">📋 Level-by-Level Breakdown &amp; Solutions</h4>
+        <h4 className="breakdown-title">📋 Level-by-Level Performance Breakdown</h4>
         <p className="breakdown-subtitle">
-          Click any level to expand and review attempted questions with attached solutions.
+          Click any level to expand and review attempted questions.
         </p>
 
         {reviewLoading && (
           <div className="level-review-loading">
             <div className="spinner" />
-            <span>Loading attached solutions…</span>
+            <span>Loading question details…</span>
           </div>
         )}
 
@@ -240,7 +240,7 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
                   <span className={`level-header-chevron ${isOpen ? 'open' : ''}`}>▼</span>
                 </button>
 
-                {/* Level Questions & Attached Solutions */}
+                {/* Level Questions */}
                 {isOpen && (
                   <div className="level-accordion-body">
                     {notPlayed ? (
@@ -319,14 +319,6 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
                                   );
                                 })}
                               </div>
-
-                              {/* Solution Box — no AI branding */}
-                              {q.explanation && (
-                                <div className="qcard-solution-box">
-                                  <span className="solution-icon">💡</span>
-                                  <p className="solution-text">{q.explanation}</p>
-                                </div>
-                              )}
                             </div>
                           );
                         })}

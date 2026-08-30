@@ -62,9 +62,9 @@ export default function ReviewSection({ mobile }) {
         <div className="review-toggle-left">
           <span className="review-toggle-icon">📝</span>
           <div className="review-toggle-titles">
-            <h3 className="review-toggle-title">Review Detailed Answers &amp; AI Explanations</h3>
+            <h3 className="review-toggle-title">Review Detailed Answers</h3>
             <p className="review-toggle-subtitle">
-              Inspect all questions, check your answers, and learn from detailed AI explanations
+              Inspect all questions and check your answers
             </p>
           </div>
         </div>
@@ -218,17 +218,6 @@ export default function ReviewSection({ mobile }) {
                               </div>
                             );
                           })}
-                        </div>
-
-                        {/* Dedicated AI Explanation Box */}
-                        <div className="review-ai-explanation-box">
-                          <div className="ai-explanation-header">
-                            <span className="ai-explanation-icon">💡</span>
-                            <span className="ai-explanation-title">AI Answer Explanation</span>
-                          </div>
-                          <p className="ai-explanation-text">
-                            {q.explanation}
-                          </p>
                         </div>
                       </div>
                     ))}

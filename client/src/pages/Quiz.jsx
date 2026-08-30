@@ -275,7 +275,13 @@ export default function Quiz() {
           } catch { /* noop */ }
         }
 
-        if (nextCount >= 12) {
+        if (nextCount >= 10) {
+          // Mark this session as anti-cheat terminated — blocks detailed review
+          if (student?.mobile) {
+            try {
+              localStorage.setItem(`quiz_anti_cheated_${student.mobile}`, '1');
+            } catch { /* noop */ }
+          }
           setIsAntiCheatTerminal(true);
           setShowAntiCheatModal(true);
           handleSubmit(true);
@@ -452,7 +458,7 @@ export default function Quiz() {
       <AntiCheatModal
         isOpen={showAntiCheatModal}
         count={tabSwitchCount}
-        maxLimit={12}
+        maxLimit={10}
         isLimitReached={isAntiCheatTerminal}
         onAcknowledge={() => setShowAntiCheatModal(false)}
         onTerminalProceed={() => navigate('/results')}
