@@ -112,9 +112,22 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
     reviewMapByLevel[lvl.level] = lvl.questions || [];
   });
 
-  const levelsList = attemptDetail.levelsSummary && attemptDetail.levelsSummary.length > 0
-    ? attemptDetail.levelsSummary
-    : [{ level: attemptDetail.clearedLvl || 1, score: attemptDetail.score, timeTaken: attemptDetail.timeSecs }];
+  // Always show Level 1–4 rows; merge in real summary data where available
+  const summaryMap = {};
+  if (attemptDetail.levelsSummary && attemptDetail.levelsSummary.length > 0) {
+    attemptDetail.levelsSummary.forEach((lvl) => {
+      summaryMap[lvl.level] = lvl;
+    });
+  } else if (attemptDetail.clearedLvl) {
+    // Fallback: build a minimal entry for the last reached level
+    summaryMap[attemptDetail.clearedLvl] = {
+      level: attemptDetail.clearedLvl,
+      score: attemptDetail.score,
+      timeTaken: attemptDetail.timeSecs,
+    };
+  }
+
+  const levelsList = [1, 2, 3, 4].map((n) => summaryMap[n] || { level: n, score: null, timeTaken: null });
 
   return (
     <div className="attempt-detail-view">
@@ -198,9 +211,10 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
             const lvlNum = lvlItem.level;
             const isOpen = !!expandedLevels[lvlNum];
             const lvlQuestions = reviewMapByLevel[lvlNum] || [];
+            const notPlayed = lvlItem.score === null && lvlItem.timeTaken === null;
 
             return (
-              <div key={lvlNum} className={`level-accordion-item ${isOpen ? 'is-open' : ''}`}>
+              <div key={lvlNum} className={`level-accordion-item ${isOpen ? 'is-open' : ''} ${notPlayed ? 'not-played' : ''}`}>
                 {/* Level Row Header (Clickable Accordion) */}
                 <button
                   type="button"
@@ -210,12 +224,18 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
                 >
                   <div className="level-header-left">
                     <span className="level-indicator-pill">Level {lvlNum}</span>
-                    <span className="level-header-score">
-                      Score: <strong>{lvlItem.score} pts</strong>
-                    </span>
-                    <span className="level-header-time">
-                      ⏱️ {formatTimeMMSS(lvlItem.timeTaken || 0)}
-                    </span>
+                    {notPlayed ? (
+                      <span className="level-header-not-played">Not reached</span>
+                    ) : (
+                      <>
+                        <span className="level-header-score">
+                          Score: <strong>{lvlItem.score ?? 0} pts</strong>
+                        </span>
+                        <span className="level-header-time">
+                          ⏱️ {formatTimeMMSS(lvlItem.timeTaken || 0)}
+                        </span>
+                      </>
+                    )}
                   </div>
                   <span className={`level-header-chevron ${isOpen ? 'open' : ''}`}>▼</span>
                 </button>
@@ -223,7 +243,11 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
                 {/* Level Questions & Attached Solutions */}
                 {isOpen && (
                   <div className="level-accordion-body">
-                    {lvlQuestions.length === 0 ? (
+                    {notPlayed ? (
+                      <div className="level-questions-empty">
+                        <p>This level was not reached in this attempt.</p>
+                      </div>
+                    ) : lvlQuestions.length === 0 ? (
                       <div className="level-questions-empty">
                         <p>No questions recorded for Level {lvlNum}.</p>
                       </div>
@@ -296,16 +320,13 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
                                 })}
                               </div>
 
-                              {/* Inline Attached Solution / Explanation Box */}
-                              <div className="qcard-solution-box">
-                                <div className="solution-header">
+                              {/* Solution Box — no AI branding */}
+                              {q.explanation && (
+                                <div className="qcard-solution-box">
                                   <span className="solution-icon">💡</span>
-                                  <span className="solution-title">Attached Solution &amp; AI Explanation</span>
+                                  <p className="solution-text">{q.explanation}</p>
                                 </div>
-                                <p className="solution-text">
-                                  {q.explanation}
-                                </p>
-                              </div>
+                              )}
                             </div>
                           );
                         })}
