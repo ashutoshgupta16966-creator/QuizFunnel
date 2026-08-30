@@ -810,39 +810,8 @@ a { color: inherit; }
 }
 
 /* ============================================================
-   MY RESULTS BADGE & HISTORY MODAL
+   MY RESULTS & HISTORY MODAL
    ============================================================ */
-.my-results-btn {
-  position: absolute;
-  top: 1.25rem;
-  right: 1.25rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.9rem;
-  background: rgba(22, 34, 54, 0.85);
-  border: 1px solid rgba(255, 215, 0, 0.35);
-  border-radius: var(--r-full);
-  color: #FFD700;
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  transition: all var(--t-fast);
-  z-index: 20;
-  cursor: pointer;
-}
-.my-results-btn:hover {
-  background: var(--surface-2);
-  border-color: #FFD700;
-  box-shadow: 0 4px 20px rgba(255, 215, 0, 0.3);
-  transform: translateY(-1px);
-}
-.my-results-btn .btn-text {
-  color: var(--text);
-  font-weight: 600;
-}
 
 /* Modal Backdrop & Container */
 .modal-backdrop {
@@ -1469,7 +1438,9 @@ a { color: inherit; }
    RESPONSIVE
    ============================================================ */
 @media (max-width: 480px) {
-  .entry-page   { padding: 1.5rem 1rem 5.5rem; }
+  .entry-page   { padding: 4.25rem 1rem 5.5rem; }
+  .entry-top-left { top: 1rem; left: 1rem; }
+  .entry-top-right { top: 1rem; right: 1rem; gap: 0.5rem; }
   .entry-card   { padding: 2rem 1.25rem; }
   .cinematic-gold-branding { font-size: 0.82rem; letter-spacing: 0.1em; }
   .cinematic-gold-branding .drop-cap { font-size: 1.75em; }
@@ -1594,7 +1565,7 @@ a { color: inherit; }
   right: 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 0.95rem;
+  gap: 0.65rem;
   align-items: flex-end;
   z-index: 50;
 }
@@ -1619,48 +1590,115 @@ a { color: inherit; }
   align-items: center;
 }
 
-.qr-trigger-btn,
-.my-results-btn {
+/* ============================================================
+   PILL / SWITCH THEME TOGGLE
+   ============================================================ */
+.theme-switch-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.25rem 0.55rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  height: 32px;
+  box-sizing: border-box;
+  transition: all var(--t-fast);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.theme-switch-pill:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+.theme-switch-icon {
+  font-size: 0.85rem;
+  line-height: 1;
   display: flex;
   align-items: center;
+  justify-content: center;
+}
+
+.theme-switch-track {
+  position: relative;
+  width: 26px;
+  height: 14px;
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: var(--r-full);
+  transition: background var(--t-fast);
+  display: inline-block;
+}
+
+.theme-switch-pill.is-light .theme-switch-track {
+  background: rgba(99, 102, 241, 0.35);
+}
+
+.theme-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform var(--t-fast), background var(--t-fast);
+}
+
+.theme-switch-pill.is-light .theme-switch-thumb {
+  transform: translateX(12px);
+  background: #F59E0B;
+}
+
+.theme-switch-pill.is-dark .theme-switch-thumb {
+  transform: translateX(0);
+  background: #E2E8F0;
+}
+
+/* ============================================================
+   TOP RIGHT ACTION PILL BADGES
+   ============================================================ */
+.qr-trigger-btn,
+.my-results-btn {
+  display: inline-flex;
+  align-items: center;
   gap: 0.4rem;
-  padding: 0.45rem 0.9rem;
+  padding: 0.42rem 0.85rem;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--r-full);
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
-  transition: transform var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
+  transition: transform var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
 }
 
-.qr-trigger-btn:hover,
-.my-results-btn:hover {
-  transform: translateY(-2px) scale(1.03);
+.qr-trigger-btn:hover {
+  transform: translateY(-2px) scale(1.02);
   border-color: var(--primary);
   box-shadow: 0 4px 14px var(--primary-glow);
 }
 
-.theme-toggle-btn {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 1.1rem;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--r-full);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: transform var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+.my-results-btn {
+  border-color: rgba(255, 215, 0, 0.4);
+  color: #FFD700;
 }
 
-.theme-toggle-btn:hover {
-  transform: scale(1.1) rotate(12deg);
-  border-color: var(--accent);
-  background: var(--surface);
+.my-results-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  border-color: #FFD700;
+  box-shadow: 0 4px 16px rgba(255, 215, 0, 0.3);
+}
+
+.my-results-btn .btn-text {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .qr-modal-content {

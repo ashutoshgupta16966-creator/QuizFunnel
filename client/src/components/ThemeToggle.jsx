@@ -24,14 +24,20 @@ export default function ThemeToggle() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
+  const isLight = theme === 'light';
+
   return (
     <button
-      className="theme-toggle-btn"
+      className={`theme-switch-pill ${isLight ? 'is-light' : 'is-dark'}`}
       onClick={toggleTheme}
-      title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+      title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
       aria-label="Toggle dark/light mode"
+      type="button"
     >
-      {theme === 'dark' ? '☀️' : '🌙'}
+      <span className="theme-switch-icon">{isLight ? '☀️' : '🌙'}</span>
+      <span className="theme-switch-track">
+        <span className="theme-switch-thumb" />
+      </span>
     </button>
   );
 }
