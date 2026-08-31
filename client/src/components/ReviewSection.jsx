@@ -135,7 +135,7 @@ export default function ReviewSection({ mobile }) {
                       className={`review-tab-btn ${activeLevelTab === lvl.level ? 'active' : ''}`}
                       onClick={() => setActiveLevelTab(lvl.level)}
                     >
-                      Level {lvl.level} ({lvl.questions.length})
+                      Level {lvl.level} ({(lvl.questions || []).length})
                     </button>
                   ))}
                 </div>
@@ -145,13 +145,13 @@ export default function ReviewSection({ mobile }) {
               <div className="review-questions-list">
                 {filteredLevels.map((lvl) => (
                   <div key={lvl.level} className="review-level-group">
-                    {activeLevelTab === 'all' && allLevels.length > 1 && (
+                    {activeLevelTab === 'all' && attemptedLevels.length > 1 && (
                       <div className="review-level-header">
-                        <h4>Level {lvl.level} Performance ({lvl.score}/{lvl.questions.length} pts)</h4>
+                        <h4>Level {lvl.level} Performance ({lvl.score ?? 0}/{(lvl.questions || []).length} pts)</h4>
                       </div>
                     )}
 
-                    {lvl.questions.map((q, idx) => (
+                    {(lvl.questions || []).map((q, idx) => (
                       <div
                         key={q.questionId || idx}
                         className={`review-question-card ${
@@ -166,7 +166,7 @@ export default function ReviewSection({ mobile }) {
                         <div className="review-q-header">
                           <div className="review-q-meta">
                             <span className="review-q-num">Q{idx + 1}</span>
-                            <span className="review-q-section">{q.section}</span>
+                            <span className="review-q-section">{q.section || 'General'}</span>
                             <span className="review-q-difficulty">{q.difficulty || 'medium'}</span>
                           </div>
 
@@ -184,11 +184,11 @@ export default function ReviewSection({ mobile }) {
                         </div>
 
                         {/* Question Text */}
-                        <p className="review-q-text">{q.questionText}</p>
+                        <p className="review-q-text">{q.questionText || 'Question'}</p>
 
                         {/* 4 Options Grid */}
                         <div className="review-options-grid">
-                          {q.options.map((optText, optIdx) => {
+                          {(q.options || []).map((optText, optIdx) => {
                             const isCorrectOpt = optIdx === q.correctAnswerIndex;
                             const isChosenOpt = optIdx === q.selectedOptionIndex;
 

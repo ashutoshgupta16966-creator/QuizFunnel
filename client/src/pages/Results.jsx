@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { useQuiz } from '../context/QuizContext';
+import { LEVELS } from '../config';
 import ThemeToggle from '../components/ThemeToggle';
 import ReviewSection from '../components/ReviewSection';
 import ExitConfirmModal from '../components/ExitConfirmModal';
@@ -27,15 +28,65 @@ const CUMULATIVE_MAX = {
 const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
 
 /**
- * Results — shown after elimination or Level 4 completion.
+ * Results Error Boundary — catches any rendering error and guarantees
+ * a clean, responsive fallback UI with an always-visible Return to Home button.
  */
-export default function Results() {
-  const navigate  = useNavigate();
+class ResultsErrorBoundary extends Component {
+  state = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Results component error caught by boundary:', error, errorInfo);
+  }
+
+  handleGoHome = () => {
+    try {
+      sessionStorage.clear();
+    } catch { /* noop */ }
+    window.location.replace('/');
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="results-page results-fallback-page">
+          <div className="results-top-bar">
+            <ThemeToggle />
+          </div>
+          <div className="results-icon" role="img" aria-label="Notice">🙏</div>
+          <h1 className="results-title eliminated">Thank You for Participating!</h1>
+          <p className="results-message">
+            Your quiz attempt has been recorded. Thank you for participating in the Quiz Funnel challenge!
+          </p>
+          <div className="results-fallback-actions" style={{ marginTop: '2rem', textAlign: 'center' }}>
+            <button
+              type="button"
+              className="btn btn-primary win-home-btn"
+              onClick={this.handleGoHome}
+            >
+              🏠 Return to Home
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/**
+ * Results Content Component
+ */
+function ResultsContent() {
+  const navigate = useNavigate();
   const { student, lastResult, clearStudent } = useQuiz();
   const [showExitModal, setShowExitModal] = useState(false);
 
   const isCompleted  = student?.status === 'completed';
-  const isEliminated = student?.status === 'eliminated';
+  const isEliminated = student?.status === 'eliminated' || !isCompleted;
 
   const isAntiCheated = !!(student?.mobile && localStorage.getItem(`quiz_anti_cheated_${student.mobile}`) === '1');
 
@@ -66,26 +117,36 @@ export default function Results() {
 
   // Guard: if there's no student in context at all, go home
   useEffect(() => {
-    if (!student) navigate('/');
+    if (!student) {
+      navigate('/');
+    }
   }, [student, navigate]);
 
-  const score          = lastResult?.score ?? 0;
-  const total          = lastResult?.total ?? 0;
-  const totalScore     = lastResult?.totalScore ?? student?.totalScore ?? score;
-  const totalTimeTaken = lastResult?.totalTimeTaken ?? student?.totalTimeTaken ?? 0;
+  const levelNum = Number(lastResult?.level || student?.currentLevel || 1);
+  const clearedLevel = isCompleted ? 4 : (levelNum > 0 ? levelNum : 1);
+  const levelConfig = LEVELS[clearedLevel] || LEVELS[1];
 
-  const clearedLevel   = isCompleted ? 4 : (student?.currentLevel || 1);
-  const maxPossible    = CUMULATIVE_MAX[clearedLevel] || 50;
-  const accuracyPct    = maxPossible > 0
-    ? Math.min(100, Math.round((totalScore / maxPossible) * 100))
+  const score = Number(
+    lastResult?.score ??
+    (Array.isArray(student?.levels) && student.levels.length > 0
+      ? student.levels[student.levels.length - 1]?.score
+      : 0) ??
+    0
+  );
+  const total = Number(lastResult?.total || levelConfig?.questions || 20);
+  const totalScore = Number(lastResult?.totalScore ?? student?.totalScore ?? score ?? 0);
+  const totalTimeTaken = Number(lastResult?.totalTimeTaken ?? student?.totalTimeTaken ?? 0);
+
+  const maxPossible = CUMULATIVE_MAX[clearedLevel] || 50;
+  const accuracyPct = maxPossible > 0
+    ? Math.min(100, Math.max(0, Math.round(((totalScore || 0) / maxPossible) * 100)))
     : 0;
 
-  const formattedTime  = formatTimeMMSS(totalTimeTaken);
+  const formattedTime = formatTimeMMSS(totalTimeTaken || 0);
 
   // ── Win Celebration Confetti Effect ───────────────────────────────────────
   useEffect(() => {
     if (isCompleted && !isAntiCheated) {
-      // Cannon bursts from left & right
       const duration = 3 * 1000;
       const animationEnd = Date.now() + duration;
 
@@ -126,9 +187,9 @@ export default function Results() {
         const newRecord = {
           id: attemptId,
           attemptDate: new Date().toISOString(),
-          studentName: student.name,
-          mobile: student.mobile,
-          branch: student.branch,
+          studentName: student.name || 'Student',
+          mobile: student.mobile || '',
+          branch: student.branch || '',
           levelReached: clearedLevel,
           totalScore,
           maxPossible,
@@ -143,8 +204,6 @@ export default function Results() {
     } catch { /* noop */ }
   }, [student, clearedLevel, totalScore, totalTimeTaken, maxPossible, accuracyPct, formattedTime, isCompleted, isEliminated, isAntiCheated]);
 
-  if (!student) return null;
-
   const handleReturnHome = () => {
     if (student?.mobile) {
       try {
@@ -155,6 +214,20 @@ export default function Results() {
     clearStudent();
     window.location.replace('/');
   };
+
+  // ── Fallback if student is null ───────────────────────────────────────────
+  if (!student) {
+    return (
+      <div className="centered-page results-fallback-page">
+        <div className="results-icon" role="img" aria-label="Home">🎓</div>
+        <h2 className="results-title">Quiz Funnel</h2>
+        <p className="results-message">No active session found or session has concluded.</p>
+        <button className="btn btn-primary win-home-btn" onClick={handleReturnHome}>
+          🏠 Return to Home
+        </button>
+      </div>
+    );
+  }
 
   // ── Anti-Cheating Disqualification Screen ──────────────────────────────────
   if (isAntiCheated) {
@@ -189,66 +262,6 @@ export default function Results() {
     );
   }
 
-  // ── Eliminated ─────────────────────────────────────────────────────────────
-  if (isEliminated) {
-    return (
-      <div className="results-page">
-        <div className="results-top-bar">
-          <ThemeToggle />
-        </div>
-
-        <div className="results-icon" role="img" aria-label="Thank you">🙏</div>
-        <h1 className="results-title eliminated">Thank You for Participating!</h1>
-        <p className="results-message">
-          You gave it your best shot — and that's what matters. Every attempt
-          is a step toward growth. We appreciate your enthusiasm and hope to
-          see you excel next time!
-        </p>
-
-        <div className="score-card">
-          <p className="score-card-title">Performance Summary — Level {clearedLevel}</p>
-          <div className="score-row">
-            <span className="score-label">Level {clearedLevel} Score</span>
-            <span className="score-value">{score} / {total}</span>
-          </div>
-          <div className="score-row">
-            <span className="score-label">Total Score (Cumulative)</span>
-            <span className="score-value">{totalScore} / {maxPossible}</span>
-          </div>
-          <div className="score-row">
-            <span className="score-label">Accuracy</span>
-            <span className="score-value">{accuracyPct}%</span>
-          </div>
-          <div className="score-row">
-            <span className="score-label">Total Time Taken</span>
-            <span className="score-value">{formattedTime}</span>
-          </div>
-          {lastResult?.cutoff > 0 && (
-            <div className="score-row">
-              <span className="score-label">Cutoff needed</span>
-              <span className="score-value">{lastResult.cutoff} / {total}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Detailed Question Review — ONLY unlocked if user was not disqualified */}
-        {!isAntiCheated && <ReviewSection mobile={student.mobile} />}
-
-        <button className="btn btn-secondary" onClick={handleReturnHome}>
-          Return to Home
-        </button>
-
-        <ExitConfirmModal
-          isOpen={showExitModal}
-          title="Return to Home Screen?"
-          subtitle="Are you sure you want to leave the results screen and return to the main entry page?"
-          onCancel={() => setShowExitModal(false)}
-          onConfirm={handleReturnHome}
-        />
-      </div>
-    );
-  }
-
   // ── Level 4 Completed (WINNER) ─────────────────────────────────────────────
   if (isCompleted) {
     return (
@@ -264,7 +277,7 @@ export default function Results() {
         <div className="results-icon win-trophy-pop" role="img" aria-label="Trophy">🏆</div>
         <h1 className="results-title completed win-title-glow">Congratulations! You Won!</h1>
         <p className="results-message">
-          Exceptional performance, <strong>{student.name}</strong>! You cleared all 4 levels of the Quiz Funnel.
+          Exceptional performance, <strong>{student.name || 'Champion'}</strong>! You cleared all 4 levels of the Quiz Funnel.
           Your score has been registered for the final leaderboard rankings.
         </p>
 
@@ -294,11 +307,13 @@ export default function Results() {
         </div>
 
         {/* Detailed Question Review */}
-        {!isAntiCheated && <ReviewSection mobile={student.mobile} />}
+        <ReviewSection mobile={student.mobile} />
 
-        <button className="btn btn-primary win-home-btn" onClick={handleReturnHome}>
-          Return to Home
-        </button>
+        <div className="results-actions-container" style={{ marginTop: '2rem', textAlign: 'center' }}>
+          <button className="btn btn-primary win-home-btn" onClick={handleReturnHome}>
+            🏠 Return to Home
+          </button>
+        </div>
 
         <ExitConfirmModal
           isOpen={showExitModal}
@@ -311,18 +326,75 @@ export default function Results() {
     );
   }
 
-  // ── Fallback ───────────────────────────────────────────────────────────────
+  // ── Eliminated / Game Over (Default for all non-completed attempts) ─────────
   return (
-    <div className="centered-page">
-      <p>Loading results…</p>
-      <button className="btn btn-secondary" onClick={handleReturnHome}>Go Home</button>
+    <div className="results-page">
+      <div className="results-top-bar">
+        <ThemeToggle />
+      </div>
+
+      <div className="results-icon" role="img" aria-label="Thank you">🙏</div>
+      <h1 className="results-title eliminated">Thank You for Participating!</h1>
+      <p className="results-message">
+        You gave it your best shot — and that's what matters. Every attempt
+        is a step toward growth. We appreciate your enthusiasm and hope to
+        see you excel next time!
+      </p>
+
+      <div className="score-card">
+        <p className="score-card-title">Performance Summary — Level {clearedLevel}</p>
+        <div className="score-row">
+          <span className="score-label">Level {clearedLevel} Score</span>
+          <span className="score-value">{score} / {total}</span>
+        </div>
+        <div className="score-row">
+          <span className="score-label">Total Score (Cumulative)</span>
+          <span className="score-value">{totalScore} / {maxPossible}</span>
+        </div>
+        <div className="score-row">
+          <span className="score-label">Accuracy</span>
+          <span className="score-value">{accuracyPct}%</span>
+        </div>
+        <div className="score-row">
+          <span className="score-label">Total Time Taken</span>
+          <span className="score-value">{formattedTime}</span>
+        </div>
+        {Number(lastResult?.cutoff) > 0 && (
+          <div className="score-row">
+            <span className="score-label">Cutoff needed</span>
+            <span className="score-value">{lastResult.cutoff} / {total}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Detailed Question Review — ONLY for legitimate non-disqualified attempts */}
+      <ReviewSection mobile={student.mobile} />
+
+      <div className="results-actions-container" style={{ marginTop: '2rem', textAlign: 'center' }}>
+        <button className="btn btn-secondary win-home-btn" onClick={handleReturnHome}>
+          🏠 Return to Home
+        </button>
+      </div>
+
       <ExitConfirmModal
         isOpen={showExitModal}
         title="Return to Home Screen?"
-        subtitle="Are you sure you want to return to the main entry page?"
+        subtitle="Are you sure you want to leave the results screen and return to the main entry page?"
         onCancel={() => setShowExitModal(false)}
         onConfirm={handleReturnHome}
       />
     </div>
   );
 }
+
+/**
+ * Exported Results component wrapped in Error Boundary
+ */
+export default function Results() {
+  return (
+    <ResultsErrorBoundary>
+      <ResultsContent />
+    </ResultsErrorBoundary>
+  );
+}
+
