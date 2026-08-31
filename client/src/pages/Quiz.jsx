@@ -11,6 +11,7 @@ import ExitConfirmModal from '../components/ExitConfirmModal';
 import ThemeToggle from '../components/ThemeToggle';
 import AntiCheatModal from '../components/AntiCheatModal';
 import QuestionPalette from '../components/QuestionPalette';
+import UnattemptedWarningModal from '../components/UnattemptedWarningModal';
 
 export default function Quiz() {
   const { level: levelParam } = useParams();
@@ -28,6 +29,7 @@ export default function Quiz() {
   const [toast, setToast]               = useState(null);
   const [startedAt, setStartedAt]       = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showUnattemptedModal, setShowUnattemptedModal] = useState(false);
 
   // Storage keys for auto-saving progress & bookmarks
   const progressKey = student?.mobile ? `quiz_progress_${student.mobile}_${levelNum}` : null;
@@ -196,8 +198,8 @@ export default function Quiz() {
     }
   };
 
-  // ── Submit (manual or auto via timer) ────────────────────────────────────
-  const handleSubmit = useCallback(async (isAutoSubmit = false) => {
+  // ── Core Submit execution (API call) ────────────────────────────────────
+  const executeSubmit = useCallback(async () => {
     if (hasSubmitted.current) return;
     hasSubmitted.current = true;
     setSubmitting(true);
@@ -249,11 +251,38 @@ export default function Quiz() {
     }
   }, [answers, questions, startedAt, levelNum, student, navigate, setLastResult, updateStudent, levelConfig]);
 
+  // ── Manual Submit Click (with Unattempted Questions Check) ───────────────
+  const handleManualSubmit = () => {
+    const answeredCount = Object.keys(answers).length;
+    const unattempted = questions.length - answeredCount;
+    if (unattempted > 0) {
+      setShowUnattemptedModal(true);
+    } else {
+      executeSubmit();
+    }
+  };
+
+  const handleGoBackAndReview = () => {
+    setShowUnattemptedModal(false);
+    // Jump to the first unattempted question for convenience
+    const firstUnansweredIdx = questions.findIndex(
+      (q) => answers[q._id] === undefined || answers[q._id] === null || answers[q._id] === -1
+    );
+    if (firstUnansweredIdx !== -1) {
+      setCurrentIndex(firstUnansweredIdx);
+    }
+  };
+
+  const handleSubmitAnyway = () => {
+    setShowUnattemptedModal(false);
+    executeSubmit();
+  };
+
   // Auto-submit when level timer fires
   const handleTimeUp = useCallback(() => {
     setToast({ type: 'warning', message: "Time's up! Submitting your answers…", duration: 2000 });
-    setTimeout(() => handleSubmit(true), 2000);
-  }, [handleSubmit]);
+    setTimeout(() => executeSubmit(), 2000);
+  }, [executeSubmit]);
 
   // ── Tab-Switching & Visibility Monitoring ───────────────────────────────
   useEffect(() => {
@@ -284,7 +313,7 @@ export default function Quiz() {
           }
           setIsAntiCheatTerminal(true);
           setShowAntiCheatModal(true);
-          handleSubmit(true);
+          executeSubmit();
         } else {
           setShowAntiCheatModal(true);
         }
@@ -309,7 +338,7 @@ export default function Quiz() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [loading, submitting, student?.mobile, handleSubmit]);
+  }, [loading, submitting, student?.mobile, executeSubmit]);
 
   // Handle confirmed exit
   const handleConfirmExit = () => {
@@ -438,7 +467,7 @@ export default function Quiz() {
           <button
             id="submit-quiz-btn"
             className="btn btn-submit"
-            onClick={() => handleSubmit(false)}
+            onClick={handleManualSubmit}
             disabled={submitting}
           >
             {submitting
@@ -462,6 +491,15 @@ export default function Quiz() {
         isLimitReached={isAntiCheatTerminal}
         onAcknowledge={() => setShowAntiCheatModal(false)}
         onTerminalProceed={() => navigate('/results')}
+      />
+
+      <UnattemptedWarningModal
+        isOpen={showUnattemptedModal}
+        unattemptedCount={questions.length - answeredCount}
+        level={levelNum}
+        onGoBack={handleGoBackAndReview}
+        onSubmitAnyway={handleSubmitAnyway}
+        submitting={submitting}
       />
 
       {toast && (
