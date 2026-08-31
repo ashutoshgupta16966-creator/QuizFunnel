@@ -46,7 +46,7 @@ export default function UnattemptedWarningModal({
         <div className="unattempted-modal-actions">
           <button
             type="button"
-            className="btn btn-primary btn-review"
+            className="btn unattempted-btn-primary"
             onClick={onGoBack}
             disabled={submitting}
           >
@@ -54,7 +54,7 @@ export default function UnattemptedWarningModal({
           </button>
           <button
             type="button"
-            className="btn btn-secondary btn-submit-anyway"
+            className="btn unattempted-btn-secondary"
             onClick={onSubmitAnyway}
             disabled={submitting}
           >

@@ -35,20 +35,27 @@ export default function ReviewSection({ mobile }) {
 
   if (!mobile) return null;
 
-  // Flatten all questions or filter by active level
-  const allLevels = reviewData;
-  const filteredLevels = activeLevelTab === 'all'
-    ? allLevels
-    : allLevels.filter((l) => l.level === Number(activeLevelTab));
+  // Filter out unattempted questions and unreached levels with 0 attempted questions
+  const attemptedLevels = (reviewData || [])
+    .map((lvl) => ({
+      ...lvl,
+      questions: (lvl.questions || []).filter(
+        (q) => !q.isUnattempted && q.selectedOptionIndex !== null && q.selectedOptionIndex !== undefined && q.selectedOptionIndex !== -1
+      ),
+    }))
+    .filter((lvl) => lvl.questions.length > 0);
 
-  const allQuestions = allLevels.flatMap((lvl) =>
+  const filteredLevels = activeLevelTab === 'all'
+    ? attemptedLevels
+    : attemptedLevels.filter((l) => l.level === Number(activeLevelTab));
+
+  const allQuestions = attemptedLevels.flatMap((lvl) =>
     lvl.questions.map((q) => ({ ...q, levelNum: lvl.level }))
   );
 
-  const totalQuestions = allQuestions.length;
+  const totalAttempted = allQuestions.length;
   const totalCorrect = allQuestions.filter((q) => q.isCorrect).length;
-  const totalIncorrect = allQuestions.filter((q) => !q.isCorrect && !q.isUnattempted).length;
-  const totalUnattempted = allQuestions.filter((q) => q.isUnattempted).length;
+  const totalIncorrect = allQuestions.filter((q) => !q.isCorrect).length;
 
   return (
     <div className="review-section-wrapper">
@@ -64,7 +71,7 @@ export default function ReviewSection({ mobile }) {
           <div className="review-toggle-titles">
             <h3 className="review-toggle-title">Review Detailed Answers</h3>
             <p className="review-toggle-subtitle">
-              Inspect all questions and check your answers
+              Inspect all attempted questions and check your answers
             </p>
           </div>
         </div>
@@ -89,7 +96,7 @@ export default function ReviewSection({ mobile }) {
 
           {!loading && !error && allQuestions.length === 0 && (
             <div className="review-empty-state">
-              <p>No questions found to review for this session.</p>
+              <p>No attempted questions found to review for this session.</p>
             </div>
           )}
 
@@ -98,8 +105,8 @@ export default function ReviewSection({ mobile }) {
               {/* Quick Metrics Bar */}
               <div className="review-metrics-strip">
                 <div className="review-metric-pill total">
-                  <span className="metric-pill-label">Total Questions:</span>
-                  <span className="metric-pill-value">{totalQuestions}</span>
+                  <span className="metric-pill-label">Total Attempted:</span>
+                  <span className="metric-pill-value">{totalAttempted}</span>
                 </div>
                 <div className="review-metric-pill correct">
                   <span className="metric-pill-label">✅ Correct:</span>
@@ -109,23 +116,19 @@ export default function ReviewSection({ mobile }) {
                   <span className="metric-pill-label">❌ Incorrect:</span>
                   <span className="metric-pill-value">{totalIncorrect}</span>
                 </div>
-                <div className="review-metric-pill unattempted">
-                  <span className="metric-pill-label">⚪ Unattempted:</span>
-                  <span className="metric-pill-value">{totalUnattempted}</span>
-                </div>
               </div>
 
               {/* Level Filter Tabs (if multiple levels attempted) */}
-              {allLevels.length > 1 && (
+              {attemptedLevels.length > 1 && (
                 <div className="review-level-tabs">
                   <button
                     type="button"
                     className={`review-tab-btn ${activeLevelTab === 'all' ? 'active' : ''}`}
                     onClick={() => setActiveLevelTab('all')}
                   >
-                    All Levels ({totalQuestions})
+                    All Attempted ({totalAttempted})
                   </button>
-                  {allLevels.map((lvl) => (
+                  {attemptedLevels.map((lvl) => (
                     <button
                       key={lvl.level}
                       type="button"

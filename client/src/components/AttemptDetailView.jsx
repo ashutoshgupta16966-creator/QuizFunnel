@@ -107,19 +107,22 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
   const isCompleted = attemptDetail.status === 'completed';
 
   // Map review data by level for fast lookup
+  // Map review data by level for fast lookup (filtering only attempted questions)
   const reviewMapByLevel = {};
   reviewData.forEach((lvl) => {
-    reviewMapByLevel[lvl.level] = lvl.questions || [];
+    const attemptedQs = (lvl.questions || []).filter(
+      (q) => !q.isUnattempted && q.selectedOptionIndex !== null && q.selectedOptionIndex !== undefined && q.selectedOptionIndex !== -1
+    );
+    reviewMapByLevel[lvl.level] = attemptedQs;
   });
 
-  // Always show Level 1–4 rows; merge in real summary data where available
+  // Only show levels actually reached / attempted in this run
   const summaryMap = {};
   if (attemptDetail.levelsSummary && attemptDetail.levelsSummary.length > 0) {
     attemptDetail.levelsSummary.forEach((lvl) => {
       summaryMap[lvl.level] = lvl;
     });
   } else if (attemptDetail.clearedLvl) {
-    // Fallback: build a minimal entry for the last reached level
     summaryMap[attemptDetail.clearedLvl] = {
       level: attemptDetail.clearedLvl,
       score: attemptDetail.score,
@@ -127,7 +130,12 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
     };
   }
 
-  const levelsList = [1, 2, 3, 4].map((n) => summaryMap[n] || { level: n, score: null, timeTaken: null });
+  // Filter levelsList to only rendered levels that were actually attempted
+  const levelsList = Object.keys(summaryMap).length > 0
+    ? Object.values(summaryMap).sort((a, b) => a.level - b.level)
+    : [1, 2, 3, 4]
+        .filter((n) => (reviewMapByLevel[n] && reviewMapByLevel[n].length > 0))
+        .map((n) => ({ level: n, score: attemptDetail.score || 0, timeTaken: attemptDetail.timeSecs || 0 }));
 
   return (
     <div className="attempt-detail-view">

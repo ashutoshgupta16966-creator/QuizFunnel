@@ -39,6 +39,20 @@ export default function Results() {
 
   const isAntiCheated = !!(student?.mobile && localStorage.getItem(`quiz_anti_cheated_${student.mobile}`) === '1');
 
+  // ── Strict Scroll lock when disqualified ──────────────────────────────────
+  useEffect(() => {
+    if (isAntiCheated) {
+      const origBodyOverflow = document.body.style.overflow;
+      const origHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = origBodyOverflow;
+        document.documentElement.style.overflow = origHtmlOverflow;
+      };
+    }
+  }, [isAntiCheated]);
+
   // Intercept browser back button & swipe gestures
   useEffect(() => {
     window.history.pushState(null, '', window.location.href);
@@ -70,7 +84,7 @@ export default function Results() {
 
   // ── Win Celebration Confetti Effect ───────────────────────────────────────
   useEffect(() => {
-    if (isCompleted) {
+    if (isCompleted && !isAntiCheated) {
       // Cannon bursts from left & right
       const duration = 3 * 1000;
       const animationEnd = Date.now() + duration;
@@ -98,11 +112,11 @@ export default function Results() {
 
       frame();
     }
-  }, [isCompleted]);
+  }, [isCompleted, isAntiCheated]);
 
   // ── Auto-save attempt to persistent localStorage history ──────────────────
   useEffect(() => {
-    if (!student || (!isCompleted && !isEliminated)) return;
+    if (!student || (!isCompleted && !isEliminated) || isAntiCheated) return;
     try {
       const existing = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
       const attemptId = `${student.mobile}_${clearedLevel}_${totalScore}_${totalTimeTaken}`;
@@ -127,14 +141,53 @@ export default function Results() {
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
       }
     } catch { /* noop */ }
-  }, [student, clearedLevel, totalScore, totalTimeTaken, maxPossible, accuracyPct, formattedTime, isCompleted, isEliminated]);
+  }, [student, clearedLevel, totalScore, totalTimeTaken, maxPossible, accuracyPct, formattedTime, isCompleted, isEliminated, isAntiCheated]);
 
   if (!student) return null;
 
   const handleReturnHome = () => {
+    if (student?.mobile) {
+      try {
+        localStorage.removeItem(`quiz_anti_cheated_${student.mobile}`);
+        localStorage.removeItem(`quiz_tab_switches_${student.mobile}`);
+      } catch { /* noop */ }
+    }
     clearStudent();
     window.location.replace('/');
   };
+
+  // ── Anti-Cheating Disqualification Screen ──────────────────────────────────
+  if (isAntiCheated) {
+    return (
+      <div className="disqualification-fullscreen-overlay">
+        <div className="disqualification-modal-card" role="alertdialog" aria-modal="true">
+          <div className="disqualification-modal-icon" role="img" aria-label="Disqualified">
+            🚨
+          </div>
+          <h1 className="disqualification-modal-title">
+            Assessment Terminated &amp; Disqualified
+          </h1>
+          <div className="disqualification-pill">
+            <span>Violation:</span>
+            <strong>Tab-Switch Limit Exceeded (10/10)</strong>
+          </div>
+          <p className="disqualification-modal-desc">
+            Your quiz attempt was terminated and locked due to exceeding the maximum allowed limit of <strong>10 tab switches</strong>.
+            All answers and performance scores for this session have been disqualified to uphold academic integrity.
+          </p>
+          <div className="disqualification-modal-actions">
+            <button
+              type="button"
+              className="btn btn-home-disqualified"
+              onClick={handleReturnHome}
+            >
+              ← Return to Home Screen
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Eliminated ─────────────────────────────────────────────────────────────
   if (isEliminated) {
@@ -144,28 +197,13 @@ export default function Results() {
           <ThemeToggle />
         </div>
 
-        {isAntiCheated ? (
-          <div className="anti-cheat-disqualified-box" role="alert">
-            <div className="results-icon" role="img" aria-label="Disqualified">🚨</div>
-            <h1 className="results-title eliminated">Assessment Disqualified</h1>
-            <p className="results-message" style={{ color: '#ef4444', fontWeight: 600 }}>
-              Your quiz session was terminated due to exceeding the maximum allowed limit of 10 tab switches.
-            </p>
-            <p className="anti-cheat-notice-text">
-              ⚠️ In accordance with academic integrity guidelines, detailed question &amp; solution review is disabled for disqualified attempts.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="results-icon" role="img" aria-label="Thank you">🙏</div>
-            <h1 className="results-title eliminated">Thank You for Participating!</h1>
-            <p className="results-message">
-              You gave it your best shot — and that's what matters. Every attempt
-              is a step toward growth. We appreciate your enthusiasm and hope to
-              see you excel next time!
-            </p>
-          </>
-        )}
+        <div className="results-icon" role="img" aria-label="Thank you">🙏</div>
+        <h1 className="results-title eliminated">Thank You for Participating!</h1>
+        <p className="results-message">
+          You gave it your best shot — and that's what matters. Every attempt
+          is a step toward growth. We appreciate your enthusiasm and hope to
+          see you excel next time!
+        </p>
 
         <div className="score-card">
           <p className="score-card-title">Performance Summary — Level {clearedLevel}</p>

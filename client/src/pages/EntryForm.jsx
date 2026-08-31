@@ -184,20 +184,30 @@ export default function EntryForm() {
       const studentData = res.data.data;
       setAuthedStudentData(studentData);
 
-      // Merge backend database attemptHistory with localStorage attempts
-      let combined = studentData.attemptHistory || [];
+      // Smart Deduping of Attempt History
+      const dbHistory = Array.isArray(studentData.attemptHistory) ? studentData.attemptHistory : [];
+      const combined = [...dbHistory];
+
       try {
         const localSaved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
         const matchingLocal = localSaved.filter((a) => a.mobile === authForm.mobile.trim());
         
-        const combinedMap = new Map();
-        [...matchingLocal, ...combined].forEach((item) => {
-          const key = item._id || item.id || item.attemptId || `${item.totalScore}_${item.totalTimeTaken}`;
-          if (!combinedMap.has(key)) combinedMap.set(key, item);
+        matchingLocal.forEach((locItem) => {
+          // Check if this local item already matches a record in DB history
+          const alreadyInDb = combined.some((dbItem) => {
+            const sameLevel = (dbItem.levelReached || dbItem.clearedLvl) === (locItem.levelReached || locItem.clearedLvl);
+            const sameScore = (dbItem.totalScore ?? dbItem.score) === (locItem.totalScore ?? locItem.score);
+            const timeDiff = Math.abs((dbItem.totalTimeTaken ?? dbItem.timeSecs ?? 0) - (locItem.totalTimeTaken ?? locItem.timeSecs ?? 0));
+            return sameLevel && sameScore && timeDiff <= 5;
+          });
+
+          if (!alreadyInDb) {
+            combined.push(locItem);
+          }
         });
-        combined = Array.from(combinedMap.values());
       } catch { /* noop */ }
 
+      // If no history array in DB but student completed an active round
       if (combined.length === 0 && studentData.status && studentData.status !== 'in-progress') {
         const isCompleted  = studentData.status === 'completed';
         const clearedLevel = isCompleted ? 4 : (studentData.currentLevel || 1);
@@ -206,7 +216,7 @@ export default function EntryForm() {
         const totalTime    = studentData.totalTimeTaken ?? 0;
         const accuracyPct  = maxPossible > 0 ? Math.min(100, Math.round((totalScore / maxPossible) * 100)) : 0;
 
-        combined = [{
+        combined.push({
           attemptId: `${studentData.mobile}_${Date.now()}`,
           attemptNumber: 1,
           attemptDate: studentData.updatedAt || new Date().toISOString(),
@@ -218,11 +228,32 @@ export default function EntryForm() {
           timeFormatted: formatTimeMMSS(totalTime),
           status: studentData.status,
           levelsSummary: studentData.levels || [],
-        }];
+        });
       }
 
-      combined.sort((a, b) => new Date(b.attemptDate || b.createdAt) - new Date(a.attemptDate || a.createdAt));
-      setAttemptsList(combined);
+      // Final pass: deduplicate any identical items in combined array
+      const seenUnique = new Set();
+      const dedupedList = [];
+
+      // Sort chronological descending (most recent first)
+      combined.sort((a, b) => new Date(b.attemptDate || b.createdAt || 0) - new Date(a.attemptDate || a.createdAt || 0));
+
+      combined.forEach((item) => {
+        const signature = `${item.levelReached || item.clearedLvl || 1}_${item.totalScore ?? item.score ?? 0}_${Math.round((item.totalTimeTaken ?? item.timeSecs ?? 0) / 3)}`;
+        if (!seenUnique.has(signature)) {
+          seenUnique.add(signature);
+          dedupedList.push(item);
+        }
+      });
+
+      // Normalize clean sequential attempt numbering
+      const totalCount = dedupedList.length;
+      const finalizedList = dedupedList.map((item, idx) => ({
+        ...item,
+        attemptNumber: totalCount - idx,
+      }));
+
+      setAttemptsList(finalizedList);
       setModalMode('dashboard');
     } catch (err) {
       setAuthError(err.response?.data?.error || 'Invalid Mobile Number or Password/PIN.');
