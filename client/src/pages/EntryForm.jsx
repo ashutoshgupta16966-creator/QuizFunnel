@@ -194,14 +194,16 @@ export default function EntryForm() {
         
         matchingLocal.forEach((locItem) => {
           // Check if this local item already matches a record in DB history
-          const alreadyInDb = combined.some((dbItem) => {
+          const matchingDbItem = combined.find((dbItem) => {
             const sameLevel = (dbItem.levelReached || dbItem.clearedLvl) === (locItem.levelReached || locItem.clearedLvl);
             const sameScore = (dbItem.totalScore ?? dbItem.score) === (locItem.totalScore ?? locItem.score);
             const timeDiff = Math.abs((dbItem.totalTimeTaken ?? dbItem.timeSecs ?? 0) - (locItem.totalTimeTaken ?? locItem.timeSecs ?? 0));
             return sameLevel && sameScore && timeDiff <= 5;
           });
 
-          if (!alreadyInDb) {
+          if (matchingDbItem) {
+            if (locItem.isDisqualified) matchingDbItem.isDisqualified = true;
+          } else {
             combined.push(locItem);
           }
         });
@@ -210,6 +212,7 @@ export default function EntryForm() {
       // If no history array in DB but student completed an active round
       if (combined.length === 0 && studentData.status && studentData.status !== 'in-progress') {
         const isCompleted  = studentData.status === 'completed';
+        const isDisqualified = Boolean(studentData.isDisqualified || studentData.status === 'disqualified');
         const clearedLevel = isCompleted ? 4 : (studentData.currentLevel || 1);
         const maxPossible  = CUMULATIVE_MAX[clearedLevel] || 50;
         const totalScore   = studentData.totalScore ?? 0;
@@ -226,7 +229,8 @@ export default function EntryForm() {
           accuracyPct,
           totalTimeTaken: totalTime,
           timeFormatted: formatTimeMMSS(totalTime),
-          status: studentData.status,
+          status: isDisqualified ? 'eliminated' : studentData.status,
+          isDisqualified,
           levelsSummary: studentData.levels || [],
         });
       }
@@ -246,10 +250,11 @@ export default function EntryForm() {
         }
       });
 
-      // Normalize clean sequential attempt numbering
+      // Normalize clean sequential attempt numbering and ensure isDisqualified flag
       const totalCount = dedupedList.length;
       const finalizedList = dedupedList.map((item, idx) => ({
         ...item,
+        isDisqualified: Boolean(item.isDisqualified || item.status === 'disqualified'),
         attemptNumber: totalCount - idx,
       }));
 
@@ -793,7 +798,8 @@ export default function EntryForm() {
                           {attemptsList.map((attempt, index) => {
                             const attemptId = attempt._id || attempt.id || attempt.attemptId || index;
                             const attemptNum = attempt.attemptNumber || (attemptsList.length - index);
-                            const isCompletedAttempt = attempt.status === 'completed';
+                            const isDisqualifiedAttempt = Boolean(attempt.isDisqualified || attempt.status === 'disqualified');
+                            const isCompletedAttempt = !isDisqualifiedAttempt && attempt.status === 'completed';
                             const clearedLvl = isCompletedAttempt ? 4 : (attempt.levelReached || 1);
                             const maxPoss = attempt.maxPossible || CUMULATIVE_MAX[clearedLvl] || 50;
                             const score = attempt.totalScore ?? 0;
@@ -802,6 +808,7 @@ export default function EntryForm() {
 
                             const cardDetailData = {
                               ...attempt,
+                              isDisqualified: isDisqualifiedAttempt,
                               attemptNum,
                               clearedLvl,
                               maxPoss,
@@ -813,7 +820,7 @@ export default function EntryForm() {
                             return (
                               <div
                                 key={attemptId}
-                                className="attempt-history-card"
+                                className={`attempt-history-card ${isDisqualifiedAttempt ? 'disqualified-card' : ''}`}
                                 onClick={() => setSelectedAttemptDetail(cardDetailData)}
                                 title="Click to view full detailed performance summary"
                               >
@@ -832,8 +839,8 @@ export default function EntryForm() {
                                     </div>
 
                                     <div className="attempt-actions-row">
-                                      <span className={`status-badge ${attempt.status}`}>
-                                        {isCompletedAttempt ? 'Completed' : 'Attempt Ended'}
+                                      <span className={`status-badge ${isDisqualifiedAttempt ? 'disqualified' : isCompletedAttempt ? 'completed' : 'eliminated'}`}>
+                                        {isDisqualifiedAttempt ? 'Disqualified 🚫' : isCompletedAttempt ? 'Completed' : 'Eliminated'}
                                       </span>
                                       {/* Delete Attempt Button — stops event propagation */}
                                       <button

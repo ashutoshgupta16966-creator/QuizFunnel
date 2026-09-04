@@ -104,9 +104,9 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
     }
   };
 
-  const isCompleted = attemptDetail.status === 'completed';
+  const isDisqualified = Boolean(attemptDetail.isDisqualified || attemptDetail.status === 'disqualified');
+  const isCompleted = !isDisqualified && attemptDetail.status === 'completed';
 
-  // Map review data by level for fast lookup
   // Map review data by level for fast lookup (filtering only attempted questions)
   const reviewMapByLevel = {};
   reviewData.forEach((lvl) => {
@@ -148,21 +148,28 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
         >
           ← Back to History List
         </button>
-        <span className={`status-badge ${attemptDetail.status}`}>
-          {isCompleted ? 'Completed' : 'Attempt Ended'}
+        <span className={`status-badge ${isDisqualified ? 'disqualified' : isCompleted ? 'completed' : 'eliminated'}`}>
+          {isDisqualified ? 'Disqualified 🚫' : isCompleted ? 'Completed' : 'Eliminated'}
         </span>
       </div>
 
       {/* Hero Summary Card */}
-      <div className="detail-hero-card">
+      <div className={`detail-hero-card ${isDisqualified ? 'is-disqualified-hero' : ''}`}>
         <div className="detail-hero-icon">
-          {isCompleted ? '🏆' : '⚡'}
+          {isDisqualified ? '🚨' : isCompleted ? '🏆' : '⚡'}
         </div>
         <h3 className="detail-hero-title">
-          {isCompleted
+          {isDisqualified
+            ? 'Assessment Terminated & Disqualified'
+            : isCompleted
             ? 'Quiz Completed Successfully!'
             : `Attempt Ended at Level ${attemptDetail.clearedLvl}`}
         </h3>
+        {isDisqualified && (
+          <p style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.875rem', marginTop: '0.35rem' }}>
+            ⚠️ Terminated due to exceeding the maximum allowed limit of 10 tab switches.
+          </p>
+        )}
         <p className="detail-hero-meta">
           {studentData?.name || attemptDetail.studentName} ({studentData?.branch || attemptDetail.branch}) ·{' '}
           {attemptDetail.attemptDate

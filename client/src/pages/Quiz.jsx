@@ -199,7 +199,7 @@ export default function Quiz() {
   };
 
   // ── Core Submit execution (API call) ────────────────────────────────────
-  const executeSubmit = useCallback(async () => {
+  const executeSubmit = useCallback(async (isDisqualified = false) => {
     if (hasSubmitted.current) return;
     hasSubmitted.current = true;
     setSubmitting(true);
@@ -217,23 +217,24 @@ export default function Quiz() {
 
     try {
       const res = await submitQuiz({
-        mobile:    student.mobile,
-        level:     levelNum,
-        answers:   answersArray,
-        timeTaken: elapsed,
+        mobile:         student.mobile,
+        level:          levelNum,
+        answers:        answersArray,
+        timeTaken:      elapsed,
+        isDisqualified: Boolean(isDisqualified),
       });
       const result = res.data.data;
-      setLastResult(result);
+      setLastResult({ ...result, isDisqualified: Boolean(isDisqualified || result.isDisqualified) });
 
       // Update context so student object has updated totals
       updateStudent({
-        currentLevel: result.nextLevel ?? student.currentLevel,
-        status:       result.status,
-        totalScore:   result.totalScore,
+        currentLevel:   result.nextLevel ?? student.currentLevel,
+        status:         isDisqualified ? 'eliminated' : result.status,
+        totalScore:     result.totalScore,
         totalTimeTaken: result.totalTimeTaken,
       });
 
-      if (result.passed && result.nextLevel) {
+      if (result.passed && result.nextLevel && !isDisqualified) {
         navigate('/level-up');
       } else {
         navigate('/results');
@@ -309,11 +310,38 @@ export default function Quiz() {
           if (student?.mobile) {
             try {
               localStorage.setItem(`quiz_anti_cheated_${student.mobile}`, '1');
+
+              // Immediately record isDisqualified: true in LocalStorage attempt history
+              const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
+              const existing = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
+              const attemptId = `${student.mobile}_${levelNum}_${student.totalScore || 0}_${student.totalTimeTaken || 0}`;
+              const alreadySaved = existing.some((a) => a.id === attemptId);
+              if (!alreadySaved) {
+                const newRecord = {
+                  id: attemptId,
+                  attemptDate: new Date().toISOString(),
+                  studentName: student.name || 'Student',
+                  mobile: student.mobile,
+                  branch: student.branch || '',
+                  levelReached: levelNum,
+                  totalScore: student.totalScore || 0,
+                  maxPossible: 50,
+                  accuracyPct: 0,
+                  totalTimeTaken: student.totalTimeTaken || 0,
+                  timeFormatted: '00:00',
+                  status: 'eliminated',
+                  isDisqualified: true,
+                };
+                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify([newRecord, ...existing].slice(0, 30)));
+              } else {
+                const updated = existing.map((a) => (a.id === attemptId ? { ...a, isDisqualified: true } : a));
+                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+              }
             } catch { /* noop */ }
           }
           setIsAntiCheatTerminal(true);
           setShowAntiCheatModal(true);
-          executeSubmit();
+          executeSubmit(true);
         } else {
           setShowAntiCheatModal(true);
         }

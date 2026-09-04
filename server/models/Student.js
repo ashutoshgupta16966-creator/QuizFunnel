@@ -37,7 +37,8 @@ const AttemptHistorySchema = new mongoose.Schema({
   maxPossible:    { type: Number, default: 50 },
   accuracyPct:    { type: Number, default: 0 },
   totalTimeTaken: { type: Number, default: 0 }, // seconds
-  status:         { type: String, enum: ['completed', 'eliminated', 'in-progress'], default: 'in-progress' },
+  status:         { type: String, enum: ['completed', 'eliminated', 'in-progress', 'disqualified'], default: 'in-progress' },
+  isDisqualified: { type: Boolean, default: false },
   levelsSummary:  [LevelAttemptSchema],
 }, { timestamps: true });
 

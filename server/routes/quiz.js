@@ -190,7 +190,7 @@ router.get('/questions/:level', async (req, res, next) => {
  */
 router.post('/submit', async (req, res, next) => {
   try {
-    const { mobile, level: rawLevel, answers, timeTaken } = req.body;
+    const { mobile, level: rawLevel, answers, timeTaken, isDisqualified } = req.body;
     const level = parseInt(rawLevel, 10);
 
     if (!mobile || !level || !Array.isArray(answers)) {
@@ -258,12 +258,15 @@ router.post('/submit', async (req, res, next) => {
     // ── CUTOFF CHECK ─────────────────────────────────────────────────────
     const isLastLevel = level === 4;
     // Level 4 has no cutoff — everyone who reaches it gets ranked
-    const passed = isLastLevel ? true : score >= levelConfig.cutoff;
+    const passed = isDisqualified ? false : (isLastLevel ? true : score >= levelConfig.cutoff);
 
     let newStatus, newCurrentLevel;
     let completedAt;
 
-    if (isLastLevel) {
+    if (isDisqualified) {
+      newStatus = 'eliminated';
+      newCurrentLevel = student.currentLevel;
+    } else if (isLastLevel) {
       newStatus = 'completed';
       newCurrentLevel = student.currentLevel; // stays at 4
       completedAt = new Date();
@@ -294,7 +297,7 @@ router.post('/submit', async (req, res, next) => {
     if (completedAt) updateDoc.$set.completedAt = completedAt;
 
     // ── MULTI-ATTEMPT PERSISTENCE: Save finished attempt into history array ──
-    if (newStatus === 'completed' || newStatus === 'eliminated') {
+    if (newStatus === 'completed' || newStatus === 'eliminated' || isDisqualified) {
       const CUMULATIVE_MAX = { 1: 20, 2: 35, 3: 45, 4: 50 };
       const clearedLevel = newStatus === 'completed' ? 4 : level;
       const maxPossible = CUMULATIVE_MAX[clearedLevel] || 50;
@@ -312,6 +315,7 @@ router.post('/submit', async (req, res, next) => {
         accuracyPct,
         totalTimeTaken: cumTime,
         status: newStatus,
+        isDisqualified: Boolean(isDisqualified),
         levelsSummary: [...(student.levels || []), levelAttempt],
       };
 
@@ -333,6 +337,7 @@ router.post('/submit', async (req, res, next) => {
         status: newStatus,
         nextLevel: passed && !isLastLevel ? level + 1 : null,
         isLastLevel,
+        isDisqualified: Boolean(isDisqualified),
         totalScore: updatedStudent ? updatedStudent.totalScore : score,
         totalTimeTaken: updatedStudent ? updatedStudent.totalTimeTaken : elapsed,
       },

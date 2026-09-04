@@ -747,6 +747,13 @@ a { color: inherit; }
 .status-badge.advanced    { background: rgba(67,97,238,.14);  color: var(--primary); }
 .status-badge.eliminated  { background: rgba(247,37,133,.14); color: var(--danger); }
 .status-badge.completed   { background: rgba(16,185,129,.14); color: var(--success); }
+.status-badge.disqualified {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+  font-weight: 800;
+}
 
 /* Admin gate */
 .admin-gate {
@@ -1100,6 +1107,20 @@ a { color: inherit; }
   transform: translateY(-2px);
   border-color: var(--primary);
   box-shadow: 0 6px 20px rgba(67, 97, 238, 0.3);
+}
+
+.attempt-history-card.disqualified-card {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.06) 0%, var(--surface-2) 100%);
+}
+.attempt-history-card.disqualified-card:hover {
+  border-color: #ef4444;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.35);
+}
+
+.detail-hero-card.is-disqualified-hero {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, var(--surface-2) 100%);
 }
 
 .click-view-hint {
@@ -1527,6 +1548,16 @@ a { color: inherit; }
   background: #FFFFFF;
   border-color: var(--border-2);
   box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+}
+
+[data-theme="light"] .attempt-history-card.disqualified-card {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: #fff8f8;
+}
+[data-theme="light"] .status-badge.disqualified {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fca5a5;
 }
 
 [data-theme="light"] .quiz-header {

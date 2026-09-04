@@ -175,9 +175,11 @@ function ResultsContent() {
     }
   }, [isCompleted, isAntiCheated]);
 
+  const isDisqualified = Boolean(isAntiCheated || lastResult?.isDisqualified);
+
   // ── Auto-save attempt to persistent localStorage history ──────────────────
   useEffect(() => {
-    if (!student || (!isCompleted && !isEliminated) || isAntiCheated) return;
+    if (!student || (!isCompleted && !isEliminated && !isDisqualified)) return;
     try {
       const existing = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
       const attemptId = `${student.mobile}_${clearedLevel}_${totalScore}_${totalTimeTaken}`;
@@ -196,13 +198,17 @@ function ResultsContent() {
           accuracyPct,
           totalTimeTaken,
           timeFormatted: formattedTime,
-          status: isCompleted ? 'completed' : 'eliminated',
+          status: isDisqualified ? 'eliminated' : (isCompleted ? 'completed' : 'eliminated'),
+          isDisqualified,
         };
         const updated = [newRecord, ...existing].slice(0, 30);
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+      } else if (isDisqualified) {
+        const updated = existing.map((a) => (a.id === attemptId ? { ...a, isDisqualified: true } : a));
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
       }
     } catch { /* noop */ }
-  }, [student, clearedLevel, totalScore, totalTimeTaken, maxPossible, accuracyPct, formattedTime, isCompleted, isEliminated, isAntiCheated]);
+  }, [student, clearedLevel, totalScore, totalTimeTaken, maxPossible, accuracyPct, formattedTime, isCompleted, isEliminated, isDisqualified]);
 
   const handleReturnHome = () => {
     if (student?.mobile) {
