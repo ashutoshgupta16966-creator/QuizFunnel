@@ -281,6 +281,147 @@ router.post('/admin/rejoin', async (req, res, next) => {
 });
 
 /**
+ * GET /api/rooms/:roomCode/analytics
+ * Aggregates per-question performance stats across all students who participated
+ * in this room. Returns question text, correct %, wrong %, and most-common
+ * wrong answer for each question grouped by level.
+ *
+ * Requires ?password= query param for admin auth.
+ */
+router.get('/:roomCode/analytics', async (req, res, next) => {
+  try {
+    const { roomCode } = req.params;
+    const { password } = req.query;
+    const normalizedCode = roomCode.trim().toUpperCase();
+
+    // Auth: verify room + password
+    const room = await Room.findOne({ roomCode: normalizedCode }).lean();
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+    if (!password || room.roomPassword !== password.trim()) {
+      return res.status(401).json({ success: false, error: 'Invalid room credentials.' });
+    }
+
+    // Pull in models needed here
+    const Student  = require('../models/Student');
+    const Question = require('../models/Question');
+
+    // Find all students who have a room attempt for this roomCode
+    const students = await Student.find({
+      'attemptHistory.roomCode': normalizedCode,
+    }).lean();
+
+    // Collect all questionIds seen across all students & levels
+    const allQuestionIds = new Set();
+    // Map: questionId → { level, correctCount, totalCount, wrongOptionCounts: {origIdx: n} }
+    const qStats = {};
+
+    for (const student of students) {
+      const roomAttempts = (student.attemptHistory || []).filter(
+        (h) => h.roomCode === normalizedCode
+      );
+
+      for (const attempt of roomAttempts) {
+        const levelsSummary = attempt.levelsSummary || [];
+
+        for (const lvl of levelsSummary) {
+          const lvlNum = lvl.level;
+          for (const ans of (lvl.answers || [])) {
+            const qId = ans.questionId?.toString();
+            if (!qId) continue;
+            allQuestionIds.add(qId);
+
+            if (!qStats[qId]) {
+              qStats[qId] = { level: lvlNum, correctCount: 0, totalCount: 0, wrongOptionCounts: {} };
+            }
+            qStats[qId].totalCount++;
+
+            if (ans.isCorrect) {
+              qStats[qId].correctCount++;
+            } else {
+              // Map shuffled selectedIndex back to original index
+              const origIdx = Array.isArray(ans.shuffleMap) && Number.isInteger(ans.selectedIndex) && ans.selectedIndex >= 0
+                ? ans.shuffleMap[ans.selectedIndex]
+                : null;
+              if (origIdx !== null && origIdx !== undefined) {
+                qStats[qId].wrongOptionCounts[origIdx] = (qStats[qId].wrongOptionCounts[origIdx] || 0) + 1;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Fetch question texts for all seen question IDs
+    const qIdArray = Array.from(allQuestionIds);
+    const dbQuestions = await Question.find({ _id: { $in: qIdArray } }).lean();
+    const qMap = Object.fromEntries(dbQuestions.map((q) => [q._id.toString(), q]));
+
+    // Build per-level analytics structure
+    const byLevel = {};
+    for (const [qId, stat] of Object.entries(qStats)) {
+      const q = qMap[qId];
+      if (!q) continue;
+
+      const lvl = stat.level;
+      if (!byLevel[lvl]) byLevel[lvl] = [];
+
+      const correctPct = stat.totalCount > 0
+        ? Math.round((stat.correctCount / stat.totalCount) * 100)
+        : 0;
+      const wrongPct = 100 - correctPct;
+
+      // Find most common wrong answer
+      let mostCommonWrongIndex = null;
+      let mostCommonWrongCount = 0;
+      for (const [idx, count] of Object.entries(stat.wrongOptionCounts)) {
+        if (count > mostCommonWrongCount) {
+          mostCommonWrongCount = count;
+          mostCommonWrongIndex = parseInt(idx, 10);
+        }
+      }
+
+      byLevel[lvl].push({
+        questionId: qId,
+        questionText: q.questionText,
+        options: q.options,
+        correctAnswerIndex: q.correctAnswerIndex,
+        section: q.section,
+        difficulty: q.difficulty || 'medium',
+        totalAttempts: stat.totalCount,
+        correctCount: stat.correctCount,
+        wrongCount: stat.totalCount - stat.correctCount,
+        correctPct,
+        wrongPct,
+        mostCommonWrongIndex,
+        mostCommonWrongText:
+          mostCommonWrongIndex !== null && q.options[mostCommonWrongIndex]
+            ? q.options[mostCommonWrongIndex]
+            : null,
+        mostCommonWrongCount,
+      });
+    }
+
+    // Sort each level's questions by correctPct ascending (hardest first)
+    for (const lvl of Object.keys(byLevel)) {
+      byLevel[lvl].sort((a, b) => a.correctPct - b.correctPct);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        roomCode: normalizedCode,
+        totalStudents: students.length,
+        byLevel,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/rooms/:roomCode
  * Fetches room details, status, and participant list for the Live Room Dashboard.
  */

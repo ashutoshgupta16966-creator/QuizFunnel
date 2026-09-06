@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getRoomDetails, closeRoom } from '../api';
+import { getRoomDetails, closeRoom, getRoomAnalytics } from '../api';
 import { joinAdminRoomSocket, disconnectSocket } from '../utils/socket';
 import ThemeToggle from '../components/ThemeToggle';
+
 
 function formatTimeMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -25,6 +26,14 @@ export default function RoomAdminDashboard() {
   const [closing, setClosing] = useState(false);
 
   const adminPassword = sessionStorage.getItem(`room_admin_pwd_${roomCode?.toUpperCase()}`) || '';
+
+  // ── Analytics state ─────────────────────────────────────────────────────────
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState(null); // { totalStudents, byLevel }
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState('');
+  const [analyticsLevel, setAnalyticsLevel] = useState(1); // active level tab
+
 
   // ── Fetch Initial Room Details ──
   const fetchDetails = useCallback(async () => {
@@ -136,7 +145,80 @@ export default function RoomAdminDashboard() {
     }
   };
 
+  // ── CSV Export ────────────────────────────────────────────────────────────────
+  const handleExportCSV = useCallback(() => {
+    const allParticipants = room?.participants || [];
+    if (allParticipants.length === 0) {
+      alert('No participant data to export yet.');
+      return;
+    }
+
+    // Sort by score desc, time asc (same as table)
+    const sorted = [...allParticipants].sort((a, b) => {
+      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+      return (a.timeTaken || 0) - (b.timeTaken || 0);
+    });
+
+    const statusLabel = (p) => {
+      if (p.isDisqualified) return 'Disqualified 🚫';
+      if (p.status === 'completed' || p.status === 'advanced') return 'Passed';
+      if (p.status === 'eliminated') return 'Failed';
+      return 'In Progress';
+    };
+
+    const header = ['Rank', 'Student Name', 'Roll Number/Phone', 'Branch', 'Level Reached', 'Total Score', 'Completion Time', 'Status'];
+    const rows = sorted.map((p, idx) => [
+      idx + 1,
+      `"${(p.name || '').replace(/"/g, '""')}"`,
+      p.mobile || '',
+      p.branch || '',
+      p.level || 1,
+      p.score ?? 0,
+      formatTimeMMSS(p.timeTaken || 0),
+      statusLabel(p),
+    ]);
+
+    const csvContent = [header, ...rows].map((r) => r.join(',')).join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `QuizFunnel_Room_${room.roomCode}_Results.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [room]);
+
+  // ── Fetch Question Analytics ──────────────────────────────────────────────────
+  const fetchAnalytics = useCallback(async () => {
+    if (!roomCode) return;
+    setAnalyticsLoading(true);
+    setAnalyticsError('');
+    try {
+      const res = await getRoomAnalytics(roomCode, adminPassword);
+      setAnalyticsData(res.data.data);
+      // Auto-select the first available level
+      const levels = Object.keys(res.data.data.byLevel || {}).map(Number).sort();
+      if (levels.length > 0) setAnalyticsLevel(levels[0]);
+    } catch (err) {
+      setAnalyticsError(err.response?.data?.error || 'Failed to load analytics.');
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [roomCode, adminPassword]);
+
+  const handleToggleAnalytics = () => {
+    const willOpen = !analyticsOpen;
+    setAnalyticsOpen(willOpen);
+    // Fetch on first open (or if no data yet)
+    if (willOpen && !analyticsData && !analyticsLoading) {
+      fetchAnalytics();
+    }
+  };
+
   // Filter and sort participants
+
   const participants = room?.participants || [];
   const totalJoined = participants.length;
   const maxCapacity = room?.maxCapacity || 60;
@@ -313,6 +395,23 @@ export default function RoomAdminDashboard() {
                 >
                   🔄 Refresh
                 </button>
+                <button
+                  type="button"
+                  className="btn btn-export btn-sm"
+                  onClick={handleExportCSV}
+                  title="Download participant results as CSV"
+                  disabled={participants.length === 0}
+                >
+                  📥 Export Results (CSV)
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-analytics btn-sm ${analyticsOpen ? 'active' : ''}`}
+                  onClick={handleToggleAnalytics}
+                  title="View per-question answer analytics"
+                >
+                  📊 Question Analytics {analyticsOpen ? '▲' : '▼'}
+                </button>
                 {room.status === 'active' && (
                   <button
                     type="button"
@@ -325,6 +424,7 @@ export default function RoomAdminDashboard() {
                 )}
               </div>
             </div>
+
 
             {/* ── Real-Time Participants Table ── */}
             <div className="table-wrapper">
@@ -400,6 +500,152 @@ export default function RoomAdminDashboard() {
                 </tbody>
               </table>
             </div>
+
+            {/* ── Question Analytics Accordion ── */}
+            {analyticsOpen && (
+              <div className="analytics-accordion">
+                <div className="analytics-accordion-header">
+                  <span className="analytics-title-icon">📊</span>
+                  <h3 className="analytics-title">Question Analytics</h3>
+                  {analyticsData && (
+                    <span className="analytics-meta">
+                      {analyticsData.totalStudents} student{analyticsData.totalStudents !== 1 ? 's' : ''} analysed
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs analytics-refresh-btn"
+                    onClick={fetchAnalytics}
+                    disabled={analyticsLoading}
+                    title="Re-fetch analytics"
+                  >
+                    {analyticsLoading ? '⏳' : '🔄'} Refresh
+                  </button>
+                </div>
+
+                {analyticsLoading && (
+                  <div className="analytics-loading">
+                    <span className="spinner" /> Loading question data…
+                  </div>
+                )}
+
+                {analyticsError && (
+                  <div className="analytics-error">⚠️ {analyticsError}</div>
+                )}
+
+                {!analyticsLoading && !analyticsError && analyticsData && (
+                  (() => {
+                    const levels = Object.keys(analyticsData.byLevel || {}).map(Number).sort();
+                    if (levels.length === 0) {
+                      return (
+                        <p className="analytics-empty">
+                          No question data yet — analytics populate after students submit each level.
+                        </p>
+                      );
+                    }
+
+                    const activeQuestions = analyticsData.byLevel[analyticsLevel] || [];
+
+                    return (
+                      <>
+                        {/* Level tab strip */}
+                        <div className="analytics-level-tabs">
+                          {levels.map((lvl) => (
+                            <button
+                              key={lvl}
+                              type="button"
+                              className={`analytics-level-tab ${analyticsLevel === lvl ? 'active' : ''}`}
+                              onClick={() => setAnalyticsLevel(lvl)}
+                            >
+                              Level {lvl}
+                              <span className="analytics-tab-count">
+                                {analyticsData.byLevel[lvl]?.length || 0}Q
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Per-question cards */}
+                        {activeQuestions.length === 0 ? (
+                          <p className="analytics-empty">
+                            No submissions for Level {analyticsLevel} yet.
+                          </p>
+                        ) : (
+                          <div className="analytics-questions-list">
+                            {activeQuestions.map((q, idx) => {
+                              const difficulty = q.difficulty || 'medium';
+                              return (
+                                <div
+                                  key={q.questionId}
+                                  className={`analytics-question-card difficulty-${difficulty}`}
+                                >
+                                  {/* Card header */}
+                                  <div className="analytics-q-header">
+                                    <span className="analytics-q-num">Q{idx + 1}</span>
+                                    <span className={`analytics-difficulty-tag tag-${difficulty}`}>
+                                      {difficulty}
+                                    </span>
+                                    <span className="analytics-section-tag">{q.section}</span>
+                                    <span className="analytics-attempts">
+                                      {q.totalAttempts} attempt{q.totalAttempts !== 1 ? 's' : ''}
+                                    </span>
+                                  </div>
+
+                                  {/* Question preview */}
+                                  <p className="analytics-q-text">
+                                    {q.questionText.length > 120
+                                      ? q.questionText.slice(0, 120) + '…'
+                                      : q.questionText}
+                                  </p>
+
+                                  {/* Correct / Wrong bar */}
+                                  <div className="analytics-bar-container">
+                                    <div className="analytics-bar-row">
+                                      <div
+                                        className="analytics-bar-fill correct-fill"
+                                        style={{ width: `${q.correctPct}%` }}
+                                      />
+                                      <div
+                                        className="analytics-bar-fill wrong-fill"
+                                        style={{ width: `${q.wrongPct}%` }}
+                                      />
+                                    </div>
+                                    <div className="analytics-bar-labels">
+                                      <span className="bar-label correct-label">
+                                        ✅ {q.correctPct}% correct ({q.correctCount})
+                                      </span>
+                                      <span className="bar-label wrong-label">
+                                        ❌ {q.wrongPct}% wrong ({q.wrongCount})
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Correct answer */}
+                                  <div className="analytics-correct-ans">
+                                    <span className="correct-ans-label">Correct answer:</span>
+                                    <span className="correct-ans-text">
+                                      {q.options?.[q.correctAnswerIndex] ?? '—'}
+                                    </span>
+                                  </div>
+
+                                  {/* Most common wrong answer */}
+                                  {q.mostCommonWrongText && q.wrongCount > 0 && (
+                                    <div className="analytics-wrong-badge">
+                                      🔴 Most chosen wrong answer ({q.mostCommonWrongCount} student{q.mostCommonWrongCount !== 1 ? 's' : ''}):&nbsp;
+                                      <strong>{q.mostCommonWrongText}</strong>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()
+                )}
+              </div>
+            )}
           </>
         )}
       </main>

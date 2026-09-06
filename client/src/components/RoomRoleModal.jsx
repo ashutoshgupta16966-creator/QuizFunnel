@@ -325,7 +325,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
                 className="room-back-btn"
                 onClick={() => setStep('select_role')}
               >
-                ← Back
+                ← Back to Rooms
               </button>
               <span className="room-modal-icon">👑</span>
               <h2 className="room-modal-title">Create Live Room</h2>
@@ -417,7 +417,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
                 className="room-back-btn"
                 onClick={() => setStep('select_role')}
               >
-                ← Back
+                ← Back to Rooms
               </button>
               <span className="room-modal-icon">↩️</span>
               <h2 className="room-modal-title">Re-join Your Room</h2>
@@ -489,7 +489,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
                 className="room-back-btn"
                 onClick={() => setStep('select_role')}
               >
-                ← Back
+                ← Back to Rooms
               </button>
               <span className="room-modal-icon">🎓</span>
               <h2 className="room-modal-title">Join Live Quiz Room</h2>
