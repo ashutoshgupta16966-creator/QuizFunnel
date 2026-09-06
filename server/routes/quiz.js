@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Question = require('../models/Question');
 const Student = require('../models/Student');
+const Room = require('../models/Room');
 const LEVELS = require('../config/levels');
 
 /**
@@ -190,7 +191,7 @@ router.get('/questions/:level', async (req, res, next) => {
  */
 router.post('/submit', async (req, res, next) => {
   try {
-    const { mobile, level: rawLevel, answers, timeTaken, isDisqualified } = req.body;
+    const { mobile, level: rawLevel, answers, timeTaken, isDisqualified, isRoom, roomCode } = req.body;
     const level = parseInt(rawLevel, 10);
 
     if (!mobile || !level || !Array.isArray(answers)) {
@@ -305,6 +306,9 @@ router.post('/submit', async (req, res, next) => {
       const cumTime = (student.totalTimeTaken || 0) + elapsed;
       const accuracyPct = maxPossible > 0 ? Math.min(100, Math.round((cumScore / maxPossible) * 100)) : 0;
 
+      const isRoomQuiz = Boolean(isRoom);
+      const normalizedRoomCode = isRoomQuiz && roomCode ? roomCode.trim().toUpperCase() : null;
+
       const historyRecord = {
         attemptId: `${mobile}_${Date.now()}`,
         attemptNumber: (student.attemptHistory?.length || 0) + 1,
@@ -316,6 +320,9 @@ router.post('/submit', async (req, res, next) => {
         totalTimeTaken: cumTime,
         status: newStatus,
         isDisqualified: Boolean(isDisqualified),
+        quizType: isRoomQuiz ? 'room' : 'normal',
+        isRoom: isRoomQuiz,
+        roomCode: normalizedRoomCode,
         levelsSummary: [...(student.levels || []), levelAttempt],
       };
 
@@ -326,6 +333,47 @@ router.post('/submit', async (req, res, next) => {
 
     // Fetch updated totals after calculation
     const updatedStudent = await Student.findOne({ mobile }).lean();
+
+    // ── If this is a live Room Quiz session, update Room participant & broadcast ──
+    if (isRoom && roomCode) {
+      const normalizedRoomCode = roomCode.trim().toUpperCase();
+      try {
+        const nextLvlNum = passed && !isLastLevel ? level + 1 : level;
+        const finalScore = updatedStudent ? updatedStudent.totalScore : score;
+        const finalTime  = updatedStudent ? updatedStudent.totalTimeTaken : elapsed;
+
+        await Room.updateOne(
+          { roomCode: normalizedRoomCode, 'participants.mobile': mobile },
+          {
+            $set: {
+              'participants.$.level': nextLvlNum,
+              'participants.$.score': finalScore,
+              'participants.$.timeTaken': finalTime,
+              'participants.$.status': newStatus,
+              'participants.$.isDisqualified': Boolean(isDisqualified),
+              'participants.$.lastActive': new Date(),
+            },
+          }
+        );
+
+        const io = req.app.get('io');
+        if (io) {
+          io.to(`room:${normalizedRoomCode}`).emit('student:updated', {
+            mobile,
+            name: student.name,
+            branch: student.branch,
+            level: nextLvlNum,
+            score: finalScore,
+            timeTaken: finalTime,
+            status: newStatus,
+            isDisqualified: Boolean(isDisqualified),
+            lastActive: new Date(),
+          });
+        }
+      } catch (e) {
+        console.error('Error updating room participant on quiz submit:', e.message);
+      }
+    }
 
     res.json({
       success: true,
@@ -338,6 +386,8 @@ router.post('/submit', async (req, res, next) => {
         nextLevel: passed && !isLastLevel ? level + 1 : null,
         isLastLevel,
         isDisqualified: Boolean(isDisqualified),
+        isRoom: Boolean(isRoom),
+        roomCode: isRoom && roomCode ? roomCode.trim().toUpperCase() : null,
         totalScore: updatedStudent ? updatedStudent.totalScore : score,
         totalTimeTaken: updatedStudent ? updatedStudent.totalTimeTaken : elapsed,
       },

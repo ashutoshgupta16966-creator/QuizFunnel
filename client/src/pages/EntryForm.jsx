@@ -15,6 +15,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import DuplicateConfirmModal from '../components/DuplicateConfirmModal';
 import AttemptDetailView from '../components/AttemptDetailView';
 import ExitConfirmModal from '../components/ExitConfirmModal';
+import RoomRoleModal from '../components/RoomRoleModal';
 
 function formatTimeMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -82,6 +83,17 @@ export default function EntryForm() {
   const [selectedAttemptDetail, setSelectedAttemptDetail] = useState(null); // Clicked attempt for full detail view
   const [deleteConfirmAttempt, setDeleteConfirmAttempt] = useState(null); // Attempt object to delete
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Quiz Rooms Modal state
+  const [showRoomRoleModal, setShowRoomRoleModal] = useState(false);
+
+  // Auto-open Room Modal if ?joinRoom query parameter is present in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('joinRoom')) {
+      setShowRoomRoleModal(true);
+    }
+  }, []);
 
   useEffect(() => {
     let interval = null;
@@ -203,6 +215,11 @@ export default function EntryForm() {
 
           if (matchingDbItem) {
             if (locItem.isDisqualified) matchingDbItem.isDisqualified = true;
+            if (locItem.isRoom || locItem.quizType === 'room') {
+              matchingDbItem.isRoom = true;
+              matchingDbItem.roomCode = locItem.roomCode || matchingDbItem.roomCode;
+              matchingDbItem.quizType = 'room';
+            }
           } else {
             combined.push(locItem);
           }
@@ -231,6 +248,9 @@ export default function EntryForm() {
           timeFormatted: formatTimeMMSS(totalTime),
           status: isDisqualified ? 'eliminated' : studentData.status,
           isDisqualified,
+          isRoom: Boolean(studentData.isRoom || studentData.quizType === 'room'),
+          roomCode: studentData.roomCode || '',
+          quizType: studentData.quizType || 'normal',
           levelsSummary: studentData.levels || [],
         });
       }
@@ -255,6 +275,8 @@ export default function EntryForm() {
       const finalizedList = dedupedList.map((item, idx) => ({
         ...item,
         isDisqualified: Boolean(item.isDisqualified || item.status === 'disqualified'),
+        isRoom: Boolean(item.isRoom || item.quizType === 'room'),
+        roomCode: item.roomCode || '',
         attemptNumber: totalCount - idx,
       }));
 
@@ -395,7 +417,7 @@ export default function EntryForm() {
         <ThemeToggle />
       </div>
 
-      {/* Top Right Stacked Actions: QR Code (Top) & My Results (Below) */}
+      {/* Top Right Stacked Actions: QR Code (Top), My Results, and Quiz Rooms */}
       <div className="entry-top-right">
         <button
           type="button"
@@ -412,6 +434,14 @@ export default function EntryForm() {
           title="Access your private quiz attempts history"
         >
           🏆 <span className="btn-text">My Results</span>
+        </button>
+        <button
+          type="button"
+          className="quiz-rooms-btn"
+          onClick={() => setShowRoomRoleModal(true)}
+          title="Create or Join a Live Quiz Room"
+        >
+          🏫 <span className="btn-text">Quiz Rooms</span>
         </button>
       </div>
 
@@ -430,6 +460,11 @@ export default function EntryForm() {
           setShowHomeExitModal(false);
           window.history.go(-2);
         }}
+      />
+      <RoomRoleModal
+        isOpen={showRoomRoleModal}
+        onClose={() => setShowRoomRoleModal(false)}
+        homeFormData={form}
       />
 
       <div className="entry-card">
@@ -800,6 +835,8 @@ export default function EntryForm() {
                             const attemptNum = attempt.attemptNumber || (attemptsList.length - index);
                             const isDisqualifiedAttempt = Boolean(attempt.isDisqualified || attempt.status === 'disqualified');
                             const isCompletedAttempt = !isDisqualifiedAttempt && attempt.status === 'completed';
+                            const isRoomAttempt = Boolean(attempt.isRoom || attempt.quizType === 'room');
+                            const roomCode = attempt.roomCode || '';
                             const clearedLvl = isCompletedAttempt ? 4 : (attempt.levelReached || 1);
                             const maxPoss = attempt.maxPossible || CUMULATIVE_MAX[clearedLvl] || 50;
                             const score = attempt.totalScore ?? 0;
@@ -809,6 +846,8 @@ export default function EntryForm() {
                             const cardDetailData = {
                               ...attempt,
                               isDisqualified: isDisqualifiedAttempt,
+                              isRoom: isRoomAttempt,
+                              roomCode,
                               attemptNum,
                               clearedLvl,
                               maxPoss,
@@ -839,6 +878,11 @@ export default function EntryForm() {
                                     </div>
 
                                     <div className="attempt-actions-row">
+                                      {isRoomAttempt && (
+                                        <span className="status-badge room-badge">
+                                          Room Quiz 🏫 {roomCode ? `(${roomCode})` : ''}
+                                        </span>
+                                      )}
                                       <span className={`status-badge ${isDisqualifiedAttempt ? 'disqualified' : isCompletedAttempt ? 'completed' : 'eliminated'}`}>
                                         {isDisqualifiedAttempt ? 'Disqualified 🚫' : isCompletedAttempt ? 'Completed' : 'Eliminated'}
                                       </span>

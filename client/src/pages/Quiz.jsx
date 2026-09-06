@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
 import { getQuestions, submitQuiz } from '../api';
+import { joinStudentRoomSocket, emitStudentProgress, emitStudentDisqualified } from '../utils/socket';
 import { LEVELS } from '../config';
 import QuestionCard from '../components/QuestionCard';
 import TimerBar from '../components/TimerBar';
@@ -18,7 +19,7 @@ export default function Quiz() {
   const levelNum = parseInt(levelParam, 10);
   const levelConfig = LEVELS[levelNum];
   const navigate = useNavigate();
-  const { student, updateStudent, setLastResult, clearStudent } = useQuiz();
+  const { student, updateStudent, setLastResult, clearStudent, isRoomQuiz, roomSession } = useQuiz();
 
   const [questions, setQuestions]       = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -103,6 +104,20 @@ export default function Quiz() {
     loadQuestions();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [levelNum]);
+
+  // ── Sync with Live Room Socket (Only if isRoomQuiz === true) ─────────────
+  useEffect(() => {
+    if (isRoomQuiz && roomSession?.roomCode && student?.mobile) {
+      joinStudentRoomSocket(roomSession.roomCode, student);
+      emitStudentProgress({
+        roomCode: roomSession.roomCode,
+        mobile: student.mobile,
+        currentLevel: levelNum,
+        score: student.totalScore || 0,
+        status: 'in-progress',
+      });
+    }
+  }, [isRoomQuiz, roomSession?.roomCode, student, levelNum]);
 
   // ── Auto-save progress restoration ───────────────────────────────────────
   const restoreSavedProgress = (qs) => {
@@ -222,6 +237,8 @@ export default function Quiz() {
         answers:        answersArray,
         timeTaken:      elapsed,
         isDisqualified: Boolean(isDisqualified),
+        isRoom:         Boolean(isRoomQuiz),
+        roomCode:       roomSession?.roomCode || '',
       });
       const result = res.data.data;
       setLastResult({ ...result, isDisqualified: Boolean(isDisqualified || result.isDisqualified) });
@@ -233,6 +250,19 @@ export default function Quiz() {
         totalScore:     result.totalScore,
         totalTimeTaken: result.totalTimeTaken,
       });
+
+      // Emit real-time progress update to host if room session
+      if (isRoomQuiz && roomSession?.roomCode) {
+        emitStudentProgress({
+          roomCode:       roomSession.roomCode,
+          mobile:         student.mobile,
+          currentLevel:   levelNum,
+          score:          result.totalScore ?? 0,
+          timeTaken:      result.totalTimeTaken ?? elapsed,
+          status:         isDisqualified ? 'eliminated' : (result.passed ? (result.nextLevel ? 'advanced' : 'completed') : 'eliminated'),
+          isDisqualified: Boolean(isDisqualified),
+        });
+      }
 
       if (result.passed && result.nextLevel && !isDisqualified) {
         navigate('/level-up');
@@ -250,7 +280,7 @@ export default function Quiz() {
       }
       setToast({ type: 'error', message: 'Submission failed. Please try again.', duration: 5000 });
     }
-  }, [answers, questions, startedAt, levelNum, student, navigate, setLastResult, updateStudent, levelConfig]);
+  }, [answers, questions, startedAt, levelNum, student, navigate, setLastResult, updateStudent, levelConfig, isRoomQuiz, roomSession]);
 
   // ── Manual Submit Click (with Unattempted Questions Check) ───────────────
   const handleManualSubmit = () => {
@@ -311,6 +341,14 @@ export default function Quiz() {
             try {
               localStorage.setItem(`quiz_anti_cheated_${student.mobile}`, '1');
 
+              // If active in a live room, notify room host via socket immediately
+              if (isRoomQuiz && roomSession?.roomCode) {
+                emitStudentDisqualified({
+                  roomCode: roomSession.roomCode,
+                  mobile:   student.mobile,
+                });
+              }
+
               // Immediately record isDisqualified: true in LocalStorage attempt history
               const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
               const existing = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
@@ -331,10 +369,19 @@ export default function Quiz() {
                   timeFormatted: '00:00',
                   status: 'eliminated',
                   isDisqualified: true,
+                  isRoom: Boolean(isRoomQuiz),
+                  roomCode: roomSession?.roomCode || '',
+                  quizType: isRoomQuiz ? 'room' : 'normal',
                 };
                 localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify([newRecord, ...existing].slice(0, 30)));
               } else {
-                const updated = existing.map((a) => (a.id === attemptId ? { ...a, isDisqualified: true } : a));
+                const updated = existing.map((a) => (a.id === attemptId ? {
+                  ...a,
+                  isDisqualified: true,
+                  isRoom: Boolean(isRoomQuiz || a.isRoom),
+                  roomCode: roomSession?.roomCode || a.roomCode || '',
+                  quizType: isRoomQuiz ? 'room' : (a.quizType || 'normal'),
+                } : a));
                 localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
               }
             } catch { /* noop */ }
@@ -366,7 +413,7 @@ export default function Quiz() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [loading, submitting, student?.mobile, executeSubmit]);
+  }, [loading, submitting, student?.mobile, executeSubmit, isRoomQuiz, roomSession]);
 
   // Handle confirmed exit
   const handleConfirmExit = () => {
@@ -412,6 +459,9 @@ export default function Quiz() {
       <header className="quiz-header">
         <div className="quiz-header-left">
           <span className="quiz-level-badge">{levelConfig.label}</span>
+          {isRoomQuiz && roomSession?.roomCode && (
+            <span className="quiz-room-tag">🏫 Room: {roomSession.roomCode}</span>
+          )}
           <span className="quiz-student-name">{student.name}</span>
         </div>
         {startedAt && (

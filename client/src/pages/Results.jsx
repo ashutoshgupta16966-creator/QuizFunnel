@@ -82,7 +82,7 @@ class ResultsErrorBoundary extends Component {
  */
 function ResultsContent() {
   const navigate = useNavigate();
-  const { student, lastResult, clearStudent } = useQuiz();
+  const { student, lastResult, clearStudent, isRoomQuiz, roomSession, clearRoomSession } = useQuiz();
   const [showExitModal, setShowExitModal] = useState(false);
 
   const isCompleted  = student?.status === 'completed';
@@ -200,15 +200,24 @@ function ResultsContent() {
           timeFormatted: formattedTime,
           status: isDisqualified ? 'eliminated' : (isCompleted ? 'completed' : 'eliminated'),
           isDisqualified,
+          isRoom: Boolean(isRoomQuiz),
+          roomCode: roomSession?.roomCode || '',
+          quizType: isRoomQuiz ? 'room' : 'normal',
         };
         const updated = [newRecord, ...existing].slice(0, 30);
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
-      } else if (isDisqualified) {
-        const updated = existing.map((a) => (a.id === attemptId ? { ...a, isDisqualified: true } : a));
+      } else {
+        const updated = existing.map((a) => (a.id === attemptId ? {
+          ...a,
+          ...(isDisqualified ? { isDisqualified: true } : {}),
+          isRoom: Boolean(isRoomQuiz || a.isRoom),
+          roomCode: roomSession?.roomCode || a.roomCode || '',
+          quizType: isRoomQuiz ? 'room' : (a.quizType || 'normal'),
+        } : a));
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
       }
     } catch { /* noop */ }
-  }, [student, clearedLevel, totalScore, totalTimeTaken, maxPossible, accuracyPct, formattedTime, isCompleted, isEliminated, isDisqualified]);
+  }, [student, clearedLevel, totalScore, totalTimeTaken, maxPossible, accuracyPct, formattedTime, isCompleted, isEliminated, isDisqualified, isRoomQuiz, roomSession]);
 
   const handleReturnHome = () => {
     if (student?.mobile) {
@@ -216,6 +225,9 @@ function ResultsContent() {
         localStorage.removeItem(`quiz_anti_cheated_${student.mobile}`);
         localStorage.removeItem(`quiz_tab_switches_${student.mobile}`);
       } catch { /* noop */ }
+    }
+    if (isRoomQuiz) {
+      clearRoomSession();
     }
     clearStudent();
     window.location.replace('/');

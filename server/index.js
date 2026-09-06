@@ -1,23 +1,28 @@
 require('dotenv').config();
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const morgan = require('morgan');
+const { Server } = require('socket.io');
 
 const studentsRouter = require('./routes/students');
 const quizRouter = require('./routes/quiz');
 const adminRouter = require('./routes/admin');
 const feedbackRouter = require('./routes/feedback');
+const roomsRouter = require('./routes/rooms');
+const { initRoomSocket } = require('./socket/roomSocket');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
 // ── Middleware ──────────────────────────────────────────────────────────────
 // Parse allowed origins from env (comma-separated)
 const allowedOrigins = (process.env.CLIENT_URL || '*').split(',').map((s) => s.trim());
 
-app.use(cors({
+const corsOptions = {
   origin: allowedOrigins.length === 1 && allowedOrigins[0] === '*'
     ? '*'
     : (origin, callback) => {
@@ -29,16 +34,28 @@ app.use(cors({
       },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Student-Mobile'],
-}));
+};
 
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+// ── Socket.io Setup ──────────────────────────────────────────────────────────
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins.length === 1 && allowedOrigins[0] === '*' ? '*' : allowedOrigins,
+    methods: ['GET', 'POST'],
+  },
+});
+app.set('io', io);
+initRoomSocket(io);
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/students', studentsRouter);
 app.use('/api/quiz',     quizRouter);
 app.use('/api/admin',    adminRouter);
 app.use('/api/feedback', feedbackRouter);
+app.use('/api/rooms',    roomsRouter);
 
 // AI Question Generation Top-Level Route
 const { generateAndPopulateQuestions } = require('./controllers/aiQuestionController');
@@ -73,8 +90,8 @@ mongoose
   })
   .then(() => {
     console.log('✅  Connected to MongoDB');
-    app.listen(PORT, () => {
-      console.log(`🚀  Server listening on port ${PORT}`);
+    server.listen(PORT, () => {
+      console.log(`🚀  Server listening on port ${PORT} with Socket.io enabled`);
       console.log(`    Health: http://localhost:${PORT}/health`);
     });
   })

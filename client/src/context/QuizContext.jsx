@@ -5,8 +5,9 @@ const QuizContext = createContext(null);
 // Keys used in localStorage/sessionStorage — kept in one place so
 // clearAllStorage() never misses anything.
 const STORAGE_KEYS = {
-  student: 'quiz_student',
-  adminPwd: 'admin_pwd', // sessionStorage
+  student:     'quiz_student',
+  adminPwd:    'admin_pwd', // sessionStorage
+  roomSession: 'quiz_room_session',
 };
 
 /**
@@ -15,6 +16,7 @@ const STORAGE_KEYS = {
  */
 function clearAllStorage() {
   try { localStorage.removeItem(STORAGE_KEYS.student); } catch { /* noop */ }
+  try { localStorage.removeItem(STORAGE_KEYS.roomSession); } catch { /* noop */ }
   try { sessionStorage.removeItem(STORAGE_KEYS.adminPwd); } catch { /* noop */ }
 }
 
@@ -45,6 +47,38 @@ export function QuizProvider({ children }) {
       return null;
     }
   });
+
+  // Room Session state (for room-based quizzes)
+  const [roomSession, setRoomSessionState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.roomSession);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const isRoomQuiz = Boolean(roomSession?.isRoomQuiz && roomSession?.roomCode);
+
+  const setRoomSession = (session) => {
+    setRoomSessionState(session);
+    if (session) {
+      try {
+        localStorage.setItem(STORAGE_KEYS.roomSession, JSON.stringify(session));
+      } catch { /* noop */ }
+    } else {
+      try {
+        localStorage.removeItem(STORAGE_KEYS.roomSession);
+      } catch { /* noop */ }
+    }
+  };
+
+  const clearRoomSession = () => {
+    setRoomSessionState(null);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.roomSession);
+    } catch { /* noop */ }
+  };
 
   // lastResult holds the most recent level submission response
   const [lastResult, setLastResult] = useState(null);
@@ -82,6 +116,7 @@ export function QuizProvider({ children }) {
   const clearStudent = () => {
     setStudentState(null);
     setLastResult(null);
+    clearRoomSession();
     clearAllStorage();
   };
 
@@ -93,6 +128,10 @@ export function QuizProvider({ children }) {
       clearStudent,
       lastResult,
       setLastResult,
+      roomSession,
+      isRoomQuiz,
+      setRoomSession,
+      clearRoomSession,
     }}>
       {children}
     </QuizContext.Provider>

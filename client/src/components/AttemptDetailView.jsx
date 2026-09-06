@@ -106,6 +106,8 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
 
   const isDisqualified = Boolean(attemptDetail.isDisqualified || attemptDetail.status === 'disqualified');
   const isCompleted = !isDisqualified && attemptDetail.status === 'completed';
+  const isRoomAttempt = Boolean(attemptDetail.isRoom || attemptDetail.quizType === 'room');
+  const roomCode = attemptDetail.roomCode || '';
 
   // Map review data by level for fast lookup (filtering only attempted questions)
   const reviewMapByLevel = {};
@@ -148,9 +150,16 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
         >
           ← Back to History List
         </button>
-        <span className={`status-badge ${isDisqualified ? 'disqualified' : isCompleted ? 'completed' : 'eliminated'}`}>
-          {isDisqualified ? 'Disqualified 🚫' : isCompleted ? 'Completed' : 'Eliminated'}
-        </span>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {isRoomAttempt && (
+            <span className="status-badge room-badge">
+              Room Quiz 🏫 {roomCode ? `(${roomCode})` : ''}
+            </span>
+          )}
+          <span className={`status-badge ${isDisqualified ? 'disqualified' : isCompleted ? 'completed' : 'eliminated'}`}>
+            {isDisqualified ? 'Disqualified 🚫' : isCompleted ? 'Completed' : 'Eliminated'}
+          </span>
+        </div>
       </div>
 
       {/* Hero Summary Card */}
@@ -171,6 +180,9 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
           </p>
         )}
         <p className="detail-hero-meta">
+          {isRoomAttempt && (
+            <span style={{ color: '#a78bfa', fontWeight: 700 }}>[Room: {roomCode}] · </span>
+          )}
           {studentData?.name || attemptDetail.studentName} ({studentData?.branch || attemptDetail.branch}) ·{' '}
           {attemptDetail.attemptDate
             ? new Date(attemptDetail.attemptDate).toLocaleString(undefined, {

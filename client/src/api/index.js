@@ -91,6 +91,22 @@ export const submitFeedback = (payload) =>
 export const getAttemptFeedback = (attemptId, mobile) =>
   api.get(`/api/feedback/${encodeURIComponent(attemptId)}`, { params: { mobile } });
 
+// ── Room Quiz endpoints ───────────────────────────────────────────────────────
+export const createRoom = (data) =>
+  api.post('/api/rooms/create', data);
+
+export const verifyRoom = (data) =>
+  api.post('/api/rooms/verify', data);
+
+export const joinRoom = (data) =>
+  api.post('/api/rooms/join', data);
+
+export const getRoomDetails = (roomCode, password) =>
+  api.get(`/api/rooms/${encodeURIComponent(roomCode)}`, { params: { password } });
+
+export const closeRoom = (roomCode, data) =>
+  api.post(`/api/rooms/${encodeURIComponent(roomCode)}/close`, data);
+
 // ── Admin endpoints ──────────────────────────────────────────────────────────
 const adminHeaders = (password) => ({ Authorization: `Bearer ${password}` });
 
