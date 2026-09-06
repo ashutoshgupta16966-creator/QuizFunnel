@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { createRoom, joinRoom, rejoinRoom } from '../api';
+import { createRoom, joinRoom, rejoinRoom, checkReattemptStatus } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
 
@@ -21,7 +21,12 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
   const { saveStudent, setRoomSession } = useQuiz();
 
   const [step, setStep] = useState('select_role');
-  // steps: 'select_role' | 'admin_create' | 'admin_rejoin' | 'student_join'
+  // steps: 'select_role' | 'admin_create' | 'admin_rejoin' | 'student_join' | 'waiting_approval'
+
+  // ── Pending Approval State ───────────────────────────────────────────────────
+  const [pendingData, setPendingData] = useState(null);
+  const [approvalDenied, setApprovalDenied] = useState(false);
+  const [approvalSuccess, setApprovalSuccess] = useState(false);
 
   // ── Admin Create form state ──────────────────────────────────────────────────
   const [adminForm, setAdminForm] = useState({
@@ -72,6 +77,9 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
       setAdminError('');
       setRejoinError('');
       setStudentError('');
+      setPendingData(null);
+      setApprovalDenied(false);
+      setApprovalSuccess(false);
       setStudentForm((prev) => ({
         ...prev,
         name: homeFormData.name || prev.name || '',
@@ -81,6 +89,78 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
       }));
     }
   }, [isOpen, homeFormData]);
+
+  // ── Listen for Host Re-Attempt Approval / Denial ──────────────────────────────
+  useEffect(() => {
+    if (step !== 'waiting_approval' || !pendingData?.roomCode || !pendingData?.mobile) return;
+
+    let isSubscribed = true;
+
+    const handleApproved = (data) => {
+      if (!isSubscribed) return;
+      setApprovalSuccess(true);
+      const studentObj = data?.student || {
+        name: pendingData.name,
+        mobile: pendingData.mobile,
+        branch: pendingData.branch,
+        status: 'in-progress',
+        currentLevel: 1,
+      };
+      const roomObj = data?.room || {
+        roomCode: pendingData.roomCode,
+      };
+
+      saveStudent(studentObj);
+      setRoomSession({
+        isRoomQuiz: true,
+        roomCode: roomObj.roomCode,
+        adminName: roomObj.adminName || '',
+      });
+
+      setTimeout(() => {
+        if (isSubscribed) {
+          onClose();
+          navigate('/quiz/1');
+        }
+      }, 1200);
+    };
+
+    const handleDenied = () => {
+      if (!isSubscribed) return;
+      setApprovalDenied(true);
+    };
+
+    // 1. Socket listener
+    const cleanupSocket = joinStudentRoomSocket(
+      pendingData.roomCode,
+      { mobile: pendingData.mobile },
+      {
+        onReattemptApproved: handleApproved,
+        onReattemptDenied: handleDenied,
+      }
+    );
+
+    // 2. Polling fallback every 2.5 seconds
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await checkReattemptStatus(pendingData.roomCode, pendingData.mobile);
+        const status = res.data?.data?.status;
+        if (status === 'approved') {
+          handleApproved(res.data.data);
+        } else if (status === 'denied') {
+          handleDenied();
+        }
+      } catch (err) {
+        console.warn('Re-attempt status check polling error:', err.message);
+      }
+    }, 2500);
+
+    return () => {
+      isSubscribed = false;
+      cleanupSocket();
+      clearInterval(pollInterval);
+    };
+  }, [step, pendingData, onClose, navigate, saveStudent, setRoomSession]);
 
   if (!isOpen) return null;
 
@@ -221,6 +301,21 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
         branch: studentForm.branch.trim(),
         password: studentForm.password.trim(),
       });
+
+      // ── Strict Host-Approved Re-Attempt Queue ────────────────────────────
+      if (res.data?.status === 'PENDING_HOST_APPROVAL' || res.data?.pendingApproval) {
+        setPendingData({
+          roomCode: code,
+          mobile: studentForm.mobile.trim(),
+          name: studentForm.name.trim(),
+          branch: studentForm.branch.trim(),
+          password: studentForm.password.trim(),
+        });
+        setApprovalDenied(false);
+        setApprovalSuccess(false);
+        setStep('waiting_approval');
+        return;
+      }
 
       const { student, room } = res.data.data;
 
@@ -596,6 +691,69 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
                 )}
               </button>
             </form>
+          </div>
+        )}
+
+        {/* ── STEP 3: WAITING FOR HOST APPROVAL ── */}
+        {step === 'waiting_approval' && (
+          <div className="room-form-view waiting-approval-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">⏳</span>
+              <h2 className="room-modal-title">Waiting for Host Approval...</h2>
+              <p className="room-modal-subtitle">
+                Please ask your Admin to approve your request.
+              </p>
+            </div>
+
+            <div className="waiting-approval-card">
+              <div className="waiting-student-info">
+                <span className="info-label">Candidate:</span>
+                <strong>{pendingData?.name}</strong> · {pendingData?.branch} ({pendingData?.mobile})
+              </div>
+              <div className="waiting-room-info">
+                <span className="info-label">Room Code:</span>
+                <strong className="code-highlight">{pendingData?.roomCode}</strong>
+              </div>
+
+              {!approvalDenied && !approvalSuccess && (
+                <div className="waiting-status-indicator">
+                  <div className="waiting-spinner-pulse" />
+                  <p className="waiting-status-text">
+                    Pending review on Admin Live Dashboard…
+                  </p>
+                  <p className="waiting-hint-text">
+                    The host must approve your re-attempt on the Live Dashboard before you can enter.
+                  </p>
+                </div>
+              )}
+
+              {approvalSuccess && (
+                <div className="approval-success-alert">
+                  ✅ <strong>Re-attempt Approved by Host!</strong> Starting Quiz…
+                </div>
+              )}
+
+              {approvalDenied && (
+                <div className="approval-denied-alert">
+                  🚫 <strong>Re-attempt denied by Host</strong>
+                  <p className="denied-desc">The administrator has declined your request to re-attempt this quiz.</p>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary room-submit-btn"
+              onClick={() => {
+                setStep('select_role');
+                setPendingData(null);
+                setApprovalDenied(false);
+                setApprovalSuccess(false);
+                onClose();
+              }}
+            >
+              {approvalDenied ? 'OK / Return to Home' : 'Cancel Request & Return to Home'}
+            </button>
           </div>
         )}
       </div>

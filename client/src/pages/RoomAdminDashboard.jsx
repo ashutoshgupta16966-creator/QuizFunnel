@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getRoomDetails, closeRoom, getRoomAnalytics } from '../api';
+import { getRoomDetails, closeRoom, getRoomAnalytics, approveReattempt, denyReattempt } from '../api';
 import { joinAdminRoomSocket, disconnectSocket } from '../utils/socket';
 import ThemeToggle from '../components/ThemeToggle';
 
@@ -27,6 +27,10 @@ export default function RoomAdminDashboard() {
 
   const adminPassword = sessionStorage.getItem(`room_admin_pwd_${roomCode?.toUpperCase()}`) || '';
 
+  // ── Pending Re-attempt Requests Queue ───────────────────────────────────────
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [processingAction, setProcessingAction] = useState('');
+
   // ── Analytics state ─────────────────────────────────────────────────────────
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [analyticsData, setAnalyticsData] = useState(null); // { totalStudents, byLevel }
@@ -43,6 +47,9 @@ export default function RoomAdminDashboard() {
       setError('');
       const res = await getRoomDetails(roomCode, adminPassword);
       setRoom(res.data.data);
+      if (Array.isArray(res.data.data?.reattemptRequests)) {
+        setPendingRequests(res.data.data.reattemptRequests);
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to load room details. Please check room code.');
     } finally {
@@ -61,6 +68,9 @@ export default function RoomAdminDashboard() {
     const cleanupSocket = joinAdminRoomSocket(roomCode, adminPassword, {
       onJoined: (data) => {
         setRoom((prev) => (prev ? { ...prev, ...data } : data));
+        if (Array.isArray(data?.reattemptRequests)) {
+          setPendingRequests(data.reattemptRequests);
+        }
       },
       onStudentJoined: (newStudent) => {
         setRoom((prev) => {
@@ -101,6 +111,12 @@ export default function RoomAdminDashboard() {
           };
         });
       },
+      onReattemptRequest: (newReq) => {
+        setPendingRequests((prev) => {
+          const filtered = prev.filter((r) => r.mobile !== newReq.mobile);
+          return [newReq, ...filtered];
+        });
+      },
       onError: (err) => {
         console.warn('Admin room socket notice:', err.message);
       },
@@ -111,6 +127,32 @@ export default function RoomAdminDashboard() {
       disconnectSocket();
     };
   }, [roomCode, adminPassword]);
+
+  // ── Re-attempt Host Approval Handlers ───────────────────────────────────────
+  const handleApproveReattempt = async (mobile) => {
+    try {
+      setProcessingAction(`approve_${mobile}`);
+      await approveReattempt(roomCode, { mobile, password: adminPassword });
+      setPendingRequests((prev) => prev.filter((r) => r.mobile !== mobile));
+      fetchDetails();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to approve re-attempt.');
+    } finally {
+      setProcessingAction('');
+    }
+  };
+
+  const handleDenyReattempt = async (mobile) => {
+    try {
+      setProcessingAction(`deny_${mobile}`);
+      await denyReattempt(roomCode, { mobile, password: adminPassword });
+      setPendingRequests((prev) => prev.filter((r) => r.mobile !== mobile));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to deny re-attempt.');
+    } finally {
+      setProcessingAction('');
+    }
+  };
 
   // ── Copy Room Code ──
   const handleCopyCode = () => {
@@ -343,6 +385,55 @@ export default function RoomAdminDashboard() {
               </div>
             </div>
 
+            {/* ── Pending Re-attempt Requests Queue ── */}
+            {pendingRequests.length > 0 && (
+              <div className="reattempt-requests-container">
+                <div className="reattempt-requests-header">
+                  <span className="reattempt-alert-badge">
+                    🔔 {pendingRequests.length} Pending Re-attempt Request{pendingRequests.length > 1 ? 's' : ''}
+                  </span>
+                  <p className="reattempt-header-sub">
+                    Candidates who previously completed or were eliminated are requesting re-entry.
+                  </p>
+                </div>
+                <div className="reattempt-cards-list">
+                  {pendingRequests.map((req) => (
+                    <div key={req.mobile} className="reattempt-card-item">
+                      <div className="reattempt-student-details">
+                        <strong className="reattempt-student-name">{req.name}</strong>
+                        <span className="reattempt-student-meta">
+                          {req.branch} · {req.mobile}
+                        </span>
+                        {req.previousStatus && (
+                          <span className="reattempt-prev-status">
+                            Previous status: <em>{req.previousStatus} ({req.previousScore || 0} pts)</em>
+                          </span>
+                        )}
+                      </div>
+                      <div className="reattempt-action-buttons">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-success reattempt-allow-btn"
+                          onClick={() => handleApproveReattempt(req.mobile)}
+                          disabled={Boolean(processingAction)}
+                        >
+                          {processingAction === `approve_${req.mobile}` ? 'Allowing…' : '✓ Allow Re-attempt'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-danger reattempt-deny-btn"
+                          onClick={() => handleDenyReattempt(req.mobile)}
+                          disabled={Boolean(processingAction)}
+                        >
+                          {processingAction === `deny_${req.mobile}` ? 'Denying…' : '✕ Deny'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ── Control Action Strip ── */}
             <div className="dashboard-control-strip">
               <div className="search-filter-box">
@@ -467,7 +558,14 @@ export default function RoomAdminDashboard() {
                         <tr key={p.mobile} className={`participant-row ${isDisq ? 'row-disqualified' : ''}`}>
                           <td className="rank-cell">{idx + 1}</td>
                           <td className="name-cell">
-                            <strong>{p.name}</strong>
+                            <div className="name-with-badge">
+                              <strong>{p.name}</strong>
+                              {p.isReattempt && (
+                                <span className="reattempt-badge" title="Re-attempt approved by Host">
+                                  Re-attempted 🔄
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td>
                             <span className="branch-tag">{p.branch || '—'}</span>
@@ -591,12 +689,37 @@ export default function RoomAdminDashboard() {
                                     </span>
                                   </div>
 
-                                  {/* Question preview */}
+                                  {/* Question prompt (Bright Pure White, bold font-semibold) */}
                                   <p className="analytics-q-text">
-                                    {q.questionText.length > 120
-                                      ? q.questionText.slice(0, 120) + '…'
-                                      : q.questionText}
+                                    {q.questionText}
                                   </p>
+
+                                  {/* High-Contrast Options List */}
+                                  {Array.isArray(q.options) && q.options.length > 0 && (
+                                    <div className="analytics-options-list">
+                                      {q.options.map((opt, oIdx) => {
+                                        const isCorrect = oIdx === q.correctAnswerIndex;
+                                        const isMostMistaken = oIdx === q.mostCommonWrongIndex && q.wrongCount > 0;
+                                        return (
+                                          <div
+                                            key={oIdx}
+                                            className={`analytics-option-item ${isCorrect ? 'opt-correct' : ''} ${isMostMistaken ? 'opt-most-mistaken' : ''}`}
+                                          >
+                                            <span className="opt-letter">{String.fromCharCode(65 + oIdx)}.</span>
+                                            <span className="opt-content">{opt}</span>
+                                            {isCorrect && (
+                                              <span className="opt-badge opt-badge-correct">✓ Correct Choice</span>
+                                            )}
+                                            {isMostMistaken && (
+                                              <span className="opt-badge opt-badge-mistaken">
+                                                ⚠ Most Chosen Wrong ({q.mostCommonWrongCount})
+                                              </span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
 
                                   {/* Correct / Wrong bar */}
                                   <div className="analytics-bar-container">
@@ -618,14 +741,6 @@ export default function RoomAdminDashboard() {
                                         ❌ {q.wrongPct}% wrong ({q.wrongCount})
                                       </span>
                                     </div>
-                                  </div>
-
-                                  {/* Correct answer */}
-                                  <div className="analytics-correct-ans">
-                                    <span className="correct-ans-label">Correct answer:</span>
-                                    <span className="correct-ans-text">
-                                      {q.options?.[q.correctAnswerIndex] ?? '—'}
-                                    </span>
                                   </div>
 
                                   {/* Most common wrong answer */}

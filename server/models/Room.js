@@ -13,8 +13,19 @@ const ParticipantSchema = new mongoose.Schema({
     default: 'in-progress',
   },
   isDisqualified: { type: Boolean, default: false },
+  isReattempt:    { type: Boolean, default: false },
   joinedAt:       { type: Date, default: Date.now },
   lastActive:     { type: Date, default: Date.now },
+}, { _id: false });
+
+const ReattemptRequestSchema = new mongoose.Schema({
+  mobile:         { type: String, required: true },
+  name:           { type: String, required: true },
+  branch:         { type: String, default: 'CSE' },
+  status:         { type: String, enum: ['pending', 'approved', 'denied'], default: 'pending' },
+  requestedAt:    { type: Date, default: Date.now },
+  previousStatus: { type: String, default: 'completed' },
+  previousScore:  { type: Number, default: 0 },
 }, { _id: false });
 
 const RoomSchema = new mongoose.Schema({
@@ -25,6 +36,7 @@ const RoomSchema = new mongoose.Schema({
   maxCapacity:  { type: Number, default: 60 },
   status:       { type: String, enum: ['active', 'closed'], default: 'active' },
   participants: [ParticipantSchema],
+  reattemptRequests: [ReattemptRequestSchema],
 }, { timestamps: true });
 
 module.exports = mongoose.model('Room', RoomSchema);

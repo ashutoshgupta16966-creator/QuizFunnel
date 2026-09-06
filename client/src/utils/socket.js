@@ -44,7 +44,7 @@ export function disconnectSocket() {
 /**
  * Admin joins room socket for real-time live monitoring.
  */
-export function joinAdminRoomSocket(roomCode, roomPassword, { onJoined, onStudentJoined, onStudentUpdated, onStudentDisqualified, onError }) {
+export function joinAdminRoomSocket(roomCode, roomPassword, { onJoined, onStudentJoined, onStudentUpdated, onStudentDisqualified, onReattemptRequest, onError }) {
   const s = connectSocket();
 
   s.emit('admin:join-room', { roomCode, roomPassword });
@@ -65,6 +65,10 @@ export function joinAdminRoomSocket(roomCode, roomPassword, { onJoined, onStuden
     if (onStudentDisqualified) onStudentDisqualified(data);
   });
 
+  s.on('admin:reattempt-request', (reqData) => {
+    if (onReattemptRequest) onReattemptRequest(reqData);
+  });
+
   s.on('error:room', (err) => {
     if (onError) onError(err);
   });
@@ -74,6 +78,7 @@ export function joinAdminRoomSocket(roomCode, roomPassword, { onJoined, onStuden
     s.off('student:joined');
     s.off('student:updated');
     s.off('student:disqualified');
+    s.off('admin:reattempt-request');
     s.off('error:room');
   };
 }
@@ -81,17 +86,39 @@ export function joinAdminRoomSocket(roomCode, roomPassword, { onJoined, onStuden
 /**
  * Student joins room socket.
  */
-export function joinStudentRoomSocket(roomCode, student, { onRoomClosed } = {}) {
+export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReattemptApproved, onReattemptDenied } = {}) {
   const s = connectSocket();
 
   s.emit('student:join-room', { roomCode, student });
 
   if (onRoomClosed) {
     s.on('room:closed', onRoomClosed);
+    s.on('room_closed', onRoomClosed);
+  }
+
+  if (onReattemptApproved) {
+    s.on('reattempt:approved', (data) => {
+      if (!student?.mobile || data?.mobile === student.mobile) {
+        onReattemptApproved(data);
+      }
+    });
+  }
+
+  if (onReattemptDenied) {
+    s.on('reattempt:denied', (data) => {
+      if (!student?.mobile || data?.mobile === student.mobile) {
+        onReattemptDenied(data);
+      }
+    });
   }
 
   return () => {
-    if (onRoomClosed) s.off('room:closed');
+    if (onRoomClosed) {
+      s.off('room:closed', onRoomClosed);
+      s.off('room_closed', onRoomClosed);
+    }
+    if (onReattemptApproved) s.off('reattempt:approved');
+    if (onReattemptDenied) s.off('reattempt:denied');
   };
 }
 

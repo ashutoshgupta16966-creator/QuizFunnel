@@ -113,6 +113,15 @@ export const rejoinRoom = (data) =>
 export const getRoomAnalytics = (roomCode, password) =>
   api.get(`/api/rooms/${encodeURIComponent(roomCode)}/analytics`, { params: { password } });
 
+export const approveReattempt = (roomCode, data) =>
+  api.post(`/api/rooms/${encodeURIComponent(roomCode)}/approve-reattempt`, data);
+
+export const denyReattempt = (roomCode, data) =>
+  api.post(`/api/rooms/${encodeURIComponent(roomCode)}/deny-reattempt`, data);
+
+export const checkReattemptStatus = (roomCode, mobile) =>
+  api.get(`/api/rooms/${encodeURIComponent(roomCode)}/reattempt-status`, { params: { mobile } });
+
 
 // ── Admin endpoints ──────────────────────────────────────────────────────────
 const adminHeaders = (password) => ({ Authorization: `Bearer ${password}` });

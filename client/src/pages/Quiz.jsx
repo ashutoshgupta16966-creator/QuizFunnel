@@ -19,7 +19,7 @@ export default function Quiz() {
   const levelNum = parseInt(levelParam, 10);
   const levelConfig = LEVELS[levelNum];
   const navigate = useNavigate();
-  const { student, updateStudent, setLastResult, clearStudent, isRoomQuiz, roomSession } = useQuiz();
+  const { student, updateStudent, setLastResult, clearStudent, isRoomQuiz, roomSession, clearRoomSession } = useQuiz();
 
   const [questions, setQuestions]       = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -31,6 +31,7 @@ export default function Quiz() {
   const [startedAt, setStartedAt]       = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
   const [showUnattemptedModal, setShowUnattemptedModal] = useState(false);
+  const [isRoomClosed, setIsRoomClosed] = useState(false);
 
   // Storage keys for auto-saving progress & bookmarks
   const progressKey = student?.mobile ? `quiz_progress_${student.mobile}_${levelNum}` : null;
@@ -108,7 +109,11 @@ export default function Quiz() {
   // ── Sync with Live Room Socket (Only if isRoomQuiz === true) ─────────────
   useEffect(() => {
     if (isRoomQuiz && roomSession?.roomCode && student?.mobile) {
-      joinStudentRoomSocket(roomSession.roomCode, student);
+      const cleanup = joinStudentRoomSocket(roomSession.roomCode, student, {
+        onRoomClosed: () => {
+          setIsRoomClosed(true);
+        },
+      });
       emitStudentProgress({
         roomCode: roomSession.roomCode,
         mobile: student.mobile,
@@ -116,8 +121,20 @@ export default function Quiz() {
         score: student.totalScore || 0,
         status: 'in-progress',
       });
+      return cleanup;
     }
   }, [isRoomQuiz, roomSession?.roomCode, student, levelNum]);
+
+  // ── Scroll Lock when Room Closed Modal is Active ────────────────────────
+  useEffect(() => {
+    if (isRoomClosed) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isRoomClosed]);
 
   // ── Auto-save progress restoration ───────────────────────────────────────
   const restoreSavedProgress = (qs) => {
@@ -192,6 +209,7 @@ export default function Quiz() {
 
   // ── Answer selection & clearing ───────────────────────────────────────────
   const handleAnswer = useCallback((questionId, idx) => {
+    if (isRoomClosed) return;
     setAnswers((prev) => {
       const next = { ...prev };
       if (idx === null || idx === undefined) {
@@ -201,7 +219,7 @@ export default function Quiz() {
       }
       return next;
     });
-  }, []);
+  }, [isRoomClosed]);
 
   // ── Clear saved progress ──────────────────────────────────────────────────
   const clearSavedProgress = () => {
@@ -215,7 +233,7 @@ export default function Quiz() {
 
   // ── Core Submit execution (API call) ────────────────────────────────────
   const executeSubmit = useCallback(async (isDisqualified = false) => {
-    if (hasSubmitted.current) return;
+    if (hasSubmitted.current || isRoomClosed) return;
     hasSubmitted.current = true;
     setSubmitting(true);
     clearSavedProgress();
@@ -284,6 +302,7 @@ export default function Quiz() {
 
   // ── Manual Submit Click (with Unattempted Questions Check) ───────────────
   const handleManualSubmit = () => {
+    if (isRoomClosed) return;
     const answeredCount = Object.keys(answers).length;
     const unattempted = questions.length - answeredCount;
     if (unattempted > 0) {
@@ -579,6 +598,31 @@ export default function Quiz() {
         onSubmitAnyway={handleSubmitAnyway}
         submitting={submitting}
       />
+
+      {/* ── Room Closed Modal Overlay ── */}
+      {isRoomClosed && (
+        <div className="modal-backdrop room-closed-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-content room-closed-modal-content">
+            <div className="room-closed-icon">🚪</div>
+            <h2 className="room-closed-title">The Host has ended this room session. 🚪</h2>
+            <p className="room-closed-desc">
+              The administrator has closed this live quiz room. Active answering is disabled and your session has ended.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary room-closed-return-btn"
+              onClick={() => {
+                document.body.style.overflow = '';
+                if (clearRoomSession) clearRoomSession();
+                if (clearStudent) clearStudent();
+                navigate('/');
+              }}
+            >
+              OK / Return to Home
+            </button>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <Toast

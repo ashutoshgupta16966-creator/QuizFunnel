@@ -142,6 +142,70 @@ router.post('/join', async (req, res, next) => {
       });
     }
 
+    // ── STRICT HOST-APPROVED RE-ATTEMPT GUARD ──────────────────────────
+    // Completed, failed, or disqualified students CANNOT directly log back into roomId.
+    const isCompletedOrFailed = Boolean(
+      existingParticipant && (
+        existingParticipant.status === 'completed' ||
+        existingParticipant.status === 'eliminated' ||
+        existingParticipant.isDisqualified ||
+        existingParticipant.level > 1 ||
+        existingParticipant.score > 0
+      )
+    );
+
+    if (isCompletedOrFailed) {
+      // Check if an approval has been granted by host
+      const approvedReq = (room.reattemptRequests || []).find(
+        (r) => r.mobile === cleanMobile && r.status === 'approved'
+      );
+
+      if (!approvedReq) {
+        // Enforce pending queue
+        const existingReq = (room.reattemptRequests || []).find(
+          (r) => r.mobile === cleanMobile && r.status === 'pending'
+        );
+
+        if (!existingReq) {
+          const newRequest = {
+            mobile: cleanMobile,
+            name: name.trim(),
+            branch: branch.trim(),
+            status: 'pending',
+            requestedAt: new Date(),
+            previousStatus: existingParticipant.status,
+            previousScore: existingParticipant.score || 0,
+          };
+          await Room.updateOne(
+            { roomCode: normalizedCode },
+            { $push: { reattemptRequests: newRequest } }
+          );
+
+          // Broadcast live alert to admin if active on Live Dashboard
+          const io = req.app.get('io');
+          if (io) {
+            io.to(`room:${normalizedCode}`).emit('admin:reattempt-request', newRequest);
+          }
+        }
+
+        return res.json({
+          success: true,
+          status: 'PENDING_HOST_APPROVAL',
+          pendingApproval: true,
+          roomCode: room.roomCode,
+          mobile: cleanMobile,
+          name: name.trim(),
+          message: 'Waiting for Host Approval... Please ask your Admin to approve your request.',
+        });
+      }
+
+      // If approved, mark request as consumed
+      await Room.updateOne(
+        { roomCode: normalizedCode, 'reattemptRequests.mobile': cleanMobile },
+        { $set: { 'reattemptRequests.$.status': 'consumed' } }
+      );
+    }
+
     // Register / update student in main Student collection
     let student = await Student.findOne({ mobile: cleanMobile });
     if (!student) {
@@ -166,6 +230,7 @@ router.post('/join', async (req, res, next) => {
     }
 
     // Add or update participant entry in room
+    const isReattemptStudent = Boolean(existingParticipant && (isCompletedOrFailed || existingParticipant.isReattempt));
     const participantDoc = {
       mobile: cleanMobile,
       name: name.trim(),
@@ -175,6 +240,7 @@ router.post('/join', async (req, res, next) => {
       timeTaken: 0,
       status: 'in-progress',
       isDisqualified: false,
+      isReattempt: isReattemptStudent,
       joinedAt: new Date(),
       lastActive: new Date(),
     };
@@ -187,6 +253,8 @@ router.post('/join', async (req, res, next) => {
             'participants.$.status': 'in-progress',
             'participants.$.level': 1,
             'participants.$.score': 0,
+            'participants.$.isDisqualified': false,
+            'participants.$.isReattempt': isReattemptStudent,
             'participants.$.lastActive': new Date(),
           },
         }
@@ -422,6 +490,197 @@ router.get('/:roomCode/analytics', async (req, res, next) => {
 });
 
 /**
+ * GET /api/rooms/:roomCode/reattempt-status
+ * Student polls for their re-attempt request status.
+ */
+router.get('/:roomCode/reattempt-status', async (req, res, next) => {
+  try {
+    const { roomCode } = req.params;
+    const { mobile } = req.query;
+
+    if (!roomCode || !mobile) {
+      return res.status(400).json({ success: false, error: 'roomCode and mobile are required.' });
+    }
+
+    const normalizedCode = roomCode.trim().toUpperCase();
+    const cleanMobile = mobile.trim();
+    const room = await Room.findOne({ roomCode: normalizedCode }).lean();
+
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    const reqEntry = (room.reattemptRequests || [])
+      .filter((r) => r.mobile === cleanMobile)
+      .sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt))[0];
+
+    const student = await Student.findOne({ mobile: cleanMobile }).lean();
+
+    res.json({
+      success: true,
+      data: {
+        status: reqEntry ? reqEntry.status : 'none',
+        mobile: cleanMobile,
+        student: student ? {
+          name: student.name,
+          mobile: student.mobile,
+          branch: student.branch,
+          status: student.status,
+          currentLevel: student.currentLevel,
+        } : null,
+        room: {
+          roomCode: room.roomCode,
+          adminName: room.adminName,
+          maxCapacity: room.maxCapacity,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/rooms/:roomCode/approve-reattempt
+ * Host admin approves a pending re-attempt request.
+ */
+router.post('/:roomCode/approve-reattempt', async (req, res, next) => {
+  try {
+    const { roomCode } = req.params;
+    const { mobile, password } = req.body;
+
+    if (!roomCode || !mobile || !password) {
+      return res.status(400).json({ success: false, error: 'roomCode, mobile, and password are required.' });
+    }
+
+    const normalizedCode = roomCode.trim().toUpperCase();
+    const cleanMobile = mobile.trim();
+    const room = await Room.findOne({ roomCode: normalizedCode });
+
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    if (room.roomPassword !== password.trim()) {
+      return res.status(401).json({ success: false, error: 'Incorrect room password.' });
+    }
+
+    // Update request status to 'approved'
+    await Room.updateOne(
+      { roomCode: normalizedCode, 'reattemptRequests.mobile': cleanMobile },
+      { $set: { 'reattemptRequests.$.status': 'approved' } }
+    );
+
+    // Reset student participant record in room
+    await Room.updateOne(
+      { roomCode: normalizedCode, 'participants.mobile': cleanMobile },
+      {
+        $set: {
+          'participants.$.level': 1,
+          'participants.$.score': 0,
+          'participants.$.timeTaken': 0,
+          'participants.$.status': 'in-progress',
+          'participants.$.isDisqualified': false,
+          'participants.$.isReattempt': true,
+          'participants.$.lastActive': new Date(),
+        },
+      }
+    );
+
+    // Reset student active session in main Student collection
+    const student = await Student.findOne({ mobile: cleanMobile });
+    if (student) {
+      student.status = 'in-progress';
+      student.currentLevel = 1;
+      student.levels = [];
+      student.quizSession = null;
+      await student.save();
+    }
+
+    // Broadcast socket event to student and dashboard
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`room:${normalizedCode}`).emit('reattempt:approved', {
+        mobile: cleanMobile,
+        student: student ? {
+          name: student.name,
+          mobile: student.mobile,
+          branch: student.branch,
+          status: student.status,
+          currentLevel: student.currentLevel,
+        } : null,
+        room: {
+          roomCode: room.roomCode,
+          adminName: room.adminName,
+          maxCapacity: room.maxCapacity,
+        },
+      });
+
+      io.to(`room:${normalizedCode}`).emit('student:updated', {
+        mobile: cleanMobile,
+        level: 1,
+        score: 0,
+        timeTaken: 0,
+        status: 'in-progress',
+        isDisqualified: false,
+        isReattempt: true,
+        lastActive: new Date(),
+      });
+    }
+
+    res.json({ success: true, message: 'Re-attempt approved successfully.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/rooms/:roomCode/deny-reattempt
+ * Host admin denies a pending re-attempt request.
+ */
+router.post('/:roomCode/deny-reattempt', async (req, res, next) => {
+  try {
+    const { roomCode } = req.params;
+    const { mobile, password } = req.body;
+
+    if (!roomCode || !mobile || !password) {
+      return res.status(400).json({ success: false, error: 'roomCode, mobile, and password are required.' });
+    }
+
+    const normalizedCode = roomCode.trim().toUpperCase();
+    const cleanMobile = mobile.trim();
+    const room = await Room.findOne({ roomCode: normalizedCode });
+
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    if (room.roomPassword !== password.trim()) {
+      return res.status(401).json({ success: false, error: 'Incorrect room password.' });
+    }
+
+    // Update request status to 'denied'
+    await Room.updateOne(
+      { roomCode: normalizedCode, 'reattemptRequests.mobile': cleanMobile },
+      { $set: { 'reattemptRequests.$.status': 'denied' } }
+    );
+
+    // Broadcast socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`room:${normalizedCode}`).emit('reattempt:denied', {
+        mobile: cleanMobile,
+        message: 'Re-attempt denied by Host',
+      });
+    }
+
+    res.json({ success: true, message: 'Re-attempt denied.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/rooms/:roomCode
  * Fetches room details, status, and participant list for the Live Room Dashboard.
  */
@@ -452,6 +711,7 @@ router.get('/:roomCode', async (req, res, next) => {
         status: room.status,
         participants: room.participants || [],
         participantCount: (room.participants || []).length,
+        reattemptRequests: (room.reattemptRequests || []).filter((r) => r.status === 'pending'),
         createdAt: room.createdAt,
       },
     });
@@ -485,8 +745,11 @@ router.post('/:roomCode/close', async (req, res, next) => {
 
     const io = req.app.get('io');
     if (io) {
+      io.to(`room:${normalizedCode}`).emit('room_closed', {
+        message: 'The Host has ended this room session. 🚪',
+      });
       io.to(`room:${normalizedCode}`).emit('room:closed', {
-        message: 'The room has been closed by the host admin.',
+        message: 'The Host has ended this room session. 🚪',
       });
     }
 

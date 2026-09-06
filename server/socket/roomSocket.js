@@ -28,6 +28,7 @@ function initRoomSocket(io) {
           status: room.status,
           maxCapacity: room.maxCapacity,
           participants: room.participants || [],
+          reattemptRequests: (room.reattemptRequests || []).filter((r) => r.status === 'pending'),
         });
       } catch (err) {
         console.error('Socket admin:join-room error:', err.message);
@@ -122,8 +123,11 @@ function initRoomSocket(io) {
       try {
         if (!roomCode) return;
         const normalizedCode = roomCode.trim().toUpperCase();
+        io.to(`room:${normalizedCode}`).emit('room_closed', {
+          message: 'The Host has ended this room session. 🚪',
+        });
         io.to(`room:${normalizedCode}`).emit('room:closed', {
-          message: 'The room has been closed by the host admin.',
+          message: 'The Host has ended this room session. 🚪',
         });
       } catch (err) {
         console.error('Socket admin:close-room error:', err.message);
