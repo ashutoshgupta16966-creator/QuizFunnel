@@ -3601,10 +3601,54 @@ a { color: inherit; }
   letter-spacing: 0.04em;
 }
 
-/* Room Role Selection Modal */
+/* Room Role Selection & Forms Modal Card */
 .room-modal-card {
   max-width: 540px !important;
   width: 100%;
+  max-height: 90vh !important;
+  max-height: 90dvh !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 1.5rem !important;
+}
+
+/* Custom smooth scrollbar for room modals */
+.room-modal-card::-webkit-scrollbar {
+  width: 6px;
+}
+.room-modal-card::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 999px;
+}
+.room-modal-card::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.4);
+  border-radius: 999px;
+}
+.room-modal-card::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.7);
+}
+
+/* Unified Top-Header Navigation Row for all Room Modals */
+.room-modal-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.25rem;
+  min-height: 38px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--card-bg, #ffffff);
+}
+[data-theme='dark'] .room-modal-nav-row {
+  background: #111827;
 }
 
 .room-modal-header {
@@ -3731,23 +3775,55 @@ a { color: inherit; }
 }
 
 .room-back-btn {
-  position: absolute;
-  left: 0;
-  top: 0;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-soft);
-  border-radius: var(--r-md);
-  padding: 0.25rem 0.6rem;
-  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  color: var(--text-soft, #64748b);
+  border-radius: var(--r-md, 8px);
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: all var(--t-fast, 0.18s ease);
 }
 
 .room-back-btn:hover {
-  color: var(--text);
-  border-color: var(--text);
+  color: #7c3aed;
+  border-color: #7c3aed;
+  background: rgba(139, 92, 246, 0.15);
+  transform: translateX(-2px);
+}
+
+.room-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+  color: var(--text-soft, #64748b);
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--t-fast, 0.18s ease);
+  margin-left: auto;
+}
+
+.room-close-btn:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.12);
+  transform: rotate(90deg);
+}
+
+.nav-placeholder {
+  width: 32px;
+  height: 32px;
+  visibility: hidden;
 }
 
 .room-code-input-row {

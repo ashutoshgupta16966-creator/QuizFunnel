@@ -344,16 +344,33 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-content room-modal-card" onClick={(e) => e.stopPropagation()}>
-        {/* Modal Close Button */}
-        <button
-          type="button"
-          className="modal-close-btn"
-          onClick={onClose}
-          aria-label="Close modal"
-        >
-          ✕
-        </button>
+      <div
+        className="modal-content room-modal-card max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Top Header Navigation Row (Back to Rooms & Close ✕) */}
+        <div className="room-modal-nav-row">
+          {step !== 'select_role' ? (
+            <button
+              type="button"
+              className="room-back-btn"
+              onClick={() => setStep('select_role')}
+            >
+              ← Back to Rooms
+            </button>
+          ) : (
+            <div className="nav-placeholder" />
+          )}
+          <button
+            type="button"
+            className="room-close-btn"
+            onClick={onClose}
+            aria-label="Close modal"
+            title="Close modal"
+          >
+            ✕
+          </button>
+        </div>
 
         {/* ── STEP 1: SELECT YOUR ROLE ── */}
         {step === 'select_role' && (
@@ -415,13 +432,6 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
         {step === 'admin_create' && (
           <div className="room-form-view">
             <div className="room-modal-header">
-              <button
-                type="button"
-                className="room-back-btn"
-                onClick={() => setStep('select_role')}
-              >
-                ← Back to Rooms
-              </button>
               <span className="room-modal-icon">👑</span>
               <h2 className="room-modal-title">Create Live Room</h2>
               <p className="room-modal-subtitle">
@@ -507,13 +517,6 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
         {step === 'admin_rejoin' && (
           <div className="room-form-view">
             <div className="room-modal-header">
-              <button
-                type="button"
-                className="room-back-btn"
-                onClick={() => setStep('select_role')}
-              >
-                ← Back to Rooms
-              </button>
               <span className="room-modal-icon">↩️</span>
               <h2 className="room-modal-title">Re-join Your Room</h2>
               <p className="room-modal-subtitle">
@@ -579,13 +582,6 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
         {step === 'student_join' && (
           <div className="room-form-view">
             <div className="room-modal-header">
-              <button
-                type="button"
-                className="room-back-btn"
-                onClick={() => setStep('select_role')}
-              >
-                ← Back to Rooms
-              </button>
               <span className="room-modal-icon">🎓</span>
               <h2 className="room-modal-title">Join Live Quiz Room</h2>
               <p className="room-modal-subtitle">
