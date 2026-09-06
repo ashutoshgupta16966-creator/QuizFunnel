@@ -107,6 +107,10 @@ export const getRoomDetails = (roomCode, password) =>
 export const closeRoom = (roomCode, data) =>
   api.post(`/api/rooms/${encodeURIComponent(roomCode)}/close`, data);
 
+export const rejoinRoom = (data) =>
+  api.post('/api/rooms/admin/rejoin', data);
+
+
 // ── Admin endpoints ──────────────────────────────────────────────────────────
 const adminHeaders = (password) => ({ Authorization: `Bearer ${password}` });
 

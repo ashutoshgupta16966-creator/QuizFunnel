@@ -4157,6 +4157,51 @@ a { color: inherit; }
 
 
 
+/* ── Admin Role Card: two-button action row ───────────────────────────────── */
+.role-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  justify-content: center;
+}
 
+.role-admin-actions .role-action-pill {
+  /* override the default <span> pill — make it a real interactive button */
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0.45rem 1.1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
 
+.role-action-primary {
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(109, 40, 217, 0.35);
+}
+
+.role-action-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(109, 40, 217, 0.45);
+}
+
+.role-action-secondary {
+  background: rgba(109, 40, 217, 0.12);
+  color: #7c3aed;
+  border: 1.5px solid #7c3aed !important;
+}
+
+.role-action-secondary:hover {
+  background: rgba(109, 40, 217, 0.2);
+  transform: translateY(-2px);
+}
+
+/* Prevent admin card from navigating on click — child buttons handle it */
+.admin-role-card {
+  cursor: default;
+}
 

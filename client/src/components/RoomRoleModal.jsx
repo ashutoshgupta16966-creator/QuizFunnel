@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { createRoom, joinRoom } from '../api';
+import { createRoom, joinRoom, rejoinRoom } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
 
@@ -20,9 +20,10 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
   const navigate = useNavigate();
   const { saveStudent, setRoomSession } = useQuiz();
 
-  const [step, setStep] = useState('select_role'); // 'select_role' | 'admin_create' | 'student_join'
+  const [step, setStep] = useState('select_role');
+  // steps: 'select_role' | 'admin_create' | 'admin_rejoin' | 'student_join'
 
-  // Admin form state
+  // ── Admin Create form state ──────────────────────────────────────────────────
   const [adminForm, setAdminForm] = useState({
     adminName: '',
     adminPhone: '',
@@ -32,7 +33,16 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
 
-  // Student form state
+  // ── Admin Rejoin form state ──────────────────────────────────────────────────
+  const [rejoinForm, setRejoinForm] = useState({
+    adminPhone: '',
+    roomCode: '',
+    roomPassword: '',
+  });
+  const [rejoinLoading, setRejoinLoading] = useState(false);
+  const [rejoinError, setRejoinError] = useState('');
+
+  // ── Student form state ───────────────────────────────────────────────────────
   const [studentForm, setStudentForm] = useState({
     roomCode: '',
     roomPassword: '',
@@ -44,11 +54,23 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
   const [studentLoading, setStudentLoading] = useState(false);
   const [studentError, setStudentError] = useState('');
 
-  // Sync prefilled data from Home registration form whenever modal opens
+  // ── Scroll lock while modal is open ─────────────────────────────────────────
+  useEffect(() => {
+    if (isOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isOpen]);
+
+  // ── Reset state and prefill when modal opens ─────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       setStep('select_role');
       setAdminError('');
+      setRejoinError('');
       setStudentError('');
       setStudentForm((prev) => ({
         ...prev,
@@ -62,13 +84,13 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
 
   if (!isOpen) return null;
 
-  // ── Auto-generate room code for Admin ──
+  // ── Auto-generate room code for Admin ───────────────────────────────────────
   const handleAutoGenerateCode = () => {
     const code = generateRandomRoomCode();
     setAdminForm((prev) => ({ ...prev, roomCode: code }));
   };
 
-  // ── Admin Create Room Submit ──
+  // ── Admin Create Room Submit ─────────────────────────────────────────────────
   const handleAdminSubmit = async (e) => {
     e.preventDefault();
     setAdminError('');
@@ -94,7 +116,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
     try {
       const code = adminForm.roomCode.trim().toUpperCase();
       const pwd = adminForm.roomPassword.trim();
-      const res = await createRoom({
+      await createRoom({
         adminName: adminForm.adminName.trim(),
         adminPhone: adminForm.adminPhone.trim(),
         roomCode: code,
@@ -114,7 +136,51 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
     }
   };
 
-  // ── Student Join Room Submit ──
+  // ── Admin Re-join Room Submit ────────────────────────────────────────────────
+  const handleRejoinSubmit = async (e) => {
+    e.preventDefault();
+    setRejoinError('');
+
+    if (!rejoinForm.adminPhone.trim() || !/^\d{10}$/.test(rejoinForm.adminPhone.trim())) {
+      setRejoinError('Please enter a valid 10-digit Phone Number.');
+      return;
+    }
+    if (!rejoinForm.roomCode.trim()) {
+      setRejoinError('Please enter the Room Code.');
+      return;
+    }
+    if (!rejoinForm.roomPassword.trim()) {
+      setRejoinError('Please enter the Room Password.');
+      return;
+    }
+
+    setRejoinLoading(true);
+    try {
+      const code = rejoinForm.roomCode.trim().toUpperCase();
+      const pwd = rejoinForm.roomPassword.trim();
+
+      const res = await rejoinRoom({
+        adminPhone: rejoinForm.adminPhone.trim(),
+        roomCode: code,
+        roomPassword: pwd,
+      });
+
+      const { adminName } = res.data.data;
+
+      // Persist credentials so dashboard can authenticate
+      sessionStorage.setItem(`room_admin_pwd_${code}`, pwd);
+      sessionStorage.setItem(`room_admin_name_${code}`, adminName);
+
+      onClose();
+      navigate(`/room/admin/${code}`);
+    } catch (err) {
+      setRejoinError(err.response?.data?.error || 'Could not reconnect. Please check your details.');
+    } finally {
+      setRejoinLoading(false);
+    }
+  };
+
+  // ── Student Join Room Submit ─────────────────────────────────────────────────
   const handleStudentSubmit = async (e) => {
     e.preventDefault();
     setStudentError('');
@@ -206,20 +272,32 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
             </div>
 
             <div className="role-cards-container">
-              {/* Admin Card */}
-              <div
-                className="role-card admin-role-card"
-                onClick={() => {
-                  setStep('admin_create');
-                  if (!adminForm.roomCode) handleAutoGenerateCode();
-                }}
-              >
+              {/* Admin Card – two-button layout */}
+              <div className="role-card admin-role-card">
                 <div className="role-icon">👑</div>
                 <h3 className="role-name">Admin / Host</h3>
                 <p className="role-desc">
                   Create a live room, get a shareable code, and monitor student rankings &amp; progress in real time.
                 </p>
-                <span className="role-action-pill">Create Room →</span>
+                <div className="role-admin-actions">
+                  <button
+                    type="button"
+                    className="role-action-pill role-action-primary"
+                    onClick={() => {
+                      setStep('admin_create');
+                      if (!adminForm.roomCode) handleAutoGenerateCode();
+                    }}
+                  >
+                    Create Room →
+                  </button>
+                  <button
+                    type="button"
+                    className="role-action-pill role-action-secondary"
+                    onClick={() => setStep('admin_rejoin')}
+                  >
+                    Join Previous Room ↩
+                  </button>
+                </div>
               </div>
 
               {/* Student Card */}
@@ -324,6 +402,78 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
                   <><span className="btn-spinner" />Creating Room…</>
                 ) : (
                   'Launch Live Room Dashboard →'
+                )}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ── STEP 2C: ADMIN RE-JOIN ── */}
+        {step === 'admin_rejoin' && (
+          <div className="room-form-view">
+            <div className="room-modal-header">
+              <button
+                type="button"
+                className="room-back-btn"
+                onClick={() => setStep('select_role')}
+              >
+                ← Back
+              </button>
+              <span className="room-modal-icon">↩️</span>
+              <h2 className="room-modal-title">Re-join Your Room</h2>
+              <p className="room-modal-subtitle">
+                Enter your credentials to reconnect and view live / final stats
+              </p>
+            </div>
+
+            {rejoinError && <div className="server-error" role="alert">⚠️ {rejoinError}</div>}
+
+            <form onSubmit={handleRejoinSubmit} className="room-form" noValidate>
+              <div className="form-group">
+                <label className="form-label">Admin Phone Number</label>
+                <input
+                  type="tel"
+                  className="form-input"
+                  placeholder="10-digit number used when creating the room"
+                  maxLength={10}
+                  value={rejoinForm.adminPhone}
+                  onChange={(e) => setRejoinForm({ ...rejoinForm, adminPhone: e.target.value })}
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Room Code</label>
+                <input
+                  type="text"
+                  className="form-input code-input"
+                  placeholder="e.g. ROOM42"
+                  maxLength={12}
+                  value={rejoinForm.roomCode}
+                  onChange={(e) => setRejoinForm({ ...rejoinForm, roomCode: e.target.value.toUpperCase() })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Room Password</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="Secret password set when creating the room"
+                  value={rejoinForm.roomPassword}
+                  onChange={(e) => setRejoinForm({ ...rejoinForm, roomPassword: e.target.value })}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary room-submit-btn"
+                disabled={rejoinLoading}
+              >
+                {rejoinLoading ? (
+                  <><span className="btn-spinner" />Verifying &amp; Reconnecting…</>
+                ) : (
+                  'Reconnect to Dashboard →'
                 )}
               </button>
             </form>

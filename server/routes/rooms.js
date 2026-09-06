@@ -227,6 +227,60 @@ router.post('/join', async (req, res, next) => {
 });
 
 /**
+ * POST /api/rooms/admin/rejoin
+ * Allows an admin to re-connect to a room they created by verifying
+ * adminPhone + roomCode + roomPassword.
+ * Works regardless of room.status (active OR closed) so admins can view final stats.
+ */
+router.post('/admin/rejoin', async (req, res, next) => {
+  try {
+    const { adminPhone, roomCode, roomPassword } = req.body;
+
+    if (!adminPhone || !roomCode || !roomPassword) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'adminPhone, roomCode, and roomPassword are all required.' });
+    }
+
+    const normalizedCode = roomCode.trim().toUpperCase();
+    const cleanPhone = adminPhone.toString().replace(/\D/g, '').slice(-10);
+
+    const room = await Room.findOne({ roomCode: normalizedCode }).lean();
+
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'No room found with that Room Code.' });
+    }
+
+    // Verify admin phone
+    const storedPhone = room.adminPhone?.toString().replace(/\D/g, '').slice(-10) || '';
+    if (storedPhone !== cleanPhone) {
+      return res.status(401).json({ success: false, error: 'Admin Phone Number does not match.' });
+    }
+
+    // Verify room password
+    if (room.roomPassword !== roomPassword.trim()) {
+      return res.status(401).json({ success: false, error: 'Incorrect Room Password.' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        roomCode: room.roomCode,
+        adminName: room.adminName,
+        adminPhone: room.adminPhone,
+        maxCapacity: room.maxCapacity,
+        status: room.status,
+        participants: room.participants || [],
+        participantCount: (room.participants || []).length,
+        createdAt: room.createdAt,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/rooms/:roomCode
  * Fetches room details, status, and participant list for the Live Room Dashboard.
  */
