@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { createRoom, joinRoom, rejoinRoom, checkReattemptStatus } from '../api';
+import { createRoom, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
 
@@ -16,12 +16,39 @@ function generateRandomRoomCode() {
   return `${prefix}${num}`;
 }
 
+/**
+ * Group rooms by formatted calendar date (e.g. "Sep 6, 2026")
+ */
+function groupRoomsByDate(rooms) {
+  const groups = {};
+  for (const r of rooms) {
+    const d = new Date(r.createdAt || Date.now());
+    const dateKey = d.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+    if (!groups[dateKey]) groups[dateKey] = [];
+    groups[dateKey].push(r);
+  }
+  return groups;
+}
+
+/**
+ * Format ISO date string into readable 12-hour time (e.g. "11:30 PM")
+ */
+function formatRoomTime(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
 export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
   const navigate = useNavigate();
   const { saveStudent, setRoomSession } = useQuiz();
 
   const [step, setStep] = useState('select_role');
-  // steps: 'select_role' | 'admin_create' | 'admin_rejoin' | 'student_join' | 'waiting_approval'
+  // steps: 'select_role' | 'admin_create' | 'admin_rejoin' | 'admin_my_rooms_auth' | 'admin_my_rooms_list' | 'student_join' | 'waiting_approval'
 
   // ── Pending Approval State ───────────────────────────────────────────────────
   const [pendingData, setPendingData] = useState(null);
@@ -34,6 +61,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
     adminPhone: '',
     roomCode: '',
     roomPassword: '',
+    quizTitle: '',
   });
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
@@ -46,6 +74,13 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
   });
   const [rejoinLoading, setRejoinLoading] = useState(false);
   const [rejoinError, setRejoinError] = useState('');
+
+  // ── My Live Rooms state ──────────────────────────────────────────────────────
+  const [myRoomsPhone, setMyRoomsPhone] = useState('');
+  const [myRoomsPin, setMyRoomsPin] = useState('');
+  const [myRoomsLoading, setMyRoomsLoading] = useState(false);
+  const [myRoomsError, setMyRoomsError] = useState('');
+  const [myRoomsList, setMyRoomsList] = useState([]);
 
   // ── Student form state ───────────────────────────────────────────────────────
   const [studentForm, setStudentForm] = useState({
@@ -77,6 +112,9 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
       setAdminError('');
       setRejoinError('');
       setStudentError('');
+      setMyRoomsError('');
+      setMyRoomsLoading(false);
+      setMyRoomsList([]);
       setPendingData(null);
       setApprovalDenied(false);
       setApprovalSuccess(false);
@@ -201,6 +239,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
         adminPhone: adminForm.adminPhone.trim(),
         roomCode: code,
         roomPassword: pwd,
+        quizTitle: adminForm.quizTitle.trim(),
       });
 
       // Save admin credentials to sessionStorage for live dashboard authentication
@@ -258,6 +297,45 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
     } finally {
       setRejoinLoading(false);
     }
+  };
+
+  // ── My Live Rooms (History Hub) Handlers ─────────────────────────────────────
+  const handleMyRoomsSubmit = async (e) => {
+    e.preventDefault();
+    setMyRoomsError('');
+
+    const cleanPhone = myRoomsPhone.trim().replace(/\D/g, '').slice(-10);
+    if (!cleanPhone || !/^\d{10}$/.test(cleanPhone)) {
+      setMyRoomsError('Please enter a valid 10-digit registered phone number.');
+      return;
+    }
+    if (!myRoomsPin.trim()) {
+      setMyRoomsError('Please enter your secret Host PIN / Password.');
+      return;
+    }
+
+    setMyRoomsLoading(true);
+    try {
+      const res = await getAdminRooms(cleanPhone, myRoomsPin.trim());
+      const rooms = res.data?.data?.rooms || [];
+      setMyRoomsList(rooms);
+      setStep('admin_my_rooms_list');
+    } catch (err) {
+      setMyRoomsError(err.response?.data?.error || 'Failed to load rooms. Please check your phone number and PIN.');
+    } finally {
+      setMyRoomsLoading(false);
+    }
+  };
+
+  const handleOpenPastRoom = (r) => {
+    const code = r.roomCode?.toUpperCase();
+    const pwd = r.roomPassword || myRoomsPin.trim();
+    if (pwd) {
+      sessionStorage.setItem(`room_admin_pwd_${code}`, pwd);
+    }
+    sessionStorage.setItem(`room_admin_name_${code}`, r.adminName || '');
+    onClose();
+    navigate(`/room/admin/${code}`);
   };
 
   // ── Student Join Room Submit ─────────────────────────────────────────────────
@@ -354,9 +432,15 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
             <button
               type="button"
               className="room-back-btn"
-              onClick={() => setStep('select_role')}
+              onClick={() => {
+                if (step === 'admin_my_rooms_list') {
+                  setStep('admin_my_rooms_auth');
+                } else {
+                  setStep('select_role');
+                }
+              }}
             >
-              ← Back to Rooms
+              {step === 'admin_my_rooms_list' ? '← Back to Search' : '← Back to Rooms'}
             </button>
           ) : (
             <div className="nav-placeholder" />
@@ -384,12 +468,12 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
             </div>
 
             <div className="role-cards-container">
-              {/* Admin Card – two-button layout */}
+              {/* Admin Card – three-button layout */}
               <div className="role-card admin-role-card">
                 <div className="role-icon">👑</div>
                 <h3 className="role-name">Admin / Host</h3>
                 <p className="role-desc">
-                  Create a live room, get a shareable code, and monitor student rankings &amp; progress in real time.
+                  Create a live room, get a shareable code, or access historical analytics &amp; reports.
                 </p>
                 <div className="role-admin-actions">
                   <button
@@ -408,6 +492,13 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
                     onClick={() => setStep('admin_rejoin')}
                   >
                     Join Previous Room ↩
+                  </button>
+                  <button
+                    type="button"
+                    className="role-action-pill role-action-history"
+                    onClick={() => setStep('admin_my_rooms_auth')}
+                  >
+                    My Live Rooms 📜
                   </button>
                 </div>
               </div>
@@ -451,6 +542,19 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
                   value={adminForm.adminName}
                   onChange={(e) => setAdminForm({ ...adminForm, adminName: e.target.value })}
                   autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Quiz / Room Title <span className="label-optional">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Web Dev Weekly Quiz, Midterm Round"
+                  value={adminForm.quizTitle}
+                  onChange={(e) => setAdminForm({ ...adminForm, quizTitle: e.target.value })}
                 />
               </div>
 
@@ -575,6 +679,142 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
                 )}
               </button>
             </form>
+          </div>
+        )}
+
+        {/* ── STEP 2D: ADMIN MY LIVE ROOMS AUTH ── */}
+        {step === 'admin_my_rooms_auth' && (
+          <div className="room-form-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">📜</span>
+              <h2 className="room-modal-title">My Live Rooms</h2>
+              <p className="room-modal-subtitle">
+                Enter your Phone Number &amp; PIN to view all your past and active room sessions
+              </p>
+            </div>
+
+            {myRoomsError && <div className="server-error" role="alert">⚠️ {myRoomsError}</div>}
+
+            <form onSubmit={handleMyRoomsSubmit} className="room-form" noValidate>
+              <div className="form-group">
+                <label className="form-label">Admin Phone Number</label>
+                <input
+                  type="tel"
+                  className="form-input"
+                  placeholder="10-digit registered phone number"
+                  maxLength={10}
+                  value={myRoomsPhone}
+                  onChange={(e) => setMyRoomsPhone(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Host PIN / Room Password</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="Your secret host PIN / room password"
+                  value={myRoomsPin}
+                  onChange={(e) => setMyRoomsPin(e.target.value)}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary room-submit-btn"
+                disabled={myRoomsLoading}
+              >
+                {myRoomsLoading ? (
+                  <><span className="btn-spinner" />Searching Sessions…</>
+                ) : (
+                  'Load My Rooms →'
+                )}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ── STEP 2E: ADMIN MY LIVE ROOMS HISTORY HUB ── */}
+        {step === 'admin_my_rooms_list' && (
+          <div className="room-form-view my-rooms-history-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">📜</span>
+              <h2 className="room-modal-title">Host History Hub</h2>
+              <p className="room-modal-subtitle">
+                {myRoomsList.length} session{myRoomsList.length !== 1 ? 's' : ''} found for <strong>{myRoomsPhone}</strong>
+              </p>
+            </div>
+
+            {myRoomsList.length === 0 ? (
+              <div className="history-empty-card">
+                <span className="empty-icon">📭</span>
+                <h3 className="empty-title">No Recent Rooms Found</h3>
+                <p className="empty-subtitle">
+                  Create your first room to get started!
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    setStep('admin_create');
+                    if (!adminForm.roomCode) handleAutoGenerateCode();
+                  }}
+                >
+                  + Create a Room
+                </button>
+              </div>
+            ) : (
+              <div className="history-rooms-scroll-list">
+                {Object.entries(groupRoomsByDate(myRoomsList)).map(([dateLabel, rooms]) => (
+                  <div key={dateLabel} className="history-date-group">
+                    <div className="history-date-header">
+                      <span>📅 {dateLabel}</span>
+                      <span className="date-count">{rooms.length} room{rooms.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="history-cards-column">
+                      {rooms.map((r) => (
+                        <div
+                          key={r.roomCode}
+                          className={`room-history-card ${r.status === 'active' ? 'status-active' : 'status-closed'}`}
+                          onClick={() => handleOpenPastRoom(r)}
+                          role="button"
+                          tabIndex={0}
+                          title="Click to view live analytics, leaderboard & CSV report"
+                        >
+                          <div className="history-card-top">
+                            <span className="history-quiz-title">
+                              {r.quizTitle || 'Untitled Quiz Session'}
+                            </span>
+                            <span className={`room-status-pill ${r.status}`}>
+                              {r.status === 'active' ? '● ACTIVE' : 'CLOSED'}
+                            </span>
+                          </div>
+
+                          <div className="history-card-meta">
+                            <span className="history-code-badge">
+                              Room: <strong>{r.roomCode}</strong>
+                            </span>
+                            <span className="history-time">
+                              🕒 {formatRoomTime(r.createdAt)}
+                            </span>
+                            <span className="history-participants">
+                              👥 {r.participantCount || 0} joined
+                            </span>
+                          </div>
+
+                          <div className="history-card-footer">
+                            <span className="open-dashboard-link">
+                              Open Live Dashboard &amp; Analytics →
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

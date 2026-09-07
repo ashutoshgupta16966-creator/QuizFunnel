@@ -133,8 +133,10 @@ export default function RoomAdminDashboard() {
     try {
       setProcessingAction(`approve_${mobile}`);
       await approveReattempt(roomCode, { mobile, password: adminPassword });
+      // Immediately remove from pendingRequests array to hide popup/card from Live Dashboard
       setPendingRequests((prev) => prev.filter((r) => r.mobile !== mobile));
-      fetchDetails();
+      // Do NOT call fetchDetails() here: preserve the student's previous attempt record on dashboard
+      // until they submit their first answer in the new attempt.
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to approve re-attempt.');
     } finally {
@@ -357,6 +359,13 @@ export default function RoomAdminDashboard() {
                     {copiedLink ? '✅ Link Copied!' : '🔗 Copy Invite Link'}
                   </button>
                 </div>
+
+                {room.quizTitle && (
+                  <div className="room-title-subhead">
+                    <span className="title-icon">📝</span>
+                    <span className="title-text">{room.quizTitle}</span>
+                  </div>
+                )}
 
                 <div className="room-admin-meta">
                   <span>Host: <strong>{room.adminName}</strong></span>

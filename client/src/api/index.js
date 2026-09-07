@@ -122,6 +122,10 @@ export const denyReattempt = (roomCode, data) =>
 export const checkReattemptStatus = (roomCode, mobile) =>
   api.get(`/api/rooms/${encodeURIComponent(roomCode)}/reattempt-status`, { params: { mobile } });
 
+export const getAdminRooms = (adminPhone, adminPIN) =>
+  api.get('/api/rooms/admin/my-rooms', { params: { adminPhone, adminPIN } });
+
+
 
 // ── Admin endpoints ──────────────────────────────────────────────────────────
 const adminHeaders = (password) => ({ Authorization: `Bearer ${password}` });

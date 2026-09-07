@@ -4935,3 +4935,224 @@ a { color: inherit; }
   transform: translateY(-2px);
 }
 
+/* ── Admin Card "My Live Rooms 📜" Action Pill ── */
+.role-action-history {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1.5px solid #f59e0b !important;
+}
+
+.role-action-history:hover {
+  background: rgba(245, 158, 11, 0.22);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.label-optional {
+  font-size: 0.75rem;
+  font-weight: normal;
+  color: var(--text-soft, #94a3b8);
+  margin-left: 0.35rem;
+}
+
+/* ── Dashboard Hero Room Title ── */
+.room-title-subhead {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.room-title-subhead .title-icon {
+  font-size: 1rem;
+}
+
+.room-title-subhead .title-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #8b5cf6;
+  letter-spacing: 0.01em;
+}
+
+/* ── Host History Hub (My Live Rooms) ── */
+.my-rooms-history-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.history-empty-card {
+  background: var(--surface-2, #1e293b);
+  border: 1.5px dashed var(--border, rgba(255, 255, 255, 0.15));
+  border-radius: var(--r-xl, 16px);
+  padding: 2.25rem 1.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.history-empty-card .empty-icon {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.history-empty-card .empty-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text, #ffffff);
+  margin: 0;
+}
+
+.history-empty-card .empty-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-soft, #94a3b8);
+  margin: 0 0 0.5rem;
+}
+
+.history-rooms-scroll-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.history-date-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.history-date-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-soft, #94a3b8);
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.history-date-header .date-count {
+  font-size: 0.72rem;
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+
+.history-cards-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.room-history-card {
+  background: var(--surface-2, #1e293b);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--r-lg, 12px);
+  padding: 0.95rem 1.1rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+}
+
+.room-history-card:hover {
+  transform: translateY(-2px);
+  border-color: #8b5cf6;
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.25);
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.room-history-card.status-active {
+  border-left: 4px solid #10b981;
+}
+
+.room-history-card.status-closed {
+  border-left: 4px solid #64748b;
+  opacity: 0.88;
+}
+
+.history-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.history-quiz-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text, #ffffff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-soft, #94a3b8);
+}
+
+.history-code-badge {
+  background: rgba(139, 92, 246, 0.18);
+  color: #c4b5fd;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  letter-spacing: 0.05em;
+}
+
+.history-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.25rem;
+}
+
+.open-dashboard-link {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #a78bfa;
+  transition: color 0.15s;
+}
+
+.room-history-card:hover .open-dashboard-link {
+  color: #c4b5fd;
+  text-decoration: underline;
+}
+
+.room-status-pill.active {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.room-status-pill.closed {
+  background: rgba(100, 116, 139, 0.18);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+

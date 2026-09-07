@@ -50,7 +50,17 @@ router.post('/register', async (req, res, next) => {
       return res.status(409).json({
         success: false,
         requiresConfirmation: true,
-        error: 'You have already attempted this quiz with this number. Do you want to continue anyway?',
+        error: 'Is mobile number se aap ye quiz already de chuke hain. Kya aap phir se attempt karna chahte hain?',
+      });
+    }
+
+    // ── Phone + Password Binding ─────────────────────────────────────────────
+    // If student exists and confirmDuplicate is true, verify the password matches.
+    // Different students cannot share the same phone with different passwords.
+    if (student && confirmDuplicate && student.password !== password.trim()) {
+      return res.status(401).json({
+        success: false,
+        error: 'Is mobile number se aap ye quiz already de chuke hain. Apna sahi password enter karein.',
       });
     }
 

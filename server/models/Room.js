@@ -22,16 +22,19 @@ const ReattemptRequestSchema = new mongoose.Schema({
   mobile:         { type: String, required: true },
   name:           { type: String, required: true },
   branch:         { type: String, default: 'CSE' },
-  status:         { type: String, enum: ['pending', 'approved', 'denied'], default: 'pending' },
+  status:         { type: String, enum: ['pending', 'approved', 'denied', 'consumed'], default: 'pending' },
   requestedAt:    { type: Date, default: Date.now },
   previousStatus: { type: String, default: 'completed' },
   previousScore:  { type: Number, default: 0 },
 }, { _id: false });
 
 const RoomSchema = new mongoose.Schema({
-  roomCode:     { type: String, required: true, unique: true, uppercase: true, trim: true, index: true },
+  // roomCode is NOT globally unique — uniqueness is scoped to (adminPhone + roomCode) for ACTIVE rooms only.
+  // Different hosts can reuse the same room code. Enforced at application layer below.
+  roomCode:     { type: String, required: true, uppercase: true, trim: true, index: true },
+  quizTitle:    { type: String, trim: true, default: '' },
   adminName:    { type: String, required: true, trim: true },
-  adminPhone:   { type: String, required: true, trim: true },
+  adminPhone:   { type: String, required: true, trim: true, index: true },
   roomPassword: { type: String, required: true },
   maxCapacity:  { type: Number, default: 60 },
   status:       { type: String, enum: ['active', 'closed'], default: 'active' },
@@ -39,4 +42,10 @@ const RoomSchema = new mongoose.Schema({
   reattemptRequests: [ReattemptRequestSchema],
 }, { timestamps: true });
 
+// Compound index: quick lookups per phone + code + status
+RoomSchema.index({ adminPhone: 1, roomCode: 1, status: 1 });
+// Index for "My Live Rooms" — fetch all rooms by phone sorted by creation date
+RoomSchema.index({ adminPhone: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Room', RoomSchema);
+

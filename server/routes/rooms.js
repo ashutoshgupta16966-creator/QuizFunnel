@@ -6,10 +6,12 @@ const Student = require('../models/Student');
 /**
  * POST /api/rooms/create
  * Admin creates a new live quiz room.
+ * Room Code uniqueness is scoped to (adminPhone + roomCode) for ACTIVE rooms.
+ * Different hosts can reuse the same Room Code.
  */
 router.post('/create', async (req, res, next) => {
   try {
-    const { adminName, adminPhone, roomCode, roomPassword } = req.body;
+    const { adminName, adminPhone, roomCode, roomPassword, quizTitle } = req.body;
 
     if (!adminName?.trim() || !adminPhone?.trim() || !roomCode?.trim() || !roomPassword?.trim()) {
       return res.status(400).json({
@@ -19,20 +21,22 @@ router.post('/create', async (req, res, next) => {
     }
 
     const normalizedCode = roomCode.trim().toUpperCase();
+    const cleanPhone = adminPhone.trim().replace(/\D/g, '').slice(-10);
 
-    // Check if an active room already exists with this code
-    const existing = await Room.findOne({ roomCode: normalizedCode, status: 'active' });
+    // Phone-scoped uniqueness: same host cannot have two ACTIVE rooms with same code
+    const existing = await Room.findOne({ roomCode: normalizedCode, adminPhone: cleanPhone, status: 'active' });
     if (existing) {
       return res.status(400).json({
         success: false,
-        error: `Room Code "${normalizedCode}" is currently active. Please choose a different code or click Auto-Generate.`,
+        error: `You already have an active room with code "${normalizedCode}". Close it first or choose a different code.`,
       });
     }
 
     const room = await Room.create({
       roomCode: normalizedCode,
+      quizTitle: quizTitle?.trim() || '',
       adminName: adminName.trim(),
-      adminPhone: adminPhone.trim(),
+      adminPhone: cleanPhone,
       roomPassword: roomPassword.trim(),
       maxCapacity: 60,
       status: 'active',
@@ -43,21 +47,17 @@ router.post('/create', async (req, res, next) => {
       success: true,
       data: {
         roomCode: room.roomCode,
+        quizTitle: room.quizTitle,
         adminName: room.adminName,
         maxCapacity: room.maxCapacity,
         createdAt: room.createdAt,
       },
     });
   } catch (err) {
-    if (err.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        error: 'A room with this code already exists. Please choose a different code.',
-      });
-    }
     next(err);
   }
 });
+
 
 /**
  * POST /api/rooms/verify
@@ -131,6 +131,15 @@ router.post('/join', async (req, res, next) => {
 
     if (room.roomPassword !== roomPassword.trim()) {
       return res.status(401).json({ success: false, error: 'Incorrect Room Password.' });
+    }
+
+    // ── Phone + Password Binding: prevent session/socket collisions ───────
+    const existingStudentInDB = await Student.findOne({ mobile: cleanMobile }).lean();
+    if (existingStudentInDB && existingStudentInDB.password !== password.trim()) {
+      return res.status(401).json({
+        success: false,
+        error: 'Is mobile number se aap ye quiz already de chuke hain. Apna sahi password enter karein.',
+      });
     }
 
     // ── Capacity Validation: Max 60 students ─────────────────────────────
@@ -349,6 +358,77 @@ router.post('/admin/rejoin', async (req, res, next) => {
 });
 
 /**
+ * GET /api/rooms/admin/my-rooms
+ * Returns all rooms (active and closed) created by a specific admin phone number.
+ * Requires Admin Phone Number + PIN for host verification.
+ * Used for the "My Live Rooms" history hub in the admin role modal.
+ */
+router.get('/admin/my-rooms', async (req, res, next) => {
+  try {
+    const { adminPhone, adminPIN } = req.query;
+
+    if (!adminPhone?.trim()) {
+      return res.status(400).json({ success: false, error: 'Phone number is required.' });
+    }
+
+    const cleanPhone = adminPhone.trim().replace(/\D/g, '').slice(-10);
+    if (!/^\d{10}$/.test(cleanPhone)) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid 10-digit phone number.' });
+    }
+
+    const rooms = await Room.find({ adminPhone: cleanPhone })
+      .sort({ createdAt: -1 })
+      .select('roomCode quizTitle adminName adminPhone roomPassword status maxCapacity participants createdAt updatedAt')
+      .lean();
+
+    if (rooms.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          adminPhone: cleanPhone,
+          totalRooms: 0,
+          rooms: [],
+        },
+      });
+    }
+
+    // If PIN is provided, verify it matches the host's room password
+    if (adminPIN && adminPIN.trim()) {
+      const pinMatches = rooms.some((r) => r.roomPassword === adminPIN.trim());
+      if (!pinMatches) {
+        return res.status(401).json({
+          success: false,
+          error: 'Incorrect Host PIN for this phone number.',
+        });
+      }
+    }
+
+    const roomList = rooms.map((r) => ({
+      roomCode: r.roomCode,
+      quizTitle: r.quizTitle || '',
+      adminName: r.adminName,
+      status: r.status,
+      roomPassword: r.roomPassword,
+      maxCapacity: r.maxCapacity || 60,
+      participantCount: (r.participants || []).length,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        adminPhone: cleanPhone,
+        totalRooms: roomList.length,
+        rooms: roomList,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/rooms/:roomCode/analytics
  * Aggregates per-question performance stats across all students who participated
  * in this room. Returns question text, correct %, wrong %, and most-common
@@ -357,6 +437,7 @@ router.post('/admin/rejoin', async (req, res, next) => {
  * Requires ?password= query param for admin auth.
  */
 router.get('/:roomCode/analytics', async (req, res, next) => {
+
   try {
     const { roomCode } = req.params;
     const { password } = req.query;
@@ -565,42 +646,22 @@ router.post('/:roomCode/approve-reattempt', async (req, res, next) => {
       return res.status(401).json({ success: false, error: 'Incorrect room password.' });
     }
 
-    // Update request status to 'approved'
+    // Mark request status as 'approved' — participant stats are NOT reset here.
+    // Stats reset is deferred: happens when the student actually re-joins via POST /join.
+    // This preserves the student's previous score/status on Admin Dashboard until
+    // the student clicks through and submits their first answer in the new attempt.
     await Room.updateOne(
       { roomCode: normalizedCode, 'reattemptRequests.mobile': cleanMobile },
       { $set: { 'reattemptRequests.$.status': 'approved' } }
     );
 
-    // Reset student participant record in room
-    await Room.updateOne(
-      { roomCode: normalizedCode, 'participants.mobile': cleanMobile },
-      {
-        $set: {
-          'participants.$.level': 1,
-          'participants.$.score': 0,
-          'participants.$.timeTaken': 0,
-          'participants.$.status': 'in-progress',
-          'participants.$.isDisqualified': false,
-          'participants.$.isReattempt': true,
-          'participants.$.lastActive': new Date(),
-        },
-      }
-    );
+    const student = await Student.findOne({ mobile: cleanMobile }).lean();
 
-    // Reset student active session in main Student collection
-    const student = await Student.findOne({ mobile: cleanMobile });
-    if (student) {
-      student.status = 'in-progress';
-      student.currentLevel = 1;
-      student.levels = [];
-      student.quizSession = null;
-      await student.save();
-    }
-
-    // Broadcast socket event to student and dashboard
+    // Broadcast socket event ONLY to trigger student auto-redirect from waiting screen.
+    // The student will then call POST /join which performs the actual reset.
     const io = req.app.get('io');
     if (io) {
-      io.to(`room:${normalizedCode}`).emit('reattempt:approved', {
+      const payload = {
         mobile: cleanMobile,
         student: student ? {
           name: student.name,
@@ -614,21 +675,12 @@ router.post('/:roomCode/approve-reattempt', async (req, res, next) => {
           adminName: room.adminName,
           maxCapacity: room.maxCapacity,
         },
-      });
-
-      io.to(`room:${normalizedCode}`).emit('student:updated', {
-        mobile: cleanMobile,
-        level: 1,
-        score: 0,
-        timeTaken: 0,
-        status: 'in-progress',
-        isDisqualified: false,
-        isReattempt: true,
-        lastActive: new Date(),
-      });
+      };
+      io.to(`room:${normalizedCode}`).emit('reattempt:approved', payload);
+      io.to(`room:${normalizedCode}`).emit('reattempt_approved', payload);
     }
 
-    res.json({ success: true, message: 'Re-attempt approved successfully.' });
+    res.json({ success: true, message: 'Re-attempt approved. Student will be redirected to re-join.' });
   } catch (err) {
     next(err);
   }
@@ -668,10 +720,12 @@ router.post('/:roomCode/deny-reattempt', async (req, res, next) => {
     // Broadcast socket event
     const io = req.app.get('io');
     if (io) {
-      io.to(`room:${normalizedCode}`).emit('reattempt:denied', {
+      const denyPayload = {
         mobile: cleanMobile,
         message: 'Re-attempt denied by Host',
-      });
+      };
+      io.to(`room:${normalizedCode}`).emit('reattempt:denied', denyPayload);
+      io.to(`room:${normalizedCode}`).emit('reattempt_denied', denyPayload);
     }
 
     res.json({ success: true, message: 'Re-attempt denied.' });
@@ -712,6 +766,7 @@ router.get('/:roomCode', async (req, res, next) => {
         participants: room.participants || [],
         participantCount: (room.participants || []).length,
         reattemptRequests: (room.reattemptRequests || []).filter((r) => r.status === 'pending'),
+        quizTitle: room.quizTitle || '',
         createdAt: room.createdAt,
       },
     });

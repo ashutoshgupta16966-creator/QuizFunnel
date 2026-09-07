@@ -97,19 +97,23 @@ export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReatt
   }
 
   if (onReattemptApproved) {
-    s.on('reattempt:approved', (data) => {
+    const handler = (data) => {
       if (!student?.mobile || data?.mobile === student.mobile) {
         onReattemptApproved(data);
       }
-    });
+    };
+    s.on('reattempt:approved', handler);
+    s.on('reattempt_approved', handler);
   }
 
   if (onReattemptDenied) {
-    s.on('reattempt:denied', (data) => {
+    const handler = (data) => {
       if (!student?.mobile || data?.mobile === student.mobile) {
         onReattemptDenied(data);
       }
-    });
+    };
+    s.on('reattempt:denied', handler);
+    s.on('reattempt_denied', handler);
   }
 
   return () => {
@@ -117,8 +121,14 @@ export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReatt
       s.off('room:closed', onRoomClosed);
       s.off('room_closed', onRoomClosed);
     }
-    if (onReattemptApproved) s.off('reattempt:approved');
-    if (onReattemptDenied) s.off('reattempt:denied');
+    if (onReattemptApproved) {
+      s.off('reattempt:approved');
+      s.off('reattempt_approved');
+    }
+    if (onReattemptDenied) {
+      s.off('reattempt:denied');
+      s.off('reattempt_denied');
+    }
   };
 }
 
