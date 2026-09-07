@@ -5155,4 +5155,96 @@ a { color: inherit; }
   font-weight: 700;
 }
 
+/* ── History Card Rename & Delete Actions ── */
+.history-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.history-card-top-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.history-action-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.rename-icon-btn {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+}
+
+.rename-icon-btn:hover {
+  background: rgba(167, 139, 250, 0.25);
+  color: #c4b5fd;
+  transform: translateY(-1px);
+}
+
+.delete-icon-btn {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  font-size: 0.85rem;
+}
+
+.delete-icon-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+  transform: scale(1.1);
+}
+
+/* ── Inline Rename Box ── */
+.inline-rename-box {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-rename-box .rename-input {
+  flex: 1;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+  height: 32px;
+}
+
+.inline-rename-box .save-rename-btn {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.inline-rename-box .cancel-rename-btn {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+/* Delete Confirm Modal Backdrop */
+.delete-confirm-backdrop {
+  z-index: 100000 !important;
+}
+
+
 

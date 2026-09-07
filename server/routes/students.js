@@ -54,16 +54,6 @@ router.post('/register', async (req, res, next) => {
       });
     }
 
-    // ── Phone + Password Binding ─────────────────────────────────────────────
-    // If student exists and confirmDuplicate is true, verify the password matches.
-    // Different students cannot share the same phone with different passwords.
-    if (student && confirmDuplicate && student.password !== password.trim()) {
-      return res.status(401).json({
-        success: false,
-        error: 'Is mobile number se aap ye quiz already de chuke hain. Apna sahi password enter karein.',
-      });
-    }
-
     if (student) {
       // Re-attempt confirmed: Preserve attemptHistory! Reset active session fields for fresh attempt
       student.name = name.trim();

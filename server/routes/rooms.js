@@ -814,4 +814,101 @@ router.post('/:roomCode/close', async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/rooms/:roomCode/rename
+ * Host renames a room session.
+ */
+router.post('/:roomCode/rename', async (req, res, next) => {
+  try {
+    const { roomCode } = req.params;
+    const { quizTitle, adminPhone, password } = req.body;
+
+    if (!roomCode) {
+      return res.status(400).json({ success: false, error: 'Room code is required.' });
+    }
+    if (!quizTitle || !quizTitle.trim()) {
+      return res.status(400).json({ success: false, error: 'Quiz title cannot be empty.' });
+    }
+
+    const normalizedCode = roomCode.trim().toUpperCase();
+    const query = { roomCode: normalizedCode };
+    if (adminPhone) {
+      query.adminPhone = adminPhone.trim().replace(/\D/g, '').slice(-10);
+    }
+
+    const room = await Room.findOne(query);
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room session not found.' });
+    }
+
+    if (password && room.roomPassword !== password.trim()) {
+      return res.status(401).json({ success: false, error: 'Incorrect room password / PIN.' });
+    }
+
+    room.quizTitle = quizTitle.trim();
+    await room.save();
+
+    res.json({
+      success: true,
+      message: 'Room session renamed successfully.',
+      data: {
+        roomCode: room.roomCode,
+        quizTitle: room.quizTitle,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/rooms/:roomCode/delete or DELETE /api/rooms/:roomCode
+ * Permanently deletes room session and student logs, releasing roomCode.
+ */
+const deleteRoomHandler = async (req, res, next) => {
+  try {
+    const { roomCode } = req.params;
+    const adminPhone = req.body?.adminPhone || req.query?.adminPhone;
+    const password = req.body?.password || req.query?.password;
+
+    if (!roomCode) {
+      return res.status(400).json({ success: false, error: 'Room code is required.' });
+    }
+
+    const normalizedCode = roomCode.trim().toUpperCase();
+    const query = { roomCode: normalizedCode };
+    if (adminPhone) {
+      query.adminPhone = adminPhone.trim().replace(/\D/g, '').slice(-10);
+    }
+
+    const room = await Room.findOne(query);
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room session not found.' });
+    }
+
+    if (password && room.roomPassword !== password.trim()) {
+      return res.status(401).json({ success: false, error: 'Incorrect room password / PIN.' });
+    }
+
+    // 1. Delete Room record from MongoDB
+    await Room.deleteOne({ _id: room._id });
+
+    // 2. Clean up student attempt records associated with this room code
+    await Student.updateMany(
+      { 'attemptHistory.roomCode': normalizedCode },
+      { $pull: { attemptHistory: { roomCode: normalizedCode } } }
+    );
+
+    res.json({
+      success: true,
+      message: `Room "${normalizedCode}" deleted successfully. The code is now released for new sessions.`,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+router.post('/:roomCode/delete', deleteRoomHandler);
+router.delete('/:roomCode', deleteRoomHandler);
+
 module.exports = router;

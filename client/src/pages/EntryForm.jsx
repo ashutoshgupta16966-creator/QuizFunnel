@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   registerStudent,
   verifyResultsAuth,
@@ -24,11 +24,12 @@ function formatTimeMMSS(seconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-const CUMULATIVE_MAX = { 1: 20, 2: 35, 3: 45, 4: 50 };
+const CUMULATIVE_MAX = { 1: 10, 2: 20, 3: 35, 4: 50 };
 const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
 
 export default function EntryForm() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { saveStudent } = useQuiz();
 
   // QR Modal state
@@ -86,14 +87,21 @@ export default function EntryForm() {
 
   // Quiz Rooms Modal state
   const [showRoomRoleModal, setShowRoomRoleModal] = useState(false);
+  const [roomModalStep, setRoomModalStep] = useState('select_role');
+  const [roomModalPhone, setRoomModalPhone] = useState('');
 
-  // Auto-open Room Modal if ?joinRoom query parameter is present in URL
+  // Auto-open Room Modal if ?joinRoom / ?openRooms query parameter or router state is present
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('joinRoom')) {
+    if (params.get('joinRoom') || params.get('openRooms')) {
       setShowRoomRoleModal(true);
     }
-  }, []);
+    if (location.state?.openRoomModal) {
+      setRoomModalStep(location.state.initialStep || 'select_role');
+      setRoomModalPhone(location.state.initialPhone || '');
+      setShowRoomRoleModal(true);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     let interval = null;
@@ -127,6 +135,9 @@ export default function EntryForm() {
   };
 
   const executeRegistration = async (isConfirmed = false) => {
+    if (isConfirmed) {
+      setShowDuplicateModal(false);
+    }
     setLoading(true);
     setServerError('');
     try {
@@ -140,11 +151,12 @@ export default function EntryForm() {
       const student = res.data.data;
       saveStudent(student);
       setShowDuplicateModal(false);
-      navigate(`/quiz/${student.currentLevel}`);
+      navigate(`/quiz/${student.currentLevel || 1}`);
     } catch (err) {
-      if (err.response?.status === 409 || err.response?.data?.requiresConfirmation) {
+      if (!isConfirmed && (err.response?.status === 409 || err.response?.data?.requiresConfirmation)) {
         setShowDuplicateModal(true);
       } else {
+        setShowDuplicateModal(false);
         setServerError(err.response?.data?.error || 'Something went wrong. Please try again.');
       }
     } finally {
@@ -160,6 +172,7 @@ export default function EntryForm() {
   };
 
   const handleConfirmDuplicateAttempt = async () => {
+    setShowDuplicateModal(false);
     await executeRegistration(true);
   };
 
@@ -463,8 +476,13 @@ export default function EntryForm() {
       />
       <RoomRoleModal
         isOpen={showRoomRoleModal}
-        onClose={() => setShowRoomRoleModal(false)}
+        onClose={() => {
+          setShowRoomRoleModal(false);
+          setRoomModalStep('select_role');
+        }}
         homeFormData={form}
+        initialStep={roomModalStep}
+        initialPhone={roomModalPhone}
       />
 
       <div className="entry-card">

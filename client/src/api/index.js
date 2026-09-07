@@ -125,6 +125,13 @@ export const checkReattemptStatus = (roomCode, mobile) =>
 export const getAdminRooms = (adminPhone, adminPIN) =>
   api.get('/api/rooms/admin/my-rooms', { params: { adminPhone, adminPIN } });
 
+export const renameRoom = (roomCode, data) =>
+  api.post(`/api/rooms/${encodeURIComponent(roomCode)}/rename`, data);
+
+export const deleteRoom = (roomCode, data) =>
+  api.post(`/api/rooms/${encodeURIComponent(roomCode)}/delete`, data);
+
+
 
 
 // ── Admin endpoints ──────────────────────────────────────────────────────────

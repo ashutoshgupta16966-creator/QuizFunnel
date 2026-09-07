@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { createRoom, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms } from '../api';
+import { createRoom, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
 
@@ -43,11 +43,11 @@ function formatRoomTime(isoString) {
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
+export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, initialStep = 'select_role', initialPhone = '' }) {
   const navigate = useNavigate();
   const { saveStudent, setRoomSession } = useQuiz();
 
-  const [step, setStep] = useState('select_role');
+  const [step, setStep] = useState(initialStep || 'select_role');
   // steps: 'select_role' | 'admin_create' | 'admin_rejoin' | 'admin_my_rooms_auth' | 'admin_my_rooms_list' | 'student_join' | 'waiting_approval'
 
   // ── Pending Approval State ───────────────────────────────────────────────────
@@ -76,11 +76,18 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
   const [rejoinError, setRejoinError] = useState('');
 
   // ── My Live Rooms state ──────────────────────────────────────────────────────
-  const [myRoomsPhone, setMyRoomsPhone] = useState('');
+  const [myRoomsPhone, setMyRoomsPhone] = useState(initialPhone || '');
   const [myRoomsPin, setMyRoomsPin] = useState('');
   const [myRoomsLoading, setMyRoomsLoading] = useState(false);
   const [myRoomsError, setMyRoomsError] = useState('');
   const [myRoomsList, setMyRoomsList] = useState([]);
+
+  // ── History Hub Rename & Delete state ────────────────────────────────────────
+  const [editingRoomCode, setEditingRoomCode] = useState(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [deleteConfirmRoom, setDeleteConfirmRoom] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // ── Student form state ───────────────────────────────────────────────────────
   const [studentForm, setStudentForm] = useState({
@@ -105,19 +112,43 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
     }
   }, [isOpen]);
 
-  // ── Reset state and prefill when modal opens ─────────────────────────────────
+  // ── Reset / Initialize state when modal opens ─────────────────────────────────
   useEffect(() => {
     if (isOpen) {
-      setStep('select_role');
+      const targetStep = initialStep || 'select_role';
+      const targetPhone = initialPhone || sessionStorage.getItem('room_admin_phone') || '';
+      setStep(targetStep);
       setAdminError('');
       setRejoinError('');
       setStudentError('');
       setMyRoomsError('');
       setMyRoomsLoading(false);
-      setMyRoomsList([]);
       setPendingData(null);
       setApprovalDenied(false);
       setApprovalSuccess(false);
+      setEditingRoomCode(null);
+      setDeleteConfirmRoom(null);
+
+      if (targetPhone) {
+        setMyRoomsPhone(targetPhone);
+        if (targetStep === 'admin_my_rooms_list') {
+          setMyRoomsLoading(true);
+          const savedPin = sessionStorage.getItem('room_admin_pin') || '';
+          getAdminRooms(targetPhone, savedPin)
+            .then((res) => {
+              setMyRoomsList(res.data?.data?.rooms || []);
+            })
+            .catch(() => {
+              setMyRoomsList([]);
+            })
+            .finally(() => {
+              setMyRoomsLoading(false);
+            });
+        }
+      } else if (targetStep !== 'admin_my_rooms_list') {
+        setMyRoomsList([]);
+      }
+
       setStudentForm((prev) => ({
         ...prev,
         name: homeFormData.name || prev.name || '',
@@ -126,7 +157,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
         password: homeFormData.password || prev.password || '',
       }));
     }
-  }, [isOpen, homeFormData]);
+  }, [isOpen, initialStep, initialPhone, homeFormData]);
 
   // ── Listen for Host Re-Attempt Approval / Denial ──────────────────────────────
   useEffect(() => {
@@ -245,6 +276,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
       // Save admin credentials to sessionStorage for live dashboard authentication
       sessionStorage.setItem(`room_admin_pwd_${code}`, pwd);
       sessionStorage.setItem(`room_admin_name_${code}`, adminForm.adminName.trim());
+      sessionStorage.setItem('room_admin_phone', adminForm.adminPhone.trim());
+      sessionStorage.setItem('room_admin_pin', pwd);
 
       onClose();
       navigate(`/room/admin/${code}`);
@@ -289,6 +322,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
       // Persist credentials so dashboard can authenticate
       sessionStorage.setItem(`room_admin_pwd_${code}`, pwd);
       sessionStorage.setItem(`room_admin_name_${code}`, adminName);
+      sessionStorage.setItem('room_admin_phone', rejoinForm.adminPhone.trim());
+      sessionStorage.setItem('room_admin_pin', pwd);
 
       onClose();
       navigate(`/room/admin/${code}`);
@@ -319,6 +354,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
       const res = await getAdminRooms(cleanPhone, myRoomsPin.trim());
       const rooms = res.data?.data?.rooms || [];
       setMyRoomsList(rooms);
+      sessionStorage.setItem('room_admin_phone', cleanPhone);
+      sessionStorage.setItem('room_admin_pin', myRoomsPin.trim());
       setStep('admin_my_rooms_list');
     } catch (err) {
       setMyRoomsError(err.response?.data?.error || 'Failed to load rooms. Please check your phone number and PIN.');
@@ -329,13 +366,78 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
 
   const handleOpenPastRoom = (r) => {
     const code = r.roomCode?.toUpperCase();
-    const pwd = r.roomPassword || myRoomsPin.trim();
+    const pwd = r.roomPassword || myRoomsPin.trim() || sessionStorage.getItem('room_admin_pin') || '';
     if (pwd) {
       sessionStorage.setItem(`room_admin_pwd_${code}`, pwd);
+      sessionStorage.setItem('room_admin_pin', pwd);
     }
     sessionStorage.setItem(`room_admin_name_${code}`, r.adminName || '');
+    sessionStorage.setItem('room_admin_phone', r.adminPhone || myRoomsPhone || '');
     onClose();
     navigate(`/room/admin/${code}`);
+  };
+
+  // ── History Hub Inline Rename & Delete Handlers ──────────────────────────────
+  const handleStartRename = (e, r) => {
+    e.stopPropagation();
+    setEditingRoomCode(r.roomCode);
+    setEditingTitle(r.quizTitle || '');
+  };
+
+  const handleCancelRename = (e) => {
+    if (e) e.stopPropagation();
+    setEditingRoomCode(null);
+    setEditingTitle('');
+  };
+
+  const handleSaveRename = async (e, r) => {
+    if (e) e.stopPropagation();
+    if (!editingTitle.trim()) return;
+
+    setRenameLoading(true);
+    try {
+      const activePhone = myRoomsPhone || sessionStorage.getItem('room_admin_phone') || '';
+      const activePin = r.roomPassword || myRoomsPin || sessionStorage.getItem('room_admin_pin') || sessionStorage.getItem(`room_admin_pwd_${r.roomCode}`) || '';
+      await renameRoom(r.roomCode, {
+        quizTitle: editingTitle.trim(),
+        adminPhone: activePhone,
+        password: activePin,
+      });
+
+      setMyRoomsList((prev) =>
+        prev.map((item) => (item.roomCode === r.roomCode ? { ...item, quizTitle: editingTitle.trim() } : item))
+      );
+      setEditingRoomCode(null);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to rename session.');
+    } finally {
+      setRenameLoading(false);
+    }
+  };
+
+  const handleDeleteClick = (e, r) => {
+    e.stopPropagation();
+    setDeleteConfirmRoom(r);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmRoom) return;
+    setDeleteLoading(true);
+    try {
+      const activePhone = myRoomsPhone || sessionStorage.getItem('room_admin_phone') || '';
+      const activePin = deleteConfirmRoom.roomPassword || myRoomsPin || sessionStorage.getItem('room_admin_pin') || sessionStorage.getItem(`room_admin_pwd_${deleteConfirmRoom.roomCode}`) || '';
+      await deleteRoom(deleteConfirmRoom.roomCode, {
+        adminPhone: activePhone,
+        password: activePin,
+      });
+
+      setMyRoomsList((prev) => prev.filter((item) => item.roomCode !== deleteConfirmRoom.roomCode));
+      setDeleteConfirmRoom(null);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete room session.');
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   // ── Student Join Room Submit ─────────────────────────────────────────────────
@@ -773,46 +875,138 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {} }) {
                       <span className="date-count">{rooms.length} room{rooms.length !== 1 ? 's' : ''}</span>
                     </div>
                     <div className="history-cards-column">
-                      {rooms.map((r) => (
-                        <div
-                          key={r.roomCode}
-                          className={`room-history-card ${r.status === 'active' ? 'status-active' : 'status-closed'}`}
-                          onClick={() => handleOpenPastRoom(r)}
-                          role="button"
-                          tabIndex={0}
-                          title="Click to view live analytics, leaderboard & CSV report"
-                        >
-                          <div className="history-card-top">
-                            <span className="history-quiz-title">
-                              {r.quizTitle || 'Untitled Quiz Session'}
-                            </span>
-                            <span className={`room-status-pill ${r.status}`}>
-                              {r.status === 'active' ? '● ACTIVE' : 'CLOSED'}
-                            </span>
-                          </div>
+                      {rooms.map((r) => {
+                        const isEditing = editingRoomCode === r.roomCode;
+                        return (
+                          <div
+                            key={r.roomCode}
+                            className={`room-history-card ${r.status === 'active' ? 'status-active' : 'status-closed'}`}
+                            onClick={() => !isEditing && handleOpenPastRoom(r)}
+                            role="button"
+                            tabIndex={0}
+                            title={isEditing ? '' : 'Click to view live analytics, leaderboard & CSV report'}
+                          >
+                            <div className="history-card-top">
+                              {isEditing ? (
+                                <div className="inline-rename-box" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="text"
+                                    className="form-input rename-input"
+                                    value={editingTitle}
+                                    onChange={(e) => setEditingTitle(e.target.value)}
+                                    placeholder="Enter custom session name…"
+                                    autoFocus
+                                    maxLength={40}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-primary save-rename-btn"
+                                    onClick={(e) => handleSaveRename(e, r)}
+                                    disabled={renameLoading || !editingTitle.trim()}
+                                  >
+                                    {renameLoading ? '💾…' : '✓ Save'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-secondary cancel-rename-btn"
+                                    onClick={handleCancelRename}
+                                    disabled={renameLoading}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="history-title-row">
+                                  <span className="history-quiz-title">
+                                    {r.quizTitle || 'Untitled Quiz Session'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="history-action-icon-btn rename-icon-btn"
+                                    onClick={(e) => handleStartRename(e, r)}
+                                    title="Rename this quiz session"
+                                  >
+                                    ✏️ Rename
+                                  </button>
+                                </div>
+                              )}
 
-                          <div className="history-card-meta">
-                            <span className="history-code-badge">
-                              Room: <strong>{r.roomCode}</strong>
-                            </span>
-                            <span className="history-time">
-                              🕒 {formatRoomTime(r.createdAt)}
-                            </span>
-                            <span className="history-participants">
-                              👥 {r.participantCount || 0} joined
-                            </span>
-                          </div>
+                              <div className="history-card-top-right">
+                                <span className={`room-status-pill ${r.status}`}>
+                                  {r.status === 'active' ? '● ACTIVE' : 'CLOSED'}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="history-action-icon-btn delete-icon-btn"
+                                  onClick={(e) => handleDeleteClick(e, r)}
+                                  title="Delete session & release room code"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
 
-                          <div className="history-card-footer">
-                            <span className="open-dashboard-link">
-                              Open Live Dashboard &amp; Analytics →
-                            </span>
+                            <div className="history-card-meta">
+                              <span className="history-code-badge">
+                                Room: <strong>{r.roomCode}</strong>
+                              </span>
+                              <span className="history-time">
+                                🕒 {formatRoomTime(r.createdAt)}
+                              </span>
+                              <span className="history-participants">
+                                👥 {r.participantCount || 0} joined
+                              </span>
+                            </div>
+
+                            <div className="history-card-footer">
+                              <span className="open-dashboard-link">
+                                Open Live Dashboard &amp; Analytics →
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* ── Session Delete Confirmation Modal ── */}
+            {deleteConfirmRoom && (
+              <div
+                className="modal-backdrop delete-confirm-backdrop"
+                onClick={() => !deleteLoading && setDeleteConfirmRoom(null)}
+              >
+                <div className="modal-content exit-modal-content" onClick={(e) => e.stopPropagation()}>
+                  <div className="exit-icon" role="img" aria-label="Warning">🗑️</div>
+                  <h3 className="exit-title">Delete Quiz Session?</h3>
+                  <p className="exit-subtitle">
+                    Are you sure you want to permanently delete{' '}
+                    <strong>{deleteConfirmRoom.quizTitle || deleteConfirmRoom.roomCode}</strong>?
+                    <br />
+                    This will delete all participant scores and release code{' '}
+                    <strong>{deleteConfirmRoom.roomCode}</strong> for new sessions.
+                  </p>
+                  <div className="exit-modal-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setDeleteConfirmRoom(null)}
+                      disabled={deleteLoading}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={handleDeleteConfirm}
+                      disabled={deleteLoading}
+                    >
+                      {deleteLoading ? 'Deleting…' : 'Yes, Delete Session'}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

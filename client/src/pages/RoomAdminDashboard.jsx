@@ -303,9 +303,27 @@ export default function RoomAdminDashboard() {
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => navigate('/')}
+            onClick={() => {
+              const adminPhone = room?.adminPhone || sessionStorage.getItem('room_admin_phone') || '';
+              navigate('/', {
+                state: {
+                  openRoomModal: true,
+                  initialStep: adminPhone ? 'admin_my_rooms_list' : 'select_role',
+                  initialPhone: adminPhone,
+                },
+              });
+            }}
+            title="Return to Host History Hub"
           >
-            ← Home
+            ← Back
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => navigate('/')}
+            title="Return to Home Page"
+          >
+            🏠 Home
           </button>
           <div className="room-title-block">
             <span className="room-icon">👑</span>
