@@ -8,6 +8,15 @@ try {
   console.log('[AI Question Generator]: @google/genai package loading optional');
 }
 
+const FALLBACK_MODELS = [
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.6-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-2.5-flash',
+  'gemini-1.5-flash',
+];
+
 /**
  * Generates dynamic quiz questions using Google Gemini API based on topic & difficulty level.
  * Automatically inserts newly generated questions into MongoDB.
@@ -51,19 +60,30 @@ RULES:
 5. Level is ${levelNum}. Make question complexity appropriate for Level ${levelNum}.`;
 
       let rawText = '';
-      try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: { responseMimeType: 'application/json' },
-        });
-        rawText = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
-      } catch {
-        const response = await ai.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: prompt,
-        });
-        rawText = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
+      for (const modelName of FALLBACK_MODELS) {
+        try {
+          console.log(`[AI Question Generator]: Trying model "${modelName}"...`);
+          let response;
+          try {
+            response = await ai.models.generateContent({
+              model: modelName,
+              contents: prompt,
+              config: { responseMimeType: 'application/json' },
+            });
+          } catch (cfgErr) {
+            response = await ai.models.generateContent({
+              model: modelName,
+              contents: prompt,
+            });
+          }
+          rawText = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
+          if (rawText && rawText.trim()) {
+            console.log(`[AI Question Generator]: Succeeded with model "${modelName}".`);
+            break;
+          }
+        } catch (modelErr) {
+          console.warn(`[AI Question Generator]: Model "${modelName}" failed (${modelErr.message}). Trying next fallback model...`);
+        }
       }
 
       let cleaned = rawText.trim();

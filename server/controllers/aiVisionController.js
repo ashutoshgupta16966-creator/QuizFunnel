@@ -11,6 +11,16 @@ const ALLOWED_DIFFICULTIES = ['easy', 'medium', 'hard'];
 const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_IMAGES = 10;
 
+// Gemini Multimodal Model Fallback Ladder (Prioritizes 3.7 -> 3.6 -> 3.6-lite -> 3.5 series with 2.5/1.5 safety fallbacks)
+const FALLBACK_MODELS = [
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.6-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-2.5-flash',
+  'gemini-1.5-flash',
+];
+
 /**
  * Parses uploaded exam/quiz documents (images or PDF) using Gemini Vision (multimodal).
  * Extracts Subject, Unit/Chapter, and structured Questions matching the Question schema.
@@ -112,27 +122,44 @@ CRITICAL RULES:
 6. Preserve formatting, mathematical formulas, code blocks, or special terminology accurately in "questionText".`;
 
   let rawText = '';
-  try {
-    console.log(`[AI Vision Controller]: Sending ${files.length} file(s) to Gemini 2.5 Flash for multimodal parsing...`);
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [...inlineParts, promptText],
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
-    rawText = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
-  } catch (err25) {
-    console.warn(`[AI Vision Controller]: gemini-2.5-flash error (${err25.message}). Retrying with gemini-1.5-flash...`);
+  let lastError = null;
+
+  for (const modelName of FALLBACK_MODELS) {
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
-        contents: [...inlineParts, promptText],
-      });
+      console.log(`[AI Vision Controller]: Attempting visual extraction with model "${modelName}"...`);
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: modelName,
+          contents: [...inlineParts, promptText],
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+      } catch (cfgErr) {
+        // Retry without responseMimeType in case model doesn't support json config
+        response = await ai.models.generateContent({
+          model: modelName,
+          contents: [...inlineParts, promptText],
+        });
+      }
+
       rawText = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
-    } catch (err15) {
-      throw new Error(`Gemini Vision processing failed: ${err15.message}`);
+      if (rawText && rawText.trim()) {
+        console.log(`[AI Vision Controller]: Successfully parsed questions using model "${modelName}".`);
+        lastError = null;
+        break;
+      }
+    } catch (modelErr) {
+      lastError = modelErr;
+      console.warn(`[AI Vision Controller]: Model "${modelName}" failed or returned error (${modelErr.message}). Retrying next model in fallback ladder...`);
     }
+  }
+
+  if (!rawText || !rawText.trim()) {
+    throw new Error(
+      `Gemini Vision processing failed across all fallback models (${FALLBACK_MODELS.join(', ')}). Last error: ${lastError?.message || 'No output generated.'}`
+    );
   }
 
   // ── Parse & Clean JSON Response ──────────────────────────────────────────
