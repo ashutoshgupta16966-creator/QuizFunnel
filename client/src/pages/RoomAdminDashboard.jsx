@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getRoomDetails, closeRoom, getRoomAnalytics, approveReattempt, denyReattempt } from '../api';
+import { getRoomDetails, closeRoom, getRoomAnalytics, approveReattempt, denyReattempt, exportRoomResultsXLSX } from '../api';
 import { joinAdminRoomSocket, disconnectSocket } from '../utils/socket';
 import ThemeToggle from '../components/ThemeToggle';
 
@@ -24,6 +24,7 @@ export default function RoomAdminDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [closing, setClosing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const adminPassword = sessionStorage.getItem(`room_admin_pwd_${roomCode?.toUpperCase()}`) || '';
 
@@ -217,51 +218,36 @@ export default function RoomAdminDashboard() {
     }
   };
 
-  // ── CSV Export ────────────────────────────────────────────────────────────────
-  const handleExportCSV = useCallback(() => {
+  // ── Excel (.xlsx) Export ──────────────────────────────────────────────────────
+  const handleExportXLSX = async () => {
+    if (!roomCode) return;
     const allParticipants = room?.participants || [];
     if (allParticipants.length === 0) {
       alert('No participant data to export yet.');
       return;
     }
 
-    // Sort by score desc, time asc (same as table)
-    const sorted = [...allParticipants].sort((a, b) => {
-      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
-      return (a.timeTaken || 0) - (b.timeTaken || 0);
-    });
-
-    const statusLabel = (p) => {
-      if (p.isDisqualified) return 'Disqualified';
-      if (p.status === 'completed' || p.status === 'advanced') return 'Passed';
-      if (p.status === 'eliminated') return 'Failed';
-      return 'In Progress';
-    };
-
-    const header = ['Rank', 'Student Name', 'Phone Number', 'Branch', 'Level Reached', 'Total Score', 'Completion Time', 'Status'];
-    const rows = sorted.map((p, idx) => [
-      idx + 1,
-      `"${(p.name || '').replace(/"/g, '""')}"`,
-      `"${p.mobile || ''}"`,
-      `"${p.branch || ''}"`,
-      p.level || 1,
-      p.score ?? 0,
-      `"${formatTimeMMSS(p.timeTaken || 0)}"`,
-      `"${statusLabel(p)}"`,
-    ]);
-
-    const csvContent = [header, ...rows].map((r) => r.join(',')).join('\r\n');
-    // Prepend UTF-8 BOM (\uFEFF) to guarantee Excel/Google Sheets parse all characters & formatting correctly without truncation or mojibake
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `QuizFunnel_Room_${room.roomCode}_Results.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [room]);
+    try {
+      setExporting(true);
+      const res = await exportRoomResultsXLSX(roomCode, adminPassword);
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `QuizFunnel_Room_${room?.roomCode || roomCode}_Results.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export Excel error:', err);
+      alert('Failed to export Excel results. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // ── Fetch Question Analytics ──────────────────────────────────────────────────
   const fetchAnalytics = useCallback(async () => {
@@ -545,11 +531,11 @@ export default function RoomAdminDashboard() {
                 <button
                   type="button"
                   className="btn btn-export btn-sm"
-                  onClick={handleExportCSV}
-                  title="Download participant results as CSV"
-                  disabled={participants.length === 0}
+                  onClick={handleExportXLSX}
+                  title="Download participant results as Excel (.xlsx)"
+                  disabled={exporting || participants.length === 0}
                 >
-                  📥 Export Results (CSV)
+                  {exporting ? '⏳ Exporting…' : '📥 Export Results (.xlsx)'}
                 </button>
                 <button
                   type="button"

@@ -131,6 +131,12 @@ export const renameRoom = (roomCode, data) =>
 export const deleteRoom = (roomCode, data) =>
   api.post(`/api/rooms/${encodeURIComponent(roomCode)}/delete`, data);
 
+export const exportRoomResultsXLSX = (roomCode, password) =>
+  api.get(`/api/rooms/${encodeURIComponent(roomCode)}/export`, {
+    params: { password },
+    responseType: 'blob',
+  });
+
 
 
 

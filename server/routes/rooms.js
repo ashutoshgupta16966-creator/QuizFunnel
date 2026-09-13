@@ -744,6 +744,149 @@ router.post('/:roomCode/deny-reattempt', async (req, res, next) => {
 });
 
 /**
+ * GET /api/rooms/:roomCode/export
+ * Generates and downloads styled Excel (.xlsx) file of room results using exceljs.
+ */
+router.get('/:roomCode/export', async (req, res, next) => {
+  try {
+    const { roomCode } = req.params;
+    const { password } = req.query;
+
+    if (!roomCode) {
+      return res.status(400).json({ success: false, error: 'Room code is required.' });
+    }
+
+    const normalizedCode = roomCode.trim().toUpperCase();
+    const room = await Room.findOne({ roomCode: normalizedCode }).lean();
+
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    if (password && room.roomPassword !== password.trim()) {
+      return res.status(401).json({ success: false, error: 'Invalid room credentials.' });
+    }
+
+    const ExcelJS = require('exceljs');
+    const enrichedParticipants = await Room.enrichParticipantsWithLevels(room.participants || [], normalizedCode);
+
+    // Sort by score desc, time taken asc (same as table)
+    const sorted = [...enrichedParticipants].sort((a, b) => {
+      const scoreA = a.computedTotalScore ?? a.score ?? 0;
+      const scoreB = b.computedTotalScore ?? b.score ?? 0;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      const timeA = a.computedTotalTime ?? a.timeTaken ?? 0;
+      const timeB = b.computedTotalTime ?? b.timeTaken ?? 0;
+      return timeA - timeB;
+    });
+
+    const formatTimeMMSS = (seconds) => {
+      if (!seconds && seconds !== 0) return '00:00';
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
+
+    const getStatusLabel = (p) => {
+      if (p.isDisqualified) return 'Disqualified';
+      if (p.status === 'completed' || p.status === 'advanced') return 'Passed';
+      if (p.status === 'eliminated') return 'Failed';
+      return 'In Progress';
+    };
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'QuizFunnel';
+    workbook.created = new Date();
+
+    const worksheet = workbook.addWorksheet('Results');
+
+    // 1. Remove Excel default gridline clutter
+    worksheet.views = [{ showGridLines: false }];
+
+    // 2. Define columns
+    worksheet.columns = [
+      { header: 'Rank', key: 'rank', width: 10 },
+      { header: 'Student Name', key: 'name', width: 24 },
+      { header: 'Phone Number', key: 'phone', width: 18 },
+      { header: 'Branch', key: 'branch', width: 14 },
+      { header: 'Level Reached', key: 'level', width: 16 },
+      { header: 'Total Score', key: 'score', width: 14 },
+      { header: 'Completion Time', key: 'time', width: 18 },
+      { header: 'Status', key: 'status', width: 16 },
+    ];
+
+    // 3. Format header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 28;
+    headerRow.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF111827' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF3F4F6' },
+    };
+
+    headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        bottom: { style: 'medium', color: { argb: 'FF9CA3AF' } },
+        left: colNumber === 1 ? { style: 'thin', color: { argb: 'FFD1D5DB' } } : undefined,
+        right: colNumber === worksheet.columns.length ? { style: 'thin', color: { argb: 'FFD1D5DB' } } : undefined,
+      };
+    });
+
+    // 4. Populate data rows
+    sorted.forEach((p, idx) => {
+      const row = worksheet.addRow({
+        rank: idx + 1,
+        name: p.name || '—',
+        phone: p.mobile || '—',
+        branch: p.branch || '—',
+        level: p.level || 1,
+        score: p.computedTotalScore ?? p.score ?? 0,
+        time: formatTimeMMSS(p.computedTotalTime ?? p.timeTaken ?? 0),
+        status: getStatusLabel(p),
+      });
+
+      row.height = 24;
+      row.font = { name: 'Calibri', size: 10.5, color: { argb: 'FF1F2937' } };
+
+      // Center-align all cells and add light row divider border
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = {
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        };
+      });
+    });
+
+    // 5. Auto-fit column widths based on content length with sensible minimums
+    worksheet.columns.forEach((column) => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const str = cell.value != null ? cell.value.toString() : '';
+        if (str.length > maxLength) {
+          maxLength = str.length;
+        }
+      });
+      column.width = Math.max(maxLength + 5, 12);
+    });
+
+    const filename = `QuizFunnel_Room_${normalizedCode}_Results.xlsx`;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/rooms/:roomCode
  * Fetches room details, status, and participant list for the Live Room Dashboard.
  */

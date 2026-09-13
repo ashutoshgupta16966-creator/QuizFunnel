@@ -13,6 +13,7 @@
     "@json2csv/plainjs": "^7.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "json2csv": "^6.0.0-alpha.2",
     "mongoose": "^8.4.1",
