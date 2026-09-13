@@ -90,6 +90,62 @@ export default function EntryForm() {
   const [roomModalStep, setRoomModalStep] = useState('select_role');
   const [roomModalPhone, setRoomModalPhone] = useState('');
 
+  // ── Animated PWA Install State & Handlers ─────────────────────────────────
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+  const [isAppInstalled, setIsAppInstalled] = useState(() => {
+    try {
+      return (
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.navigator.standalone === true
+      );
+    } catch {
+      return false;
+    }
+  });
+  const [pwaSuccessMsg, setPwaSuccessMsg] = useState('');
+
+  useEffect(() => {
+    const handlePrompt = (e) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+
+    const handleInstalled = () => {
+      setIsAppInstalled(true);
+      setDeferredInstallPrompt(null);
+      setPwaSuccessMsg('Quiz Funnel installed successfully! 🎉');
+      setTimeout(() => setPwaSuccessMsg(''), 4000);
+    };
+
+    window.addEventListener('beforeinstallprompt', handlePrompt);
+    window.addEventListener('appinstalled', handleInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handlePrompt);
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      try {
+        const choice = await deferredInstallPrompt.userChoice;
+        if (choice?.outcome === 'accepted') {
+          setIsAppInstalled(true);
+        }
+      } catch { /* noop */ }
+      setDeferredInstallPrompt(null);
+    } else {
+      const isIos = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
+      if (isIos) {
+        alert('To install on iOS: Tap the Share button (⬆️) in Safari and tap "Add to Home Screen" (➕).');
+      } else {
+        alert('To install: Open browser menu (⋮) and tap "Install app" or "Add to Home screen".');
+      }
+    }
+  };
+
   // Auto-open Room Modal if ?joinRoom / ?openRooms query parameter or router state is present
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -425,24 +481,24 @@ export default function EntryForm() {
 
   return (
     <div className="entry-page">
-      {/* Top Left: Compact Theme Toggle */}
+      {/* Top Left Stack: Dark/Light Mode Toggle + QR Code Button (Below) */}
       <div className="entry-top-left">
         <ThemeToggle />
-      </div>
-
-      {/* Top Right Stacked Actions: QR Code (Top), My Results, and Quiz Rooms */}
-      <div className="entry-top-right">
         <button
           type="button"
-          className="qr-trigger-btn"
+          className="qr-trigger-btn nav-pill-btn"
           onClick={() => setShowQrModal(true)}
           title="Show Quiz Direct Access QR Code"
         >
           📱 <span className="btn-text">QR Code</span>
         </button>
+      </div>
+
+      {/* Top Right Stack: My Results (Top) + Quiz Rooms (Below) */}
+      <div className="entry-top-right">
         <button
           type="button"
-          className="my-results-btn"
+          className="my-results-btn nav-pill-btn"
           onClick={handleOpenResultsModal}
           title="Access your private quiz attempts history"
         >
@@ -450,7 +506,7 @@ export default function EntryForm() {
         </button>
         <button
           type="button"
-          className="quiz-rooms-btn"
+          className="quiz-rooms-btn nav-pill-btn"
           onClick={() => setShowRoomRoleModal(true)}
           title="Create or Join a Live Quiz Room"
         >
@@ -578,6 +634,34 @@ export default function EntryForm() {
             {loading ? <><span className="btn-spinner" />Checking…</> : 'Start the Quiz →'}
           </button>
         </form>
+
+        {/* ── Animated PWA Install Feature ────────────────────────────── */}
+        {!isAppInstalled && (
+          <div className="pwa-install-container">
+            <button
+              type="button"
+              className="pwa-install-pulse-btn"
+              onClick={handleInstallApp}
+              title="Install Quiz Funnel as an App on your phone/desktop"
+            >
+              <span className="pwa-pulse-halo" aria-hidden />
+              <span className="pwa-inner-wrap">
+                <span className="pwa-app-icon" aria-hidden>📱</span>
+                <span className="pwa-text-group">
+                  <span className="pwa-main-text">Install App</span>
+                  <span className="pwa-sub-text">1-Tap Home Screen Access</span>
+                </span>
+                <span className="pwa-action-badge">Install ⚡</span>
+              </span>
+            </button>
+          </div>
+        )}
+
+        {pwaSuccessMsg && (
+          <div className="form-success-banner pwa-success-banner" role="status">
+            {pwaSuccessMsg}
+          </div>
+        )}
 
         {/* Quiz structure info */}
         <div className="level-info">

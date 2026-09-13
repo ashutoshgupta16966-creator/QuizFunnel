@@ -777,6 +777,81 @@ router.post('/admin/reset-pin', async (req, res, next) => {
 });
 
 /**
+ * POST /api/rooms/ai/generate-options
+ * Uses Gemini to auto-generate 4 plausible MCQ options + correct answer index
+ * for a given question text. Used by the admin in the AI Quiz Review editor.
+ */
+router.post('/ai/generate-options', async (req, res, next) => {
+  try {
+    const { questionText } = req.body;
+    if (!questionText?.trim()) {
+      return res.status(400).json({ success: false, error: 'questionText is required.' });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ success: false, error: 'Gemini API key not configured.' });
+    }
+
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+
+    const FALLBACK_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
+    let result = null;
+
+    for (const modelName of FALLBACK_MODELS) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const prompt = `You are an expert quiz question generator.
+
+Given this quiz question:
+"${questionText.trim()}"
+
+Generate exactly 4 plausible multiple-choice options (A, B, C, D).
+- One option MUST be the correct answer.
+- The other 3 should be convincing distractors — plausible but wrong.
+- Keep each option concise (under 15 words).
+
+Respond ONLY with a valid JSON object in this exact format (no markdown, no explanation):
+{"options":["Option A text","Option B text","Option C text","Option D text"],"correctIndex":0}
+
+Where correctIndex is 0-based (0=A, 1=B, 2=C, 3=D).`;
+
+        const response = await model.generateContent(prompt);
+        const raw = response.response.text().trim();
+
+        // Strip markdown code fences if present
+        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+        const parsed = JSON.parse(cleaned);
+
+        if (
+          Array.isArray(parsed.options) &&
+          parsed.options.length === 4 &&
+          typeof parsed.correctIndex === 'number' &&
+          parsed.correctIndex >= 0 &&
+          parsed.correctIndex <= 3
+        ) {
+          result = parsed;
+          break;
+        }
+      } catch (modelErr) {
+        // Try next model in fallback ladder
+        console.warn(`[generate-options] Model ${modelName} failed:`, modelErr.message);
+        continue;
+      }
+    }
+
+    if (!result) {
+      return res.status(500).json({ success: false, error: 'Failed to generate options. Please try again or enter manually.' });
+    }
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/rooms/:roomCode/analytics
  * Aggregates per-question performance stats across all students who participated
  * in this room. Returns question text, correct %, wrong %, and most-common

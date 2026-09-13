@@ -40,13 +40,14 @@ const QuestionSchema = new mongoose.Schema({
       message: 'Exactly 4 options are required for multiple-choice questions.',
     },
   },
-  // Index into the original `options` array (0–3) for MCQ questions
+  // Index into the original `options` array (0–3) for MCQ questions.
+  // -1 is the sentinel value for direct-answer questions (no MCQ selection).
   correctAnswerIndex: {
     type: Number,
     required: function () {
       return this.questionType !== 'direct';
     },
-    min: 0,
+    min: -1,
     max: 3,
     default: 0,
   },

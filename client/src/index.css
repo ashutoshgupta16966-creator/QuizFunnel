@@ -1598,6 +1598,10 @@ a { color: inherit; }
   position: absolute;
   top: 1.25rem;
   left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  align-items: flex-start;
   z-index: 50;
 }
 
@@ -1633,31 +1637,42 @@ a { color: inherit; }
 }
 
 /* ============================================================
-   PILL / SWITCH THEME TOGGLE
+   PILL / SWITCH THEME TOGGLE & UNIFORM TOP ACTION PILLS
    ============================================================ */
-.theme-switch-pill {
+.theme-switch-pill,
+.qr-trigger-btn,
+.my-results-btn,
+.quiz-rooms-btn,
+.nav-pill-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.45rem;
-  padding: 0.25rem 0.55rem;
+  padding: 0 0.95rem;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--r-full);
   cursor: pointer;
-  height: 32px;
+  height: 38px;
+  min-height: 38px;
+  max-height: 38px;
   box-sizing: border-box;
-  transition: all var(--t-fast);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  transition: transform var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
 }
 
-.theme-switch-pill:hover {
-  border-color: var(--primary);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px var(--primary-glow);
+.theme-switch-pill:hover,
+.nav-pill-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 4px 14px var(--primary-glow);
 }
 
 .theme-switch-icon {
-  font-size: 0.85rem;
+  font-size: 0.88rem;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -1665,7 +1680,7 @@ a { color: inherit; }
 }
 
 .theme-switch-label {
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: var(--text);
   line-height: 1;
@@ -1709,24 +1724,10 @@ a { color: inherit; }
 }
 
 /* ============================================================
-   TOP RIGHT ACTION PILL BADGES
+   SYMMETRICAL HEADER ACTION PILL BADGES
    ============================================================ */
-.qr-trigger-btn,
-.my-results-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.42rem 0.85rem;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-full);
-  color: var(--text);
-  font-size: 0.82rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
-  white-space: nowrap;
+.qr-trigger-btn {
+  border-color: rgba(67, 97, 238, 0.45);
 }
 
 .qr-trigger-btn:hover {
@@ -1748,24 +1749,12 @@ a { color: inherit; }
 
 .my-results-btn .btn-text {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .quiz-rooms-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.42rem 0.85rem;
-  background: var(--surface-2);
   border: 1.5px solid rgba(139, 92, 246, 0.45);
-  border-radius: var(--r-full);
   color: #a78bfa;
-  font-size: 0.82rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
-  white-space: nowrap;
 }
 
 .quiz-rooms-btn:hover {
@@ -1776,7 +1765,7 @@ a { color: inherit; }
 
 .quiz-rooms-btn .btn-text {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .qr-modal-content {
@@ -6195,4 +6184,241 @@ a { color: inherit; }
   text-transform: uppercase;
   letter-spacing: 0.04em;
   vertical-align: middle;
+}
+
+/* ============================================================
+   AI QUIZ REVIEW: MCQ OPTION MODE TOGGLE & AUTO-GEN
+   ============================================================ */
+.ai-optmode-toggle-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+  padding: 0.45rem 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--r-md);
+  border: 1px dashed var(--border);
+}
+
+.ai-optmode-label {
+  font-size: 0.75rem;
+  color: var(--text-soft);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ai-optmode-pill-group {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.ai-optmode-pill {
+  padding: 0.28rem 0.75rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--surface-2);
+  color: var(--text-soft);
+  transition: all 0.15s ease;
+}
+
+.ai-optmode-pill.is-active {
+  background: linear-gradient(135deg, var(--primary), #7209B7);
+  color: #FFFFFF;
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px var(--primary-glow);
+}
+
+.ai-optmode-pill:hover:not(.is-active) {
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.ai-auto-options-container {
+  margin-top: 0.5rem;
+  background: rgba(67, 97, 238, 0.04);
+  border: 1px solid rgba(67, 97, 238, 0.15);
+  border-radius: var(--r-md);
+  padding: 0.75rem;
+}
+
+.ai-auto-options-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ai-gen-action-btn {
+  font-size: 0.82rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--r-full);
+  background: linear-gradient(135deg, #7C3AED, #4361EE);
+  border: none;
+  color: #FFFFFF;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ai-gen-action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.45);
+}
+
+.ai-auto-action-hint {
+  font-size: 0.74rem;
+  color: var(--text-soft);
+  line-height: 1.3;
+}
+
+/* ============================================================
+   ANIMATED PWA INSTALL FEATURE
+   ============================================================ */
+.pwa-install-container {
+  margin: 1.25rem 0 0.5rem;
+  width: 100%;
+}
+
+.pwa-install-pulse-btn {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1.25rem;
+  background: linear-gradient(135deg, rgba(67, 97, 238, 0.18), rgba(114, 9, 183, 0.22), rgba(247, 37, 133, 0.18));
+  border: 1.5px solid transparent;
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+  animation: pwa-float 3.5s ease-in-out infinite alternate;
+}
+
+/* Glowing animated gradient border */
+.pwa-install-pulse-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-lg);
+  padding: 1.5px;
+  background: linear-gradient(135deg, #4CC9F0, #4361EE, #F72585, #FFD700);
+  background-size: 300% 300%;
+  animation: pwa-gradient-flow 4s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Subtle expanding halo pulse behind button */
+.pwa-pulse-halo {
+  position: absolute;
+  inset: -8px;
+  border-radius: var(--r-xl);
+  background: radial-gradient(circle, rgba(67, 97, 238, 0.45) 0%, rgba(247, 37, 133, 0.15) 50%, transparent 70%);
+  animation: pwa-halo-pulse 2.4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pwa-inner-wrap {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 0.75rem;
+}
+
+.pwa-app-icon {
+  font-size: 1.55rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3));
+  transition: transform 0.25s ease;
+}
+
+.pwa-text-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  flex: 1;
+}
+
+.pwa-main-text {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.pwa-sub-text {
+  font-size: 0.74rem;
+  color: var(--text-soft);
+  font-weight: 500;
+  line-height: 1.2;
+  margin-top: 0.15rem;
+}
+
+.pwa-action-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.32rem 0.8rem;
+  background: linear-gradient(135deg, #4361EE, #7209B7);
+  color: #FFFFFF;
+  border-radius: var(--r-full);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  box-shadow: 0 2px 8px rgba(67, 97, 238, 0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pwa-install-pulse-btn:hover {
+  transform: translateY(-3px) scale(1.015);
+  box-shadow: 0 8px 24px rgba(67, 97, 238, 0.3), 0 0 16px rgba(247, 37, 133, 0.25);
+}
+
+.pwa-install-pulse-btn:hover .pwa-app-icon {
+  transform: scale(1.15) rotate(-6deg);
+}
+
+.pwa-install-pulse-btn:hover .pwa-action-badge {
+  transform: scale(1.05);
+  box-shadow: 0 4px 14px rgba(67, 97, 238, 0.6);
+}
+
+.pwa-install-pulse-btn:active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+@keyframes pwa-gradient-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes pwa-halo-pulse {
+  0% { transform: scale(0.94); opacity: 0.35; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+  100% { transform: scale(0.94); opacity: 0.35; }
+}
+
+@keyframes pwa-float {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-2px); }
+}
+
+.pwa-success-banner {
+  animation: fadeIn 0.3s ease;
 }

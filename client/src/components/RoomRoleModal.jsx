@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom, sendAdminOtp, verifyAdminOtp, resetAdminPin } from '../api';
+import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom, sendAdminOtp, verifyAdminOtp, resetAdminPin, generateMcqOptions } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
 
@@ -136,6 +136,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [aiSaving, setAiSaving] = useState(false);
   const [aiDetailsError, setAiDetailsError] = useState('');
   const [aiReviewError, setAiReviewError] = useState('');
+  const [generatingOptionsIdx, setGeneratingOptionsIdx] = useState(null);
+  const [optGenErrors, setOptGenErrors] = useState({});
 
   // ── Scroll lock while modal is open ─────────────────────────────────────────
   useEffect(() => {
@@ -456,6 +458,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         {
           questionText: '',
           questionType: 'mcq',
+          optionMode: 'manual',
           options: ['', '', '', ''],
           correctAnswerIndex: 0,
           directAnswer: '',
@@ -466,6 +469,48 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         },
       ],
     }));
+  };
+
+  const handleGenerateOptions = async (qIdx) => {
+    const q = aiResult.questions[qIdx];
+    if (!q?.questionText?.trim()) {
+      setOptGenErrors((prev) => ({
+        ...prev,
+        [qIdx]: 'Please enter the question text before auto-generating options.',
+      }));
+      return;
+    }
+
+    setGeneratingOptionsIdx(qIdx);
+    setOptGenErrors((prev) => ({ ...prev, [qIdx]: '' }));
+    try {
+      const res = await generateMcqOptions(q.questionText.trim());
+      if (res.data?.success && res.data?.data) {
+        const { options, correctIndex } = res.data.data;
+        setAiResult((prev) => {
+          const nextQs = [...prev.questions];
+          nextQs[qIdx] = {
+            ...nextQs[qIdx],
+            options: Array.isArray(options) && options.length === 4 ? options : nextQs[qIdx].options,
+            correctAnswerIndex: typeof correctIndex === 'number' ? correctIndex : 0,
+            optionMode: 'auto',
+          };
+          return { ...prev, questions: nextQs };
+        });
+      } else {
+        setOptGenErrors((prev) => ({
+          ...prev,
+          [qIdx]: res.data?.error || 'Failed to auto-generate options with AI.',
+        }));
+      }
+    } catch (err) {
+      setOptGenErrors((prev) => ({
+        ...prev,
+        [qIdx]: err.response?.data?.error || err.message || 'AI generation failed. Please use custom manual options.',
+      }));
+    } finally {
+      setGeneratingOptionsIdx(null);
+    }
   };
 
   const handleAiConfirmAndCreate = async () => {
@@ -1405,27 +1450,108 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                     </div>
                   ) : (
                     <div className="ai-options-editor">
-                      <span className="ai-options-label">Options (click radio to select correct answer):</span>
-                      {(q.options || []).map((opt, optIdx) => (
-                        <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`}>
-                          <label className="ai-correct-radio-label" title={`Mark Option ${['A', 'B', 'C', 'D'][optIdx]} as correct`}>
-                            <input
-                              type="radio"
-                              name={`correct_${qIdx}`}
-                              checked={q.correctAnswerIndex === optIdx}
-                              onChange={() => handleAiQuestionChange(qIdx, 'correctAnswerIndex', optIdx)}
-                            />
-                            <span className="ai-opt-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
-                          </label>
-                          <input
-                            type="text"
-                            className="form-input ai-opt-input"
-                            value={opt}
-                            onChange={(e) => handleAiOptionChange(qIdx, optIdx, e.target.value)}
-                            placeholder={`Option ${['A', 'B', 'C', 'D'][optIdx]}`}
-                          />
+                      {/* MCQ Sub-toggle: [ 🪄 AI Auto-Generate Options | ✏️ Custom Manual Options ] */}
+                      <div className="ai-optmode-toggle-bar">
+                        <span className="ai-optmode-label">Options Setup:</span>
+                        <div className="ai-optmode-pill-group">
+                          <button
+                            type="button"
+                            className={`ai-optmode-pill ${(q.optionMode || 'manual') === 'auto' ? 'is-active' : ''}`}
+                            onClick={() => {
+                              handleAiQuestionChange(qIdx, 'optionMode', 'auto');
+                              const isEmpty = !q.options || q.options.every((opt) => !opt || !opt.trim());
+                              if (isEmpty && q.questionText?.trim()) {
+                                handleGenerateOptions(qIdx);
+                              }
+                            }}
+                          >
+                            🪄 AI Auto-Generate Options
+                          </button>
+                          <button
+                            type="button"
+                            className={`ai-optmode-pill ${(q.optionMode || 'manual') === 'manual' ? 'is-active' : ''}`}
+                            onClick={() => handleAiQuestionChange(qIdx, 'optionMode', 'manual')}
+                          >
+                            ✏️ Custom Manual Options
+                          </button>
                         </div>
-                      ))}
+                      </div>
+
+                      {(q.optionMode || 'manual') === 'auto' ? (
+                        <div className="ai-auto-options-container">
+                          <div className="ai-auto-options-actions">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary ai-gen-action-btn"
+                              onClick={() => handleGenerateOptions(qIdx)}
+                              disabled={generatingOptionsIdx === qIdx}
+                            >
+                              {generatingOptionsIdx === qIdx ? (
+                                <><span className="btn-spinner" />Generating 4 Options via Gemini…</>
+                              ) : (
+                                '🪄 Generate / Re-generate Options with AI'
+                              )}
+                            </button>
+                            <span className="ai-auto-action-hint">
+                              Uses Gemini to craft 4 plausible options with 1 designated correct answer.
+                            </span>
+                          </div>
+
+                          {optGenErrors[qIdx] && (
+                            <div className="server-error" style={{ margin: '0.5rem 0', fontSize: '0.78rem' }}>
+                              ⚠️ {optGenErrors[qIdx]}
+                            </div>
+                          )}
+
+                          <span className="ai-options-label" style={{ marginTop: '0.6rem' }}>
+                            Options Preview (Designated Correct Answer selected):
+                          </span>
+                          {(q.options || []).map((opt, optIdx) => (
+                            <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`}>
+                              <label className="ai-correct-radio-label" title={`Mark Option ${['A', 'B', 'C', 'D'][optIdx]} as correct`}>
+                                <input
+                                  type="radio"
+                                  name={`correct_auto_${qIdx}`}
+                                  checked={q.correctAnswerIndex === optIdx}
+                                  onChange={() => handleAiQuestionChange(qIdx, 'correctAnswerIndex', optIdx)}
+                                />
+                                <span className="ai-opt-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
+                              </label>
+                              <input
+                                type="text"
+                                className="form-input ai-opt-input"
+                                value={opt}
+                                onChange={(e) => handleAiOptionChange(qIdx, optIdx, e.target.value)}
+                                placeholder={`Option ${['A', 'B', 'C', 'D'][optIdx]} (auto-generated)`}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="ai-manual-options-container">
+                          <span className="ai-options-label">Custom Manual Options (click radio to select correct answer):</span>
+                          {(q.options || []).map((opt, optIdx) => (
+                            <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`}>
+                              <label className="ai-correct-radio-label" title={`Mark Option ${['A', 'B', 'C', 'D'][optIdx]} as correct`}>
+                                <input
+                                  type="radio"
+                                  name={`correct_${qIdx}`}
+                                  checked={q.correctAnswerIndex === optIdx}
+                                  onChange={() => handleAiQuestionChange(qIdx, 'correctAnswerIndex', optIdx)}
+                                />
+                                <span className="ai-opt-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
+                              </label>
+                              <input
+                                type="text"
+                                className="form-input ai-opt-input"
+                                value={opt}
+                                onChange={(e) => handleAiOptionChange(qIdx, optIdx, e.target.value)}
+                                placeholder={`Option ${['A', 'B', 'C', 'D'][optIdx]}`}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

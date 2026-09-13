@@ -1,0 +1,27 @@
+{
+  "name": "Quiz Funnel",
+  "short_name": "QuizFunnel",
+  "description": "Live interactive elimination-style quiz funnel challenge.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#0D1B2A",
+  "theme_color": "#4361EE",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512 any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "games"],
+  "shortcuts": [
+    {
+      "name": "Live Rooms",
+      "url": "/?openRooms=true",
+      "description": "Join or Host a Live Quiz Room"
+    }
+  ]
+}

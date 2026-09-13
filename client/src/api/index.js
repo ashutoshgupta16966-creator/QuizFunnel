@@ -162,6 +162,8 @@ export const exportRoomResultsXLSX = (roomCode, password) =>
     responseType: 'blob',
   });
 
+export const generateMcqOptions = (questionText) =>
+  api.post('/api/rooms/ai/generate-options', { questionText });
 
 
 
