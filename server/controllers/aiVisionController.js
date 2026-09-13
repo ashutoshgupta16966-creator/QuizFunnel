@@ -79,11 +79,17 @@ async function parseQuizDocumentWithGemini(files) {
     },
   }));
 
-  const promptText = `You are an expert academic assessment digitizer and quiz extraction engine.
-Analyze the provided document (exam paper, test sheet, lecture quiz, or question bank) thoroughly and extract:
-1. "subject": The name of the subject or course (e.g. "Data Structures", "Digital Electronics", "Operating Systems", "Physics"). If not explicitly mentioned, infer a concise and accurate subject name from the content.
-2. "unit": The unit, chapter, module, or topic name (e.g. "Unit 3: Binary Trees", "Chapter 2: Thermodynamics", "Arrays & Pointers"). If not specified, infer a concise topic name.
-3. "questions": All multiple-choice questions found in the document.
+  const promptText = `You are a Strict Verbatim OCR Digitizer and Academic Assessment Extraction Engine.
+Your job is to perform STRICT VERBATIM OCR EXTRACTION on the provided document (exam paper, test sheet, lecture quiz, or question bank).
+
+MANDATORY OCR EXTRACTION DIRECTIVES:
+1. WORD-FOR-WORD & LINE-FOR-LINE ACCURACY: Transcribe every question, option, heading, and text segment EXACTLY as printed in the document.
+2. STRICTLY PROHIBITED: Do NOT rephrase, do NOT rewrite, do NOT paraphrase, do NOT summarize, do NOT condense, and do NOT generate artificial or replacement questions. Transcribe the exact characters and wording.
+3. DUAL QUESTION FORMAT SUPPORT:
+   - "mcq": Multiple-choice questions that have printed choices (e.g. A, B, C, D).
+   - "direct": Fill-in-the-blank, numerical answer, short text, or direct question with NO printed choices.
+   For "direct" questions, set "questionType": "direct", "directAnswer": "<verbatim or factually correct answer>", and "options": [].
+   For "mcq" questions, set "questionType": "mcq", provide exactly 4 options in "options", and set "correctAnswerIndex": 0..3.
 
 STRICT OUTPUT FORMAT:
 You must return ONLY a raw, valid JSON object without markdown code blocks, backticks, or any conversational prose.
@@ -93,33 +99,45 @@ JSON Structure:
   "unit": "Unit / Chapter Name",
   "questions": [
     {
-      "questionText": "Question text here?",
+      "questionText": "Verbatim question text here?",
+      "questionType": "mcq",
       "options": ["Option A", "Option B", "Option C", "Option D"],
       "correctAnswerIndex": 0,
+      "directAnswer": "",
       "level": 1,
       "section": "Technical",
       "difficulty": "medium",
-      "explanation": "Brief explanation of the correct answer"
+      "explanation": "Brief explanation of the answer"
+    },
+    {
+      "questionText": "Verbatim direct question or numerical problem?",
+      "questionType": "direct",
+      "options": [],
+      "correctAnswerIndex": -1,
+      "directAnswer": "42",
+      "level": 2,
+      "section": "Technical",
+      "difficulty": "medium",
+      "explanation": "Brief explanation of the answer"
     }
   ]
 }
 
 CRITICAL RULES:
-1. "options" MUST be an array of EXACTLY 4 non-empty strings.
-   - If the original question has fewer than 4 choices (e.g., True/False or 3 choices), generate plausible, realistic distractor options to make exactly 4 choices.
-2. "correctAnswerIndex" MUST be an integer between 0 and 3 (0 for Option A, 1 for Option B, 2 for Option C, 3 for Option D).
-   - If the answer key is clearly marked in the document, use it.
-   - If the answer key is NOT indicated in the document, determine the factually correct option yourself and accurately set its index.
+1. If "questionType" is "mcq":
+   - "options" MUST contain 4 distinct options transcribed verbatim. If only 2 or 3 choices exist in the document (e.g. True/False), add realistic plausible distractors to make 4 options.
+   - "correctAnswerIndex" MUST be an integer between 0 and 3 (0 for Option A, 1 for Option B, 2 for Option C, 3 for Option D).
+2. If "questionType" is "direct":
+   - "options" should be empty [].
+   - "directAnswer" MUST be a non-empty string with the expected target answer (can be an integer, short phrase, formula, or symbol).
 3. "level" MUST be an integer from 1 to 4:
-   - Level 1: Foundation / Basic concepts & definitions
-   - Level 2: Intermediate / Application & conceptual understanding
-   - Level 3: Advanced / Problem solving & code tracing
-   - Level 4: Final Round / Complex analysis & comprehensive questions
-   If questions are already organized by difficulty or parts (e.g. Part A, Part B), map them appropriately. Otherwise, distribute them logically starting at Level 1.
+   - Level 1: Basic concepts & definitions
+   - Level 2: Intermediate / application
+   - Level 3: Advanced / problem solving & code tracing
+   - Level 4: Final Round / complex analysis
 4. "section" MUST be one of: ["Technical", "GK", "Reasoning", "Aptitude", "Mixed"].
-   - Use "Technical" for engineering, computer science, and STEM topics.
 5. "difficulty" MUST be one of: ["easy", "medium", "hard"].
-6. Preserve formatting, mathematical formulas, code blocks, or special terminology accurately in "questionText".`;
+6. Preserve formatting, mathematical formulas, code blocks, or special symbols accurately in "questionText".`;
 
   let rawText = '';
   let lastError = null;
@@ -181,7 +199,7 @@ CRITICAL RULES:
   const rawQuestions = Array.isArray(parsed.questions) ? parsed.questions : [];
 
   if (rawQuestions.length === 0) {
-    throw new Error('No multiple-choice questions could be detected in the uploaded file(s). Please check that the document contains readable questions.');
+    throw new Error('No questions could be detected in the uploaded file(s). Please check that the document contains readable questions.');
   }
 
   // ── Sanitize & Validate Questions against QuestionSchema ────────────────
@@ -191,53 +209,67 @@ CRITICAL RULES:
     const qText = (q.questionText || q.question || '').trim();
     if (!qText) continue;
 
-    // Ensure 4 options
-    let opts = Array.isArray(q.options)
-      ? q.options.map((o) => String(o).trim()).filter(Boolean)
-      : [];
+    const isDirect = q.questionType === 'direct' ||
+      ((!Array.isArray(q.options) || q.options.length === 0) && Boolean(q.directAnswer || q.correctAnswer));
 
-    if (opts.length === 0) {
-      opts = ['True', 'False', 'Cannot be determined', 'None of the above'];
-    } else if (opts.length < 4) {
-      const genericDummies = ['None of the above', 'All of the above', 'Cannot be determined', 'Both A and B'];
-      while (opts.length < 4) {
-        opts.push(genericDummies[opts.length] || `Option ${opts.length + 1}`);
-      }
-    } else if (opts.length > 4) {
-      opts = opts.slice(0, 4);
-    }
-
-    // Validate correctAnswerIndex
-    let correctIdx = parseInt(q.correctAnswerIndex, 10);
-    if (isNaN(correctIdx) || correctIdx < 0 || correctIdx > 3) {
-      correctIdx = 0;
-    }
-
-    // Validate level
     let lvl = parseInt(q.level, 10);
-    if (isNaN(lvl) || lvl < 1 || lvl > 4) {
-      lvl = 1;
-    }
+    if (isNaN(lvl) || lvl < 1 || lvl > 4) lvl = 1;
 
-    // Validate section
     let sec = ALLOWED_SECTIONS.includes(q.section) ? q.section : 'Technical';
-
-    // Validate difficulty
     let diff = ALLOWED_DIFFICULTIES.includes(q.difficulty) ? q.difficulty : 'medium';
+    let explanation = typeof q.explanation === 'string' ? q.explanation.trim() : '';
 
-    validatedQuestions.push({
-      questionText: qText,
-      options: opts,
-      correctAnswerIndex: correctIdx,
-      level: lvl,
-      section: sec,
-      difficulty: diff,
-      explanation: typeof q.explanation === 'string' ? q.explanation.trim() : '',
-    });
+    if (isDirect) {
+      const directAns = String(q.directAnswer || q.correctAnswer || '').trim();
+      validatedQuestions.push({
+        questionText: qText,
+        questionType: 'direct',
+        options: [],
+        correctAnswerIndex: -1,
+        directAnswer: directAns,
+        level: lvl,
+        section: sec,
+        difficulty: diff,
+        explanation,
+      });
+    } else {
+      // Ensure 4 options for MCQ
+      let opts = Array.isArray(q.options)
+        ? q.options.map((o) => String(o).trim()).filter(Boolean)
+        : [];
+
+      if (opts.length === 0) {
+        opts = ['True', 'False', 'Cannot be determined', 'None of the above'];
+      } else if (opts.length < 4) {
+        const genericDummies = ['None of the above', 'All of the above', 'Cannot be determined', 'Both A and B'];
+        while (opts.length < 4) {
+          opts.push(genericDummies[opts.length] || `Option ${opts.length + 1}`);
+        }
+      } else if (opts.length > 4) {
+        opts = opts.slice(0, 4);
+      }
+
+      let correctIdx = parseInt(q.correctAnswerIndex, 10);
+      if (isNaN(correctIdx) || correctIdx < 0 || correctIdx > 3) {
+        correctIdx = 0;
+      }
+
+      validatedQuestions.push({
+        questionText: qText,
+        questionType: 'mcq',
+        options: opts,
+        correctAnswerIndex: correctIdx,
+        directAnswer: opts[correctIdx] || '',
+        level: lvl,
+        section: sec,
+        difficulty: diff,
+        explanation,
+      });
+    }
   }
 
   if (validatedQuestions.length === 0) {
-    throw new Error('Found question text, but could not parse valid options. Please ensure questions have distinct multiple-choice options.');
+    throw new Error('Found question text, but could not parse valid options or answers. Please ensure questions are clearly formatted.');
   }
 
   console.log(`[AI Vision Controller]: Successfully parsed ${validatedQuestions.length} questions for "${subject}" (${unit})`);

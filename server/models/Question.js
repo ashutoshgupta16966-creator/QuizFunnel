@@ -24,19 +24,37 @@ const QuestionSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
+  questionType: {
+    type: String,
+    enum: ['mcq', 'direct'],
+    default: 'mcq',
+  },
   options: {
     type: [String],
+    default: [],
     validate: {
-      validator: (arr) => arr.length === 4,
-      message: 'Exactly 4 options are required per question.',
+      validator: function (arr) {
+        if (this.questionType === 'direct') return true;
+        return Array.isArray(arr) && arr.length === 4;
+      },
+      message: 'Exactly 4 options are required for multiple-choice questions.',
     },
   },
-  // Index into the original `options` array (0–3)
+  // Index into the original `options` array (0–3) for MCQ questions
   correctAnswerIndex: {
     type: Number,
-    required: true,
+    required: function () {
+      return this.questionType !== 'direct';
+    },
     min: 0,
     max: 3,
+    default: 0,
+  },
+  // Direct text/integer answer for direct-answer questions
+  directAnswer: {
+    type: String,
+    trim: true,
+    default: '',
   },
   difficulty: {
     type: String,

@@ -72,7 +72,7 @@ router.get('/questions/:level', async (req, res, next) => {
     const roomCodeHeader = (req.headers['x-room-code'] || req.query.roomCode || '').trim().toUpperCase();
     let activeRoom = null;
     if (roomCodeHeader) {
-      activeRoom = await Room.findOne({ roomCode: roomCodeHeader, status: 'active' }).lean();
+      activeRoom = await Room.findOne({ roomCode: roomCodeHeader }).lean();
     } else {
       // Fallback: check if student is an active participant in an active room
       activeRoom = await Room.findOne({ 'participants.mobile': mobile, status: 'active' }).lean();
@@ -84,18 +84,41 @@ router.get('/questions/:level', async (req, res, next) => {
     // ── RESUME: return same shuffled questions if session exists ──────────
     if (student.quizSession && student.quizSession.level === level) {
       const qIds = student.quizSession.questions.map((q) => q.questionId);
-      const dbQuestions = await Question.find({ _id: { $in: qIds } }).lean();
+      let dbQuestions = await Question.find({ _id: { $in: qIds } }).lean();
+
+      // Fallback to room.questions if some questions were embedded on the room
+      if (dbQuestions.length < qIds.length && Array.isArray(activeRoom?.questions)) {
+        const embeddedMap = Object.fromEntries(activeRoom.questions.map((q) => [q._id.toString(), q]));
+        const existingIds = new Set(dbQuestions.map((q) => q._id.toString()));
+        for (const qId of qIds) {
+          if (!existingIds.has(qId.toString()) && embeddedMap[qId.toString()]) {
+            dbQuestions.push(embeddedMap[qId.toString()]);
+          }
+        }
+      }
+
       const qMap = Object.fromEntries(dbQuestions.map((q) => [q._id.toString(), q]));
 
       const clientQuestions = student.quizSession.questions.map((sq) => {
         const q = qMap[sq.questionId.toString()];
         if (!q) return null;
+        const isDirect = q.questionType === 'direct' || (!q.options || q.options.length === 0);
+        if (isDirect) {
+          return {
+            _id: q._id,
+            questionText: q.questionText,
+            questionType: 'direct',
+            section: q.section,
+            options: [],
+          };
+        }
         return {
           _id: q._id,
           questionText: q.questionText,
+          questionType: 'mcq',
           section: q.section,
           // Rebuild shuffled options from stored shuffleMap
-          options: sq.shuffleMap.map((i) => q.options[i]),
+          options: Array.isArray(sq.shuffleMap) ? sq.shuffleMap.map((i) => q.options[i]) : q.options,
         };
       }).filter(Boolean);
 
@@ -130,6 +153,11 @@ router.get('/questions/:level', async (req, res, next) => {
       if (roomQs.length === 0) {
         // If no questions specific to this level, fetch all questions for this room
         roomQs = await Question.find({ roomCode: activeRoom.roomCode }).lean();
+      }
+      // Fallback directly to embedded activeRoom.questions array if Question collection returned empty
+      if (roomQs.length === 0 && Array.isArray(activeRoom.questions) && activeRoom.questions.length > 0) {
+        const levelMatches = activeRoom.questions.filter((q) => q.level === level);
+        roomQs = levelMatches.length > 0 ? levelMatches : activeRoom.questions;
       }
       allQuestions = roomQs;
     } else {
@@ -172,14 +200,27 @@ router.get('/questions/:level', async (req, res, next) => {
     const clientQuestions = [];
 
     for (const q of allQuestions) {
-      const { shuffledOptions, shuffleMap } = shuffleOptions(q.options);
-      sessionQuestions.push({ questionId: q._id, shuffleMap });
-      clientQuestions.push({
-        _id: q._id,
-        questionText: q.questionText,
-        section: q.section,
-        options: shuffledOptions, // correctAnswerIndex intentionally NOT sent
-      });
+      const isDirect = q.questionType === 'direct' || (!q.options || q.options.length === 0);
+      if (isDirect) {
+        sessionQuestions.push({ questionId: q._id, questionType: 'direct', shuffleMap: [] });
+        clientQuestions.push({
+          _id: q._id,
+          questionText: q.questionText,
+          questionType: 'direct',
+          section: q.section,
+          options: [],
+        });
+      } else {
+        const { shuffledOptions, shuffleMap } = shuffleOptions(q.options);
+        sessionQuestions.push({ questionId: q._id, questionType: 'mcq', shuffleMap });
+        clientQuestions.push({
+          _id: q._id,
+          questionText: q.questionText,
+          questionType: 'mcq',
+          section: q.section,
+          options: shuffledOptions, // correctAnswerIndex intentionally NOT sent
+        });
+      }
     }
 
     // Persist session so scoring can be done server-side
@@ -266,9 +307,25 @@ router.post('/submit', async (req, res, next) => {
     const session = student.quizSession;
     const levelConfig = LEVELS[level];
 
-    // Fetch questions to access correctAnswerIndex
+    // Fetch questions to access correctAnswerIndex and directAnswer
     const questionIds = session.questions.map((q) => q.questionId);
-    const dbQuestions = await Question.find({ _id: { $in: questionIds } }).lean();
+    let dbQuestions = await Question.find({ _id: { $in: questionIds } }).lean();
+
+    // Fallback: check room.questions if some questions were embedded directly on the room
+    if (dbQuestions.length < questionIds.length && (isRoom || roomCode)) {
+      const normalizedRoomCode = (roomCode || '').trim().toUpperCase();
+      const room = await Room.findOne({ roomCode: normalizedRoomCode }).lean();
+      if (room && Array.isArray(room.questions)) {
+        const embeddedMap = Object.fromEntries(room.questions.map((q) => [q._id.toString(), q]));
+        const existingIds = new Set(dbQuestions.map((q) => q._id.toString()));
+        for (const qId of questionIds) {
+          if (!existingIds.has(qId.toString()) && embeddedMap[qId.toString()]) {
+            dbQuestions.push(embeddedMap[qId.toString()]);
+          }
+        }
+      }
+    }
+
     const qMap = Object.fromEntries(dbQuestions.map((q) => [q._id.toString(), q]));
 
     // ── SCORING ──────────────────────────────────────────────────────────
@@ -282,20 +339,46 @@ router.post('/submit', async (req, res, next) => {
       const dbQ = qMap[answer.questionId.toString()];
       if (!sessionQ || !dbQ) continue;
 
-      // selectedIndex is the SHUFFLED index → map back to original
-      // shuffleMap[shuffledPos] = originalPos
-      const originalIndex = sessionQ.shuffleMap[answer.selectedIndex];
-      const isCorrect = Number.isInteger(originalIndex) &&
-                        originalIndex === dbQ.correctAnswerIndex;
+      const isDirect = dbQ.questionType === 'direct' || sessionQ.questionType === 'direct' || (!dbQ.options || dbQ.options.length === 0);
 
-      if (isCorrect) score++;
+      if (isDirect) {
+        // Direct text/integer answer evaluation:
+        // Strict normalization: studentInput.trim().toLowerCase() === correctAnswer.trim().toLowerCase()
+        const rawStudentAnswer = answer.directAnswer !== undefined
+          ? answer.directAnswer
+          : (answer.selectedAnswer !== undefined ? answer.selectedAnswer : (answer.textAnswer !== undefined ? answer.textAnswer : ''));
+        const studentNormalized = String(rawStudentAnswer || '').trim().toLowerCase();
+        const correctNormalized = String(dbQ.directAnswer || '').trim().toLowerCase();
+        const isCorrect = studentNormalized !== '' && studentNormalized === correctNormalized;
 
-      scoredAnswers.push({
-        questionId: answer.questionId,
-        selectedIndex: answer.selectedIndex,
-        shuffleMap: sessionQ.shuffleMap,
-        isCorrect,
-      });
+        if (isCorrect) score++;
+
+        scoredAnswers.push({
+          questionId: answer.questionId,
+          questionType: 'direct',
+          directAnswer: String(rawStudentAnswer || '').trim(),
+          selectedIndex: -1,
+          isCorrect,
+        });
+      } else {
+        // selectedIndex is the SHUFFLED index → map back to original
+        // shuffleMap[shuffledPos] = originalPos
+        const originalIndex = Array.isArray(sessionQ.shuffleMap)
+          ? sessionQ.shuffleMap[answer.selectedIndex]
+          : answer.selectedIndex;
+        const isCorrect = Number.isInteger(originalIndex) &&
+                          originalIndex === dbQ.correctAnswerIndex;
+
+        if (isCorrect) score++;
+
+        scoredAnswers.push({
+          questionId: answer.questionId,
+          questionType: 'mcq',
+          selectedIndex: answer.selectedIndex,
+          shuffleMap: sessionQ.shuffleMap,
+          isCorrect,
+        });
+      }
     }
 
     // ── CUTOFF CHECK ─────────────────────────────────────────────────────
@@ -519,29 +602,50 @@ router.get('/review/:mobile', async (req, res, next) => {
         const q = qMap[ans.questionId ? ans.questionId.toString() : ''];
         if (!q) return null;
 
-        // Map student's chosen shuffled index back to original index
+        const isDirect = q.questionType === 'direct' || ans.questionType === 'direct' || (!q.options || q.options.length === 0);
+
         let originalSelected = null;
-        if (Number.isInteger(ans.selectedIndex) && ans.selectedIndex >= 0 && Array.isArray(ans.shuffleMap)) {
-          originalSelected = ans.shuffleMap[ans.selectedIndex];
+        let isCorrect = false;
+        let isUnattempted = true;
+        let selectedOptionText = null;
+        let correctAnswerText = '';
+
+        if (isDirect) {
+          const studentAns = String(ans.directAnswer !== undefined ? ans.directAnswer : '').trim();
+          const targetAns = String(q.directAnswer || '').trim();
+          isUnattempted = !studentAns;
+          isCorrect = !isUnattempted && studentAns.toLowerCase() === targetAns.toLowerCase();
+          selectedOptionText = studentAns || null;
+          correctAnswerText = targetAns;
+        } else {
+          // Map student's chosen shuffled index back to original index
+          if (Number.isInteger(ans.selectedIndex) && ans.selectedIndex >= 0 && Array.isArray(ans.shuffleMap)) {
+            originalSelected = ans.shuffleMap[ans.selectedIndex];
+          } else if (Number.isInteger(ans.selectedIndex) && ans.selectedIndex >= 0) {
+            originalSelected = ans.selectedIndex;
+          }
+
+          isUnattempted = originalSelected === null || originalSelected === undefined || originalSelected === -1;
+          isCorrect = !isUnattempted && originalSelected === q.correctAnswerIndex;
+          selectedOptionText = !isUnattempted && q.options && q.options[originalSelected] ? q.options[originalSelected] : null;
+          correctAnswerText = q.options && q.options[q.correctAnswerIndex] ? q.options[q.correctAnswerIndex] : '';
         }
 
-        const isUnattempted = originalSelected === null || originalSelected === undefined || originalSelected === -1;
-        const isCorrect = !isUnattempted && originalSelected === q.correctAnswerIndex;
-
         const explanation = q.explanation ||
-          `The correct answer is "${q.options[q.correctAnswerIndex]}". This is the accurate choice for this ${q.section} problem based on core logical principles and standardized subject facts.`;
+          `The correct answer is "${correctAnswerText}". This is the accurate choice for this ${q.section} problem based on core logical principles and standardized subject facts.`;
 
         return {
           questionId: q._id,
           questionNumber: idx + 1,
+          questionType: isDirect ? 'direct' : 'mcq',
           section: q.section,
           difficulty: q.difficulty,
           questionText: q.questionText,
-          options: q.options,
+          options: q.options || [],
           correctAnswerIndex: q.correctAnswerIndex,
-          correctAnswerText: q.options[q.correctAnswerIndex],
+          correctAnswerText,
           selectedOptionIndex: originalSelected,
-          selectedOptionText: !isUnattempted && q.options[originalSelected] ? q.options[originalSelected] : null,
+          selectedOptionText,
           isCorrect,
           isUnattempted,
           explanation,

@@ -47,6 +47,10 @@ export default function QuestionCard({
     card.style.animation = '';
   }, [question._id]);
 
+  const isDirect = question.questionType === 'direct' || (!question.options || question.options.length === 0);
+  const directValue = typeof selectedIndex === 'string' ? selectedIndex : (selectedIndex !== null && selectedIndex !== undefined ? String(selectedIndex) : '');
+  const hasAnswer = isDirect ? Boolean(directValue && directValue.trim()) : (selectedIndex !== null && selectedIndex !== undefined);
+
   const handleOptionClick = (e, idx) => {
     createRipple(e);
     // If clicking the currently selected option, toggle off / clear selection
@@ -63,7 +67,7 @@ export default function QuestionCard({
   };
 
   // Format multi-line question text (Level 4 code questions use \n)
-  const lines = question.questionText.split('\n');
+  const lines = (question.questionText || '').split('\n');
 
   return (
     <div className="question-wrapper" ref={cardRef}>
@@ -71,6 +75,7 @@ export default function QuestionCard({
         <div className="question-meta-left">
           <span className="question-number">Q{questionNumber}</span>
           <span className="question-section-tag">{question.section}</span>
+          {isDirect && <span className="question-type-badge">Direct Answer</span>}
         </div>
 
         <div className="question-meta-right">
@@ -86,12 +91,12 @@ export default function QuestionCard({
             <span className="bookmark-label">{isBookmarked ? 'Bookmarked' : 'Bookmark'}</span>
           </button>
 
-          {selectedIndex !== null && (
+          {hasAnswer && (
             <button
               type="button"
               className="clear-choice-btn"
               onClick={handleClearSelection}
-              title="Clear selection for this question"
+              title="Clear answer for this question"
             >
               ✕ Clear Answer
             </button>
@@ -110,33 +115,52 @@ export default function QuestionCard({
         )}
       </div>
 
-      <div className="options-grid">
-        {question.options.map((option, idx) => {
-          const isSelected = selectedIndex === idx;
-          return (
-            <button
-              key={idx}
-              type="button"
-              className={`option-btn${isSelected ? ' option-selected' : ''}`}
-              onClick={(e) => handleOptionClick(e, idx)}
-              aria-pressed={isSelected}
-            >
-              <span className="option-letter">{LETTER_LABELS[idx]}</span>
-              <span className="option-text">{option}</span>
-              {isSelected && <span className="option-check" aria-hidden>✓</span>}
-            </button>
-          );
-        })}
-      </div>
+      {isDirect ? (
+        <div className="direct-answer-container">
+          <label className="direct-answer-label">
+            Type Your Answer:
+          </label>
+          <input
+            type="text"
+            className="form-input direct-answer-input"
+            placeholder="Type your answer here..."
+            value={directValue}
+            onChange={(e) => onAnswer(e.target.value)}
+            autoFocus
+          />
+          <p className="direct-answer-tip">
+            💡 Letter casing and extra spaces are ignored during automatic grading.
+          </p>
+        </div>
+      ) : (
+        <div className="options-grid">
+          {(question.options || []).map((option, idx) => {
+            const isSelected = selectedIndex === idx;
+            return (
+              <button
+                key={idx}
+                type="button"
+                className={`option-btn${isSelected ? ' option-selected' : ''}`}
+                onClick={(e) => handleOptionClick(e, idx)}
+                aria-pressed={isSelected}
+              >
+                <span className="option-letter">{LETTER_LABELS[idx]}</span>
+                <span className="option-text">{option}</span>
+                {isSelected && <span className="option-check" aria-hidden>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      {selectedIndex !== null && (
+      {hasAnswer && (
         <div className="card-footer-actions">
           <button
             type="button"
             className="clear-selection-link"
             onClick={handleClearSelection}
           >
-            ↺ Clear Selection
+            ↺ Clear Answer
           </button>
         </div>
       )}

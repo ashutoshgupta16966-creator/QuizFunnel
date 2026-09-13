@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { getQuestions, submitQuiz } from '../api';
+import { getQuestions, getRoomQuestions, submitQuiz } from '../api';
 import { joinStudentRoomSocket, emitStudentProgress, emitStudentDisqualified } from '../utils/socket';
 import { LEVELS } from '../config';
 import QuestionCard from '../components/QuestionCard';
@@ -208,6 +208,23 @@ export default function Quiz() {
       setStartedAt(new Date(sAt));
       restoreSavedProgress(qs);
     } catch (err) {
+      // If room quiz and standard questions endpoint had an error, fallback to getRoomQuestions
+      if (isRoomQuiz && roomSession?.roomCode) {
+        try {
+          const roomRes = await getRoomQuestions(roomSession.roomCode, levelNum);
+          const { questions: qs, subject: resSub, unit: resUn } = roomRes.data.data;
+          if (Array.isArray(qs) && qs.length > 0) {
+            setQuestions(qs);
+            if (resSub) setQuizSubject(resSub);
+            if (resUn) setQuizUnit(resUn);
+            setStartedAt(new Date());
+            restoreSavedProgress(qs);
+            return;
+          }
+        } catch (fallbackErr) {
+          console.warn('Fallback getRoomQuestions failed:', fallbackErr.message);
+        }
+      }
       setLoadError(err.response?.data?.error || 'Failed to load questions. Check your connection and refresh.');
     } finally {
       setLoading(false);
@@ -215,18 +232,26 @@ export default function Quiz() {
   };
 
   // ── Answer selection & clearing ───────────────────────────────────────────
-  const handleAnswer = useCallback((questionId, idx) => {
+  const handleAnswer = useCallback((questionId, val) => {
     if (isRoomClosed) return;
     setAnswers((prev) => {
       const next = { ...prev };
-      if (idx === null || idx === undefined) {
+      if (val === null || val === undefined || (typeof val === 'string' && val.trim() === '')) {
         delete next[questionId]; // deselect / clear choice
       } else {
-        next[questionId] = idx; // select or modify choice
+        next[questionId] = val; // select or modify choice (number index or direct string)
       }
       return next;
     });
   }, [isRoomClosed]);
+
+  // Helper to check if a question has been answered (supports MCQ index and direct string)
+  const isQuestionAnswered = useCallback((qId) => {
+    const a = answers[qId];
+    if (a === undefined || a === null || a === -1) return false;
+    if (typeof a === 'string' && a.trim() === '') return false;
+    return true;
+  }, [answers]);
 
   // ── Clear saved progress ──────────────────────────────────────────────────
   const clearSavedProgress = () => {
@@ -249,11 +274,26 @@ export default function Quiz() {
       ? Math.floor((Date.now() - startedAt.getTime()) / 1000)
       : levelConfig.timeSeconds;
 
-    // Build answers array; unanswered questions get -1
-    const answersArray = questions.map((q) => ({
-      questionId:    q._id,
-      selectedIndex: answers[q._id] ?? -1,
-    }));
+    // Build answers array supporting both MCQ and Direct question formats
+    const answersArray = questions.map((q) => {
+      const val = answers[q._id];
+      const isDirect = q.questionType === 'direct' || (!q.options || q.options.length === 0);
+
+      if (isDirect) {
+        return {
+          questionId: q._id,
+          questionType: 'direct',
+          directAnswer: typeof val === 'string' ? val.trim() : (val !== null && val !== undefined ? String(val).trim() : ''),
+          selectedIndex: -1,
+        };
+      }
+
+      return {
+        questionId: q._id,
+        questionType: 'mcq',
+        selectedIndex: typeof val === 'number' ? val : -1,
+      };
+    });
 
     try {
       const res = await submitQuiz({
@@ -310,7 +350,7 @@ export default function Quiz() {
   // ── Manual Submit Click (with Unattempted Questions Check) ───────────────
   const handleManualSubmit = () => {
     if (isRoomClosed) return;
-    const answeredCount = Object.keys(answers).length;
+    const answeredCount = questions.filter((q) => isQuestionAnswered(q._id)).length;
     const unattempted = questions.length - answeredCount;
     if (unattempted > 0) {
       setShowUnattemptedModal(true);
@@ -322,9 +362,7 @@ export default function Quiz() {
   const handleGoBackAndReview = () => {
     setShowUnattemptedModal(false);
     // Jump to the first unattempted question for convenience
-    const firstUnansweredIdx = questions.findIndex(
-      (q) => answers[q._id] === undefined || answers[q._id] === null || answers[q._id] === -1
-    );
+    const firstUnansweredIdx = questions.findIndex((q) => !isQuestionAnswered(q._id));
     if (firstUnansweredIdx !== -1) {
       setCurrentIndex(firstUnansweredIdx);
     }

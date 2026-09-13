@@ -18,6 +18,9 @@ function enrichParticipantsWithLevels(participants, roomCode) {
   return Room.enrichParticipantsWithLevels(participants, roomCode);
 }
 
+// In-memory store for Admin Demo OTPs: adminPhone -> { otp, expiresAt }
+const adminOtpStore = new Map();
+
 /**
  * POST /api/rooms/create
  * Admin creates a new live quiz room.
@@ -168,13 +171,8 @@ router.post('/create-ai', async (req, res, next) => {
       const qText = String(q.questionText || '').trim();
       if (!qText) continue;
 
-      const opts = Array.isArray(q.options)
-        ? q.options.map((o) => String(o).trim()).filter(Boolean)
-        : [];
-      if (opts.length !== 4) continue;
-
-      let cIdx = parseInt(q.correctAnswerIndex, 10);
-      if (isNaN(cIdx) || cIdx < 0 || cIdx > 3) cIdx = 0;
+      const isDirect = q.questionType === 'direct' ||
+        ((!Array.isArray(q.options) || q.options.length === 0) && Boolean(q.directAnswer || q.correctAnswer));
 
       let lvl = parseInt(q.level, 10);
       if (isNaN(lvl) || lvl < 1 || lvl > 4) lvl = 1;
@@ -187,22 +185,52 @@ router.post('/create-ai', async (req, res, next) => {
         ? q.difficulty
         : 'medium';
 
-      questionDocs.push({
-        roomCode: normalizedCode,
-        level: lvl,
-        section: sec,
-        questionText: qText,
-        options: opts,
-        correctAnswerIndex: cIdx,
-        difficulty: diff,
-        explanation: String(q.explanation || '').trim(),
-      });
+      const exp = String(q.explanation || '').trim();
+
+      if (isDirect) {
+        const directAns = String(q.directAnswer || q.correctAnswer || '').trim();
+        if (!directAns) continue;
+
+        questionDocs.push({
+          roomCode: normalizedCode,
+          questionType: 'direct',
+          level: lvl,
+          section: sec,
+          questionText: qText,
+          options: [],
+          correctAnswerIndex: -1,
+          directAnswer: directAns,
+          difficulty: diff,
+          explanation: exp,
+        });
+      } else {
+        const opts = Array.isArray(q.options)
+          ? q.options.map((o) => String(o).trim()).filter(Boolean)
+          : [];
+        if (opts.length !== 4) continue;
+
+        let cIdx = parseInt(q.correctAnswerIndex, 10);
+        if (isNaN(cIdx) || cIdx < 0 || cIdx > 3) cIdx = 0;
+
+        questionDocs.push({
+          roomCode: normalizedCode,
+          questionType: 'mcq',
+          level: lvl,
+          section: sec,
+          questionText: qText,
+          options: opts,
+          correctAnswerIndex: cIdx,
+          directAnswer: opts[cIdx] || '',
+          difficulty: diff,
+          explanation: exp,
+        });
+      }
     }
 
     if (questionDocs.length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'No valid questions found. Each question must have non-empty text and exactly 4 options.',
+        error: 'No valid questions found. MCQ questions require 4 options, while Direct questions require a correct answer.',
       });
     }
 
@@ -220,6 +248,7 @@ router.post('/create-ai', async (req, res, next) => {
       isAiGenerated: true,
       subject: subject?.trim() || '',
       unit: unit?.trim() || '',
+      questions: questionDocs,
       participants: [],
     });
 
@@ -615,6 +644,132 @@ router.get('/admin/my-rooms', async (req, res, next) => {
         totalRooms: roomList.length,
         rooms: roomList,
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/rooms/admin/send-otp
+ * Generates and stores a 4-digit Demo OTP for Host PIN recovery.
+ */
+router.post('/admin/send-otp', async (req, res, next) => {
+  try {
+    const { adminPhone } = req.body;
+    if (!adminPhone?.trim()) {
+      return res.status(400).json({ success: false, error: 'Admin Phone Number is required.' });
+    }
+
+    const cleanPhone = adminPhone.trim().replace(/\D/g, '').slice(-10);
+    if (!/^\d{10}$/.test(cleanPhone)) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid 10-digit phone number.' });
+    }
+
+    const roomCount = await Room.countDocuments({ adminPhone: cleanPhone });
+    if (roomCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No rooms found associated with this phone number. Please create a room first.',
+      });
+    }
+
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+    adminOtpStore.set(cleanPhone, { otp, expiresAt });
+
+    console.log(`[Admin Host OTP] Phone: ${cleanPhone} -> Generated Demo OTP: ${otp}`);
+
+    res.json({
+      success: true,
+      message: `4-digit OTP sent successfully to registered phone number.`,
+      demoOtp: otp,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/rooms/admin/verify-otp
+ * Verifies the 4-digit Demo OTP for Admin PIN recovery.
+ */
+router.post('/admin/verify-otp', async (req, res, next) => {
+  try {
+    const { adminPhone, otp } = req.body;
+    if (!adminPhone || !otp) {
+      return res.status(400).json({ success: false, error: 'Phone number and OTP are required.' });
+    }
+
+    const cleanPhone = adminPhone.trim().replace(/\D/g, '').slice(-10);
+    const record = adminOtpStore.get(cleanPhone);
+
+    if (!record || record.expiresAt < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        error: 'OTP has expired or is invalid. Please request a new one.',
+      });
+    }
+
+    if (record.otp !== otp.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid 4-digit OTP code. Please check and try again.',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'OTP verified successfully.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/rooms/admin/reset-pin
+ * Updates the Room PIN / Host Password for all rooms created by this admin phone number.
+ */
+router.post('/admin/reset-pin', async (req, res, next) => {
+  try {
+    const { adminPhone, otp, newPIN } = req.body;
+    if (!adminPhone || !otp || !newPIN) {
+      return res.status(400).json({
+        success: false,
+        error: 'Admin Phone number, OTP, and new PIN are required.',
+      });
+    }
+
+    const cleanPhone = adminPhone.trim().replace(/\D/g, '').slice(-10);
+    const pin = newPIN.trim();
+    if (pin.length < 4) {
+      return res.status(400).json({
+        success: false,
+        error: 'New PIN / Password must be at least 4 characters or digits.',
+      });
+    }
+
+    const record = adminOtpStore.get(cleanPhone);
+    if (!record || record.otp !== otp.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'OTP verification failed or expired. Please restart password reset.',
+      });
+    }
+
+    // Update roomPassword for all rooms created by this admin
+    const updateResult = await Room.updateMany(
+      { adminPhone: cleanPhone },
+      { $set: { roomPassword: pin } }
+    );
+
+    adminOtpStore.delete(cleanPhone);
+
+    res.json({
+      success: true,
+      message: 'Host PIN / Room Password updated successfully.',
+      modifiedCount: updateResult.modifiedCount,
     });
   } catch (err) {
     next(err);
@@ -1065,6 +1220,72 @@ router.get('/:roomCode/export', async (req, res, next) => {
 
     await workbook.xlsx.write(res);
     res.end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/rooms/:roomCode/questions
+ * Returns dynamic questions for the room, checking both Room.questions array
+ * and Question collection, guaranteeing students can load questions reliably.
+ */
+router.get('/:roomCode/questions', async (req, res, next) => {
+  try {
+    const { roomCode } = req.params;
+    const { level } = req.query;
+
+    if (!roomCode) {
+      return res.status(400).json({ success: false, error: 'Room code is required.' });
+    }
+
+    const normalizedCode = roomCode.trim().toUpperCase();
+    const room = await Room.findOne({ roomCode: normalizedCode }).lean();
+
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    let roomQuestions = [];
+    if (Array.isArray(room.questions) && room.questions.length > 0) {
+      roomQuestions = room.questions;
+    } else {
+      roomQuestions = await Question.find({ roomCode: normalizedCode }).lean();
+    }
+
+    // If level filter provided and matching questions exist, filter by level
+    const targetLevel = parseInt(level, 10);
+    let filteredQuestions = roomQuestions;
+    if (!isNaN(targetLevel) && targetLevel >= 1 && targetLevel <= 4) {
+      const levelMatches = roomQuestions.filter((q) => q.level === targetLevel);
+      if (levelMatches.length > 0) {
+        filteredQuestions = levelMatches;
+      }
+    }
+
+    // Sanitize questions for student: strip correctAnswerIndex and directAnswer
+    const clientQuestions = filteredQuestions.map((q) => ({
+      _id: q._id,
+      questionText: q.questionText,
+      questionType: q.questionType || (q.options && q.options.length > 0 ? 'mcq' : 'direct'),
+      options: q.options || [],
+      level: q.level || 1,
+      section: q.section || 'Technical',
+      difficulty: q.difficulty || 'medium',
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        roomCode: room.roomCode,
+        quizTitle: room.quizTitle || '',
+        subject: room.subject || '',
+        unit: room.unit || '',
+        isAiGenerated: Boolean(room.isAiGenerated),
+        questions: clientQuestions,
+        total: clientQuestions.length,
+      },
+    });
   } catch (err) {
     next(err);
   }

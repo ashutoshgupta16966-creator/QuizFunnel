@@ -138,6 +138,18 @@ export const checkReattemptStatus = (roomCode, mobile) =>
 export const getAdminRooms = (adminPhone, adminPIN) =>
   api.get('/api/rooms/admin/my-rooms', { params: { adminPhone, adminPIN } });
 
+export const sendAdminOtp = (data) =>
+  api.post('/api/rooms/admin/send-otp', data);
+
+export const verifyAdminOtp = (data) =>
+  api.post('/api/rooms/admin/verify-otp', data);
+
+export const resetAdminPin = (data) =>
+  api.post('/api/rooms/admin/reset-pin', data);
+
+export const getRoomQuestions = (roomCode, level) =>
+  api.get(`/api/rooms/${encodeURIComponent(roomCode)}/questions`, { params: { level } });
+
 export const renameRoom = (roomCode, data) =>
   api.post(`/api/rooms/${encodeURIComponent(roomCode)}/rename`, data);
 

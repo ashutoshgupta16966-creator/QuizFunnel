@@ -6057,3 +6057,142 @@ a { color: inherit; }
   }
 }
 
+/* ── Admin Forgot PIN link ── */
+.forgot-pin-row {
+  margin-bottom: 0.75rem;
+  text-align: left;
+}
+.forgot-pin-link-btn {
+  background: none;
+  border: none;
+  color: var(--accent, #7c3aed);
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  line-height: 1.4;
+}
+.forgot-pin-link-btn:hover {
+  opacity: 0.75;
+}
+
+/* ── SMS OTP Banner (Admin OTP) ── */
+.sms-otp-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface-2, #1e1e2e);
+  border: 1px solid var(--border, #3f3f5a);
+  border-radius: var(--r-md, 0.5rem);
+  padding: 0.6rem 1rem;
+  font-size: 0.84rem;
+  color: var(--text-soft, #a1a1aa);
+  margin-bottom: 1rem;
+}
+.sms-otp-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.sms-otp-text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+/* ── AI Format Toggle (MCQ vs Direct) ── */
+.ai-format-toggle-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+.ai-format-label {
+  font-size: 0.75rem;
+  color: var(--text-soft, #a1a1aa);
+  font-weight: 600;
+}
+.ai-format-pill-group {
+  display: flex;
+  gap: 0.35rem;
+}
+.ai-format-pill {
+  padding: 0.3rem 0.75rem;
+  border: 1.5px solid var(--border, #3f3f5a);
+  border-radius: var(--r-full, 9999px);
+  font-size: 0.75rem;
+  cursor: pointer;
+  background: var(--surface-2, #1e1e2e);
+  color: var(--text-soft, #a1a1aa);
+  transition: all 0.15s ease;
+}
+.ai-format-pill.is-active {
+  background: var(--accent, #7c3aed);
+  color: #fff;
+  border-color: var(--accent, #7c3aed);
+}
+.ai-format-pill:hover:not(.is-active) {
+  border-color: var(--accent, #7c3aed);
+  color: var(--text, #f4f4f5);
+}
+
+/* ── Direct Answer Row (Admin AI Review) ── */
+.ai-direct-answer-row {
+  margin-bottom: 0.75rem;
+}
+.ai-direct-ans-input {
+  font-size: 0.88rem;
+  width: 100%;
+}
+.ai-direct-hint {
+  font-size: 0.73rem;
+  color: var(--text-soft, #a1a1aa);
+  margin-top: 0.3rem;
+  line-height: 1.4;
+}
+
+/* ── Direct Answer Input (Student Quiz) ── */
+.direct-answer-container {
+  margin: 1.25rem 0;
+}
+.direct-answer-label {
+  display: block;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-soft, #a1a1aa);
+  margin-bottom: 0.5rem;
+}
+.direct-answer-input {
+  width: 100%;
+  font-size: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--r-md, 0.5rem);
+  border: 1.5px solid var(--border, #3f3f5a);
+  background: var(--surface-2, #1e1e2e);
+  color: var(--text, #f4f4f5);
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.direct-answer-input:focus {
+  border-color: var(--accent, #7c3aed);
+}
+.direct-answer-tip {
+  font-size: 0.75rem;
+  color: var(--text-soft, #a1a1aa);
+  margin-top: 0.4rem;
+  line-height: 1.4;
+}
+
+/* ── Question Type Badge ── */
+.question-type-badge {
+  display: inline-block;
+  font-size: 0.67rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--r-full, 9999px);
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}

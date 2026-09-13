@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom } from '../api';
+import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom, sendAdminOtp, verifyAdminOtp, resetAdminPin } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
 
@@ -82,6 +82,26 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [myRoomsError, setMyRoomsError] = useState('');
   const [myRoomsList, setMyRoomsList] = useState([]);
 
+  // ── Admin Host Forgot PIN (Demo OTP) state ──────────────────────────────────
+  const [adminOtpCode, setAdminOtpCode] = useState('');
+  const [adminNewPin, setAdminNewPin] = useState('');
+  const [adminOtpNotice, setAdminOtpNotice] = useState('');
+  const [adminOtpError, setAdminOtpError] = useState('');
+  const [adminOtpLoading, setAdminOtpLoading] = useState(false);
+  const [adminResendTimer, setAdminResendTimer] = useState(0);
+
+  useEffect(() => {
+    let interval = null;
+    if (adminResendTimer > 0) {
+      interval = setInterval(() => {
+        setAdminResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [adminResendTimer]);
+
   // ── History Hub Rename & Delete state ────────────────────────────────────────
   const [editingRoomCode, setEditingRoomCode] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -139,6 +159,11 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       setStudentError('');
       setMyRoomsError('');
       setMyRoomsLoading(false);
+      setAdminOtpCode('');
+      setAdminNewPin('');
+      setAdminOtpNotice('');
+      setAdminOtpError('');
+      setAdminOtpLoading(false);
       setPendingData(null);
       setApprovalDenied(false);
       setApprovalSuccess(false);
@@ -430,8 +455,10 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         ...prev.questions,
         {
           questionText: '',
+          questionType: 'mcq',
           options: ['', '', '', ''],
           correctAnswerIndex: 0,
+          directAnswer: '',
           level: 1,
           section: 'Technical',
           difficulty: 'medium',
@@ -450,10 +477,17 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         setAiReviewError(`Question #${i + 1} is missing question text.`);
         return;
       }
-      for (let j = 0; j < 4; j++) {
-        if (!q.options[j] || !q.options[j].trim()) {
-          setAiReviewError(`Question #${i + 1} has an empty Option ${['A', 'B', 'C', 'D'][j]}. All 4 options are required.`);
+      if (q.questionType === 'direct') {
+        if (!q.directAnswer || !String(q.directAnswer).trim()) {
+          setAiReviewError(`Question #${i + 1} is a Direct Fill-in question and requires a Correct Answer.`);
           return;
+        }
+      } else {
+        for (let j = 0; j < 4; j++) {
+          if (!q.options || !q.options[j] || !q.options[j].trim()) {
+            setAiReviewError(`Question #${i + 1} has an empty Option ${['A', 'B', 'C', 'D'][j]}. All 4 options are required.`);
+            return;
+          }
         }
       }
     }
@@ -619,6 +653,107 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       setMyRoomsError(err.response?.data?.error || 'Failed to load rooms. Please check your phone number and PIN.');
     } finally {
       setMyRoomsLoading(false);
+    }
+  };
+
+  // ── Admin Host Forgot PIN (Demo OTP) Handlers ────────────────────────────────
+  const handleStartAdminForgotPin = async (e) => {
+    if (e) e.preventDefault();
+    setMyRoomsError('');
+    const cleanPhone = myRoomsPhone.trim().replace(/\D/g, '').slice(-10);
+    if (!cleanPhone || !/^\d{10}$/.test(cleanPhone)) {
+      setMyRoomsError('Please enter your 10-digit registered phone number above first.');
+      return;
+    }
+
+    setAdminOtpLoading(true);
+    setAdminOtpError('');
+    setAdminOtpNotice('');
+    try {
+      const res = await sendAdminOtp({ adminPhone: cleanPhone });
+      const demoOtpMsg = res.data.demoOtp ? ` [Demo OTP: ${res.data.demoOtp}]` : '';
+      setAdminOtpNotice(`4-digit OTP sent to +91 ${cleanPhone}.${demoOtpMsg}`);
+      setAdminResendTimer(30);
+      setAdminOtpCode('');
+      setAdminNewPin('');
+      setStep('admin_my_rooms_forgot_otp');
+    } catch (err) {
+      setMyRoomsError(err.response?.data?.error || 'Failed to send OTP. Check phone number.');
+    } finally {
+      setAdminOtpLoading(false);
+    }
+  };
+
+  const handleResendAdminOtp = async () => {
+    if (adminResendTimer > 0) return;
+    const cleanPhone = myRoomsPhone.trim().replace(/\D/g, '').slice(-10);
+    setAdminOtpLoading(true);
+    setAdminOtpError('');
+    try {
+      const res = await sendAdminOtp({ adminPhone: cleanPhone });
+      const demoOtpMsg = res.data.demoOtp ? ` [Demo OTP: ${res.data.demoOtp}]` : '';
+      setAdminOtpNotice(`New 4-digit OTP sent to +91 ${cleanPhone}.${demoOtpMsg}`);
+      setAdminResendTimer(30);
+    } catch (err) {
+      setAdminOtpError(err.response?.data?.error || 'Failed to resend OTP.');
+    } finally {
+      setAdminOtpLoading(false);
+    }
+  };
+
+  const handleVerifyAdminOtp = async (e) => {
+    if (e) e.preventDefault();
+    if (!/^\d{4}$/.test(adminOtpCode.trim())) {
+      setAdminOtpError('Please enter the 4-digit OTP code sent to your phone.');
+      return;
+    }
+
+    const cleanPhone = myRoomsPhone.trim().replace(/\D/g, '').slice(-10);
+    setAdminOtpLoading(true);
+    setAdminOtpError('');
+    try {
+      await verifyAdminOtp({
+        adminPhone: cleanPhone,
+        otp: adminOtpCode.trim(),
+      });
+      setStep('admin_my_rooms_forgot_new_pin');
+    } catch (err) {
+      setAdminOtpError(err.response?.data?.error || 'Invalid OTP code. Please try again.');
+    } finally {
+      setAdminOtpLoading(false);
+    }
+  };
+
+  const handleResetAdminPin = async (e) => {
+    if (e) e.preventDefault();
+    const pin = adminNewPin.trim();
+    if (!pin || pin.length < 4) {
+      setAdminOtpError('New PIN / Password must be at least 4 characters or digits.');
+      return;
+    }
+
+    const cleanPhone = myRoomsPhone.trim().replace(/\D/g, '').slice(-10);
+    setAdminOtpLoading(true);
+    setAdminOtpError('');
+    try {
+      await resetAdminPin({
+        adminPhone: cleanPhone,
+        otp: adminOtpCode.trim(),
+        newPIN: pin,
+      });
+
+      // Auto-authenticate with the new PIN and fetch rooms directly
+      setMyRoomsPin(pin);
+      sessionStorage.setItem('room_admin_phone', cleanPhone);
+      sessionStorage.setItem('room_admin_pin', pin);
+
+      const res = await getAdminRooms(cleanPhone, pin);
+      setMyRoomsList(res.data?.data?.rooms || []);
+      setStep('admin_my_rooms_list');
+    } catch (err) {
+      setAdminOtpError(err.response?.data?.error || 'Failed to reset PIN. Please try again.');
+    } finally {
+      setAdminOtpLoading(false);
     }
   };
 
@@ -1210,6 +1345,37 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                     </button>
                   </div>
 
+                  {/* Question Format Toggle */}
+                  <div className="ai-format-toggle-bar">
+                    <span className="ai-format-label">Question Format:</span>
+                    <div className="ai-format-pill-group">
+                      <button
+                        type="button"
+                        className={`ai-format-pill ${q.questionType !== 'direct' ? 'is-active' : ''}`}
+                        onClick={() => {
+                          handleAiQuestionChange(qIdx, 'questionType', 'mcq');
+                          if (!q.options || q.options.length < 4) {
+                            handleAiQuestionChange(qIdx, 'options', ['', '', '', '']);
+                          }
+                        }}
+                      >
+                        🔘 Multiple Choice (MCQ)
+                      </button>
+                      <button
+                        type="button"
+                        className={`ai-format-pill ${q.questionType === 'direct' ? 'is-active' : ''}`}
+                        onClick={() => {
+                          handleAiQuestionChange(qIdx, 'questionType', 'direct');
+                          if (!q.directAnswer && q.options && q.options[q.correctAnswerIndex]) {
+                            handleAiQuestionChange(qIdx, 'directAnswer', q.options[q.correctAnswerIndex]);
+                          }
+                        }}
+                      >
+                        ✏️ Direct Fill-in Answer
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
                     <label className="form-label" style={{ fontSize: '0.75rem' }}>Question Text</label>
                     <textarea
@@ -1221,29 +1387,47 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                     />
                   </div>
 
-                  <div className="ai-options-editor">
-                    <span className="ai-options-label">Options (click radio to select correct answer):</span>
-                    {(q.options || []).map((opt, optIdx) => (
-                      <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`}>
-                        <label className="ai-correct-radio-label" title={`Mark Option ${['A', 'B', 'C', 'D'][optIdx]} as correct`}>
+                  {q.questionType === 'direct' ? (
+                    <div className="ai-direct-answer-row">
+                      <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>
+                        Correct Answer (Direct Text / Numerical):
+                      </label>
+                      <input
+                        type="text"
+                        className="form-input ai-direct-ans-input"
+                        value={q.directAnswer || ''}
+                        onChange={(e) => handleAiQuestionChange(qIdx, 'directAnswer', e.target.value)}
+                        placeholder="e.g. 42, O(log n), Mitochondria, True, etc."
+                      />
+                      <p className="ai-direct-hint">
+                        💡 Students will see a direct text box. Scoring uses trimmed, case-insensitive evaluation.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="ai-options-editor">
+                      <span className="ai-options-label">Options (click radio to select correct answer):</span>
+                      {(q.options || []).map((opt, optIdx) => (
+                        <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`}>
+                          <label className="ai-correct-radio-label" title={`Mark Option ${['A', 'B', 'C', 'D'][optIdx]} as correct`}>
+                            <input
+                              type="radio"
+                              name={`correct_${qIdx}`}
+                              checked={q.correctAnswerIndex === optIdx}
+                              onChange={() => handleAiQuestionChange(qIdx, 'correctAnswerIndex', optIdx)}
+                            />
+                            <span className="ai-opt-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
+                          </label>
                           <input
-                            type="radio"
-                            name={`correct_${qIdx}`}
-                            checked={q.correctAnswerIndex === optIdx}
-                            onChange={() => handleAiQuestionChange(qIdx, 'correctAnswerIndex', optIdx)}
+                            type="text"
+                            className="form-input ai-opt-input"
+                            value={opt}
+                            onChange={(e) => handleAiOptionChange(qIdx, optIdx, e.target.value)}
+                            placeholder={`Option ${['A', 'B', 'C', 'D'][optIdx]}`}
                           />
-                          <span className="ai-opt-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
-                        </label>
-                        <input
-                          type="text"
-                          className="form-input ai-opt-input"
-                          value={opt}
-                          onChange={(e) => handleAiOptionChange(qIdx, optIdx, e.target.value)}
-                          placeholder={`Option ${['A', 'B', 'C', 'D'][optIdx]}`}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1475,6 +1659,17 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                 />
               </div>
 
+              <div className="forgot-pin-row">
+                <button
+                  type="button"
+                  className="forgot-pin-link-btn"
+                  onClick={handleStartAdminForgotPin}
+                  disabled={adminOtpLoading}
+                >
+                  {adminOtpLoading ? 'Sending Demo OTP…' : 'Forgot Password / Room PIN?'}
+                </button>
+              </div>
+
               <button
                 type="submit"
                 className="btn btn-primary room-submit-btn"
@@ -1486,6 +1681,128 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                   'Load My Rooms →'
                 )}
               </button>
+            </form>
+          </div>
+        )}
+
+        {/* ── STEP 2D-OTP: ADMIN HOST FORGOT PIN - DEMO OTP ENTRY ── */}
+        {step === 'admin_my_rooms_forgot_otp' && (
+          <div className="room-form-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">🔐</span>
+              <h2 className="room-modal-title">Verify Admin Phone</h2>
+              <p className="room-modal-subtitle">
+                Enter the 4-digit Demo OTP code to recover your Host PIN for <strong>+91 {myRoomsPhone}</strong>
+              </p>
+            </div>
+
+            {adminOtpNotice && (
+              <div className="sms-otp-banner" style={{ marginBottom: '1rem' }}>
+                <span className="sms-otp-icon">📱</span>
+                <span className="sms-otp-text">{adminOtpNotice}</span>
+              </div>
+            )}
+
+            {adminOtpError && <div className="server-error" role="alert">⚠️ {adminOtpError}</div>}
+
+            <form onSubmit={handleVerifyAdminOtp} className="room-form" noValidate>
+              <div className="form-group">
+                <label className="form-label">Enter 4-Digit OTP Code</label>
+                <input
+                  type="text"
+                  className="form-input otp-input"
+                  placeholder="• • • •"
+                  maxLength={4}
+                  value={adminOtpCode}
+                  onChange={(e) => {
+                    setAdminOtpCode(e.target.value.replace(/\D/g, ''));
+                    setAdminOtpError('');
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              <div className="otp-resend-row" style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-link btn-sm"
+                  onClick={handleResendAdminOtp}
+                  disabled={adminResendTimer > 0 || adminOtpLoading}
+                >
+                  {adminResendTimer > 0 ? `Resend OTP in ${adminResendTimer}s` : 'Resend Demo OTP'}
+                </button>
+              </div>
+
+              <div className="ai-actions-row">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setStep('admin_my_rooms_auth')}
+                  disabled={adminOtpLoading}
+                >
+                  ← Back
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={adminOtpLoading || adminOtpCode.length < 4}
+                >
+                  {adminOtpLoading ? <><span className="btn-spinner" />Verifying…</> : 'Verify OTP →'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* ── STEP 2D-PIN: ADMIN HOST SET NEW ROOM PIN / PASSWORD ── */}
+        {step === 'admin_my_rooms_forgot_new_pin' && (
+          <div className="room-form-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">🔑</span>
+              <h2 className="room-modal-title">Set New Room PIN</h2>
+              <p className="room-modal-subtitle">
+                Create a new Host Password / PIN for all rooms linked to <strong>+91 {myRoomsPhone}</strong>
+              </p>
+            </div>
+
+            {adminOtpError && <div className="server-error" role="alert">⚠️ {adminOtpError}</div>}
+
+            <form onSubmit={handleResetAdminPin} className="room-form" noValidate>
+              <div className="form-group">
+                <label className="form-label">New Host PIN / Room Password</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="Enter new 4+ digit PIN / password"
+                  value={adminNewPin}
+                  onChange={(e) => {
+                    setAdminNewPin(e.target.value);
+                    setAdminOtpError('');
+                  }}
+                  autoFocus
+                />
+                <span className="form-hint" style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem', display: 'block' }}>
+                  This PIN will update and authenticate all rooms associated with your phone number.
+                </span>
+              </div>
+
+              <div className="ai-actions-row" style={{ marginTop: '1.25rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setStep('admin_my_rooms_forgot_otp')}
+                  disabled={adminOtpLoading}
+                >
+                  ← Back
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={adminOtpLoading || adminNewPin.trim().length < 4}
+                >
+                  {adminOtpLoading ? <><span className="btn-spinner" />Updating PIN…</> : 'Save PIN & Load Rooms 🚀'}
+                </button>
+              </div>
             </form>
           </div>
         )}

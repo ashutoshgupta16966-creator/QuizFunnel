@@ -35,6 +35,18 @@ const ReattemptRequestSchema = new mongoose.Schema({
   previousScore:  { type: Number, default: 0 },
 }, { _id: false });
 
+const RoomQuestionSchema = new mongoose.Schema({
+  questionText:       { type: String, required: true, trim: true },
+  questionType:       { type: String, enum: ['mcq', 'direct'], default: 'mcq' },
+  options:            { type: [String], default: [] },
+  correctAnswerIndex: { type: Number, default: 0 },
+  directAnswer:       { type: String, trim: true, default: '' },
+  level:              { type: Number, default: 1, min: 1, max: 4 },
+  section:            { type: String, default: 'Technical', trim: true },
+  difficulty:         { type: String, enum: ['easy', 'medium', 'hard'], default: 'medium' },
+  explanation:        { type: String, trim: true, default: '' },
+}, { _id: true });
+
 const RoomSchema = new mongoose.Schema({
   // roomCode is NOT globally unique — uniqueness is scoped to (adminPhone + roomCode) for ACTIVE rooms only.
   // Different hosts can reuse the same room code. Enforced at application layer below.
@@ -48,6 +60,7 @@ const RoomSchema = new mongoose.Schema({
   isAiGenerated: { type: Boolean, default: false },
   subject:      { type: String, trim: true, default: '' },
   unit:         { type: String, trim: true, default: '' },
+  questions:    [RoomQuestionSchema],
   participants: [ParticipantSchema],
   reattemptRequests: [ReattemptRequestSchema],
 }, { timestamps: true });

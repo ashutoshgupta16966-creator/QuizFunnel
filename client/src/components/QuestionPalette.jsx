@@ -22,7 +22,8 @@ export default function QuestionPalette({
       <div className="palette-grid">
         {questions.map((q, idx) => {
           const isCurrent = idx === currentIndex;
-          const isAnswered = answers[q._id] !== undefined && answers[q._id] !== -1;
+          const ansVal = answers[q._id];
+          const isAnswered = ansVal !== undefined && ansVal !== null && ansVal !== -1 && (typeof ansVal !== 'string' || ansVal.trim() !== '');
           const isBookmarked = !!bookmarks[q._id];
 
           let statusClass = 'status-unanswered';
