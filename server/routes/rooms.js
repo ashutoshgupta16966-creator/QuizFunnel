@@ -4,6 +4,57 @@ const Room = require('../models/Room');
 const Student = require('../models/Student');
 
 /**
+ * Enriches participant objects with their level-wise breakdown (level, score, timeTaken)
+ * by checking the participant's saved levels or pulling from Student active levels / attempt history.
+ */
+async function enrichParticipantsWithLevels(participants, roomCode) {
+  if (!participants || participants.length === 0) return [];
+  try {
+    const mobiles = participants.map((p) => p.mobile).filter(Boolean);
+    if (mobiles.length === 0) return participants;
+
+    const students = await Student.find({ mobile: { $in: mobiles } })
+      .select('mobile levels attemptHistory')
+      .lean();
+    const studentMap = new Map(students.map((s) => [s.mobile, s]));
+
+    return participants.map((p) => {
+      let levels = Array.isArray(p.levels) && p.levels.length > 0 ? p.levels : [];
+      if (levels.length === 0) {
+        const student = studentMap.get(p.mobile);
+        if (student) {
+          if (Array.isArray(student.levels) && student.levels.length > 0) {
+            levels = student.levels.map((lvl) => ({
+              level: lvl.level,
+              score: lvl.score || 0,
+              timeTaken: lvl.timeTaken || 0,
+            }));
+          } else if (Array.isArray(student.attemptHistory) && student.attemptHistory.length > 0) {
+            const matchedAttempt = [...student.attemptHistory]
+              .reverse()
+              .find((a) => a.roomCode === roomCode);
+            if (matchedAttempt && Array.isArray(matchedAttempt.levelsSummary)) {
+              levels = matchedAttempt.levelsSummary.map((lvl) => ({
+                level: lvl.level,
+                score: lvl.score || 0,
+                timeTaken: lvl.timeTaken || 0,
+              }));
+            }
+          }
+        }
+      }
+      return {
+        ...p,
+        levels: levels || [],
+      };
+    });
+  } catch (err) {
+    console.error('Error enriching participants with levels:', err.message);
+    return participants;
+  }
+}
+
+/**
  * POST /api/rooms/create
  * Admin creates a new live quiz room.
  * Room Code uniqueness is scoped to (adminPhone + roomCode) for ACTIVE rooms.
@@ -250,6 +301,7 @@ router.post('/join', async (req, res, next) => {
       status: 'in-progress',
       isDisqualified: false,
       isReattempt: isReattemptStudent,
+      levels: [],
       joinedAt: new Date(),
       lastActive: new Date(),
     };
@@ -262,6 +314,8 @@ router.post('/join', async (req, res, next) => {
             'participants.$.status': 'in-progress',
             'participants.$.level': 1,
             'participants.$.score': 0,
+            'participants.$.timeTaken': 0,
+            'participants.$.levels': [],
             'participants.$.isDisqualified': false,
             'participants.$.isReattempt': isReattemptStudent,
             'participants.$.lastActive': new Date(),
@@ -339,6 +393,8 @@ router.post('/admin/rejoin', async (req, res, next) => {
       return res.status(401).json({ success: false, error: 'Incorrect Room Password.' });
     }
 
+    const enrichedParticipants = await enrichParticipantsWithLevels(room.participants || [], normalizedCode);
+
     res.json({
       success: true,
       data: {
@@ -347,8 +403,8 @@ router.post('/admin/rejoin', async (req, res, next) => {
         adminPhone: room.adminPhone,
         maxCapacity: room.maxCapacity,
         status: room.status,
-        participants: room.participants || [],
-        participantCount: (room.participants || []).length,
+        participants: enrichedParticipants,
+        participantCount: enrichedParticipants.length,
         createdAt: room.createdAt,
       },
     });
@@ -755,6 +811,8 @@ router.get('/:roomCode', async (req, res, next) => {
       return res.status(401).json({ success: false, error: 'Invalid room credentials.' });
     }
 
+    const enrichedParticipants = await enrichParticipantsWithLevels(room.participants || [], normalizedCode);
+
     res.json({
       success: true,
       data: {
@@ -763,8 +821,8 @@ router.get('/:roomCode', async (req, res, next) => {
         adminPhone: room.adminPhone,
         maxCapacity: room.maxCapacity,
         status: room.status,
-        participants: room.participants || [],
-        participantCount: (room.participants || []).length,
+        participants: enrichedParticipants,
+        participantCount: enrichedParticipants.length,
         reattemptRequests: (room.reattemptRequests || []).filter((r) => r.status === 'pending'),
         quizTitle: room.quizTitle || '',
         createdAt: room.createdAt,

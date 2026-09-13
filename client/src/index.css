@@ -5246,5 +5246,268 @@ a { color: inherit; }
   z-index: 100000 !important;
 }
 
+/* ── Table Center Alignment (Rank, Score, Time) ── */
+.th-center,
+.td-center {
+  text-align: center !important;
+}
+
+/* ── Expandable Student Row (Accordion) ── */
+.row-expand-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 5px;
+  margin-right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--text-soft, #a1a1aa);
+  transition: all 0.2s ease;
+  vertical-align: middle;
+}
+
+.row-expand-btn:hover {
+  color: #6366f1;
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.expand-chevron {
+  display: inline-block;
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: rotate(0deg);
+}
+
+.row-expand-btn.expanded .expand-chevron {
+  transform: rotate(90deg);
+  color: #6366f1;
+}
+
+/* Visually distinct background for the expanded parent row */
+.participant-row.row-is-expanded {
+  background: rgba(99, 102, 241, 0.08) !important;
+  border-left: 4px solid #6366f1;
+}
+
+.participant-row.row-is-expanded td {
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+/* Accordion details row underneath parent */
+.expanded-details-row {
+  background: rgba(99, 102, 241, 0.03) !important;
+}
+
+.expanded-details-cell {
+  padding: 0.6rem 1rem 1.25rem 1rem !important;
+  border-left: 4px solid #6366f1;
+  border-bottom: 2px solid rgba(99, 102, 241, 0.25) !important;
+}
+
+/* Breakdown Card Container */
+.level-breakdown-card {
+  background: var(--surface-2, #18181b);
+  border: 1px solid var(--border-2, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.level-breakdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-2, rgba(255, 255, 255, 0.08));
+}
+
+.breakdown-title-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  color: var(--text, #f4f4f5);
+}
+
+.breakdown-icon {
+  font-size: 1rem;
+}
+
+.breakdown-branch-pill {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.breakdown-mobile-meta {
+  font-size: 0.8rem;
+  color: var(--text-soft, #a1a1aa);
+  font-family: monospace;
+}
+
+.level-breakdown-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  color: var(--text-soft, #a1a1aa);
+  font-size: 0.84rem;
+  font-style: italic;
+}
+
+.pulse-dot-sm {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulse 1.5s infinite;
+}
+
+/* Level-wise Breakdown Table */
+.level-breakdown-table-wrapper {
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-2, rgba(255, 255, 255, 0.06));
+}
+
+.level-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.level-breakdown-table th {
+  background: var(--surface-3, rgba(255, 255, 255, 0.04));
+  padding: 0.5rem 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft, #a1a1aa);
+  border-bottom: 1px solid var(--border-2, rgba(255, 255, 255, 0.08));
+}
+
+.level-breakdown-table td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border-2, rgba(255, 255, 255, 0.06));
+  color: var(--text, #f4f4f5);
+}
+
+.level-breakdown-table tr:last-child td {
+  border-bottom: none;
+}
+
+.breakdown-level-badge {
+  display: inline-block;
+  background: rgba(99, 102, 241, 0.16);
+  color: #a5b4fc;
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  font-weight: 700;
+  font-size: 0.76rem;
+}
+
+.breakdown-score-cell {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.breakdown-time-cell {
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--text-dim, #d4d4d8);
+}
+
+/* Separate Total Section */
+.breakdown-total-container {
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  border-radius: 6px;
+  padding: 0.65rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.total-container-header {
+  display: flex;
+  align-items: center;
+}
+
+.total-heading {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #818cf8;
+}
+
+.total-metric-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.total-metric-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.35rem 0.75rem;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.total-metric-label {
+  font-size: 0.78rem;
+  color: var(--text-soft, #a1a1aa);
+}
+
+.total-metric-val {
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.total-metric-val.score-val {
+  color: #10b981;
+}
+
+.total-metric-val.time-val {
+  color: #38bdf8;
+  font-family: monospace;
+}
+
+/* Mobile Responsiveness (~375px width) */
+@media (max-width: 640px) {
+  .level-breakdown-card {
+    padding: 0.75rem;
+  }
+
+  .total-metric-items {
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .total-metric-card {
+    justify-content: space-between;
+  }
+
+  .breakdown-title-left {
+    font-size: 0.8rem;
+  }
+}
+
 
 

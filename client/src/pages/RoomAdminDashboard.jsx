@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getRoomDetails, closeRoom, getRoomAnalytics, approveReattempt, denyReattempt } from '../api';
 import { joinAdminRoomSocket, disconnectSocket } from '../utils/socket';
@@ -30,6 +30,12 @@ export default function RoomAdminDashboard() {
   // ── Pending Re-attempt Requests Queue ───────────────────────────────────────
   const [pendingRequests, setPendingRequests] = useState([]);
   const [processingAction, setProcessingAction] = useState('');
+
+  // ── Expandable Student Row (Accordion: only 1 row expanded at a time) ───────
+  const [expandedMobile, setExpandedMobile] = useState(null);
+  const toggleExpandRow = (mobile) => {
+    setExpandedMobile((prev) => (prev === mobile ? null : mobile));
+  };
 
   // ── Analytics state ─────────────────────────────────────────────────────────
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
@@ -204,26 +210,27 @@ export default function RoomAdminDashboard() {
     });
 
     const statusLabel = (p) => {
-      if (p.isDisqualified) return 'Disqualified 🚫';
+      if (p.isDisqualified) return 'Disqualified';
       if (p.status === 'completed' || p.status === 'advanced') return 'Passed';
       if (p.status === 'eliminated') return 'Failed';
       return 'In Progress';
     };
 
-    const header = ['Rank', 'Student Name', 'Roll Number/Phone', 'Branch', 'Level Reached', 'Total Score', 'Completion Time', 'Status'];
+    const header = ['Rank', 'Student Name', 'Phone Number', 'Branch', 'Level Reached', 'Total Score', 'Completion Time', 'Status'];
     const rows = sorted.map((p, idx) => [
       idx + 1,
       `"${(p.name || '').replace(/"/g, '""')}"`,
-      p.mobile || '',
-      p.branch || '',
+      `"${p.mobile || ''}"`,
+      `"${p.branch || ''}"`,
       p.level || 1,
       p.score ?? 0,
-      formatTimeMMSS(p.timeTaken || 0),
-      statusLabel(p),
+      `"${formatTimeMMSS(p.timeTaken || 0)}"`,
+      `"${statusLabel(p)}"`,
     ]);
 
     const csvContent = [header, ...rows].map((r) => r.join(',')).join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // Prepend UTF-8 BOM (\uFEFF) to guarantee Excel/Google Sheets parse all characters & formatting correctly without truncation or mojibake
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -549,14 +556,14 @@ export default function RoomAdminDashboard() {
               <table className="dashboard-table">
                 <thead>
                   <tr>
-                    <th>#</th>
+                    <th className="th-center">#</th>
                     <th>Student Name</th>
                     <th>Branch</th>
                     <th>Mobile</th>
                     <th>Current Level</th>
-                    <th>Live Score</th>
+                    <th className="th-center">Live Score</th>
                     <th>Status</th>
-                    <th>Time</th>
+                    <th className="th-center">Time</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -580,45 +587,140 @@ export default function RoomAdminDashboard() {
                       const isComp = !isDisq && p.status === 'completed';
                       const isAdv  = !isDisq && p.status === 'advanced';
                       const isElim = !isDisq && p.status === 'eliminated';
+                      const isExpanded = expandedMobile === p.mobile;
 
                       return (
-                        <tr key={p.mobile} className={`participant-row ${isDisq ? 'row-disqualified' : ''}`}>
-                          <td className="rank-cell">{idx + 1}</td>
-                          <td className="name-cell">
-                            <div className="name-with-badge">
-                              <strong>{p.name}</strong>
-                              {p.isReattempt && (
-                                <span className="reattempt-badge" title="Re-attempt approved by Host">
-                                  Re-attempted 🔄
-                                </span>
+                        <Fragment key={p.mobile}>
+                          <tr
+                            className={`participant-row ${isDisq ? 'row-disqualified' : ''} ${isExpanded ? 'row-is-expanded' : ''}`}
+                          >
+                            <td className="rank-cell td-center">{idx + 1}</td>
+                            <td className="name-cell">
+                              <div className="name-with-badge">
+                                <button
+                                  type="button"
+                                  className={`row-expand-btn ${isExpanded ? 'expanded' : ''}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleExpandRow(p.mobile);
+                                  }}
+                                  title={isExpanded ? 'Click to collapse breakdown' : 'Click to view level breakdown'}
+                                  aria-expanded={isExpanded}
+                                  aria-label={`${isExpanded ? 'Collapse' : 'Expand'} level details for ${p.name}`}
+                                >
+                                  <span className="expand-chevron" aria-hidden="true">›</span>
+                                </button>
+                                <strong className="student-name-text">{p.name}</strong>
+                                {p.isReattempt && (
+                                  <span className="reattempt-badge" title="Re-attempt approved by Host">
+                                    Re-attempted 🔄
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <span className="branch-tag">{p.branch || '—'}</span>
+                            </td>
+                            <td className="mono-cell">{p.mobile}</td>
+                            <td>
+                              <span className="level-badge">Level {p.level || 1}</span>
+                            </td>
+                            <td className="score-cell td-center">
+                              <strong>{p.score ?? 0} pts</strong>
+                            </td>
+                            <td>
+                              {isDisq ? (
+                                <span className="status-badge disqualified">Disqualified 🚫</span>
+                              ) : isComp ? (
+                                <span className="status-badge completed">Completed 🏆</span>
+                              ) : isAdv ? (
+                                <span className="status-badge advanced">Advanced ⚡</span>
+                              ) : isElim ? (
+                                <span className="status-badge eliminated">Eliminated</span>
+                              ) : (
+                                <span className="status-badge in-progress">In Progress ⏳</span>
                               )}
-                            </div>
-                          </td>
-                          <td>
-                            <span className="branch-tag">{p.branch || '—'}</span>
-                          </td>
-                          <td className="mono-cell">{p.mobile}</td>
-                          <td>
-                            <span className="level-badge">Level {p.level || 1}</span>
-                          </td>
-                          <td className="score-cell">
-                            <strong>{p.score ?? 0} pts</strong>
-                          </td>
-                          <td>
-                            {isDisq ? (
-                              <span className="status-badge disqualified">Disqualified 🚫</span>
-                            ) : isComp ? (
-                              <span className="status-badge completed">Completed 🏆</span>
-                            ) : isAdv ? (
-                              <span className="status-badge advanced">Advanced ⚡</span>
-                            ) : isElim ? (
-                              <span className="status-badge eliminated">Eliminated</span>
-                            ) : (
-                              <span className="status-badge in-progress">In Progress ⏳</span>
-                            )}
-                          </td>
-                          <td className="time-cell">{formatTimeMMSS(p.timeTaken || 0)}</td>
-                        </tr>
+                            </td>
+                            <td className="time-cell td-center">{formatTimeMMSS(p.timeTaken || 0)}</td>
+                          </tr>
+
+                          {/* ── Expandable Accordion: Level-wise Breakdown ── */}
+                          {isExpanded && (
+                            <tr className="expanded-details-row">
+                              <td colSpan="8" className="expanded-details-cell">
+                                <div className="level-breakdown-card">
+                                  <div className="level-breakdown-header">
+                                    <div className="breakdown-title-left">
+                                      <span className="breakdown-icon">📊</span>
+                                      <span className="breakdown-title-text">
+                                        Level-wise Breakdown: <strong>{p.name}</strong>
+                                      </span>
+                                      <span className="breakdown-branch-pill">{p.branch || 'CSE'}</span>
+                                    </div>
+                                    <span className="breakdown-mobile-meta">📱 {p.mobile}</span>
+                                  </div>
+
+                                  {(!p.levels || p.levels.length === 0) ? (
+                                    <div className="level-breakdown-empty">
+                                      <span className="pulse-dot-sm" />
+                                      <span>Currently on Level {p.level || 1}. No completed level submissions yet.</span>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="level-breakdown-table-wrapper">
+                                        <table className="level-breakdown-table">
+                                          <thead>
+                                            <tr>
+                                              <th>Level</th>
+                                              <th className="th-center">Score</th>
+                                              <th className="th-center">Time Taken</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {p.levels.map((lvl) => (
+                                              <tr key={lvl.level}>
+                                                <td>
+                                                  <span className="breakdown-level-badge">Level {lvl.level}</span>
+                                                </td>
+                                                <td className="td-center breakdown-score-cell">
+                                                  <strong>{lvl.score ?? 0}</strong> pts
+                                                </td>
+                                                <td className="td-center breakdown-time-cell">
+                                                  {formatTimeMMSS(lvl.timeTaken || 0)}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+
+                                      {/* Separate Total Section below the level breakdown */}
+                                      <div className="breakdown-total-container">
+                                        <div className="total-container-header">
+                                          <span className="total-heading">Total (Sum Across All Levels)</span>
+                                        </div>
+                                        <div className="total-metric-items">
+                                          <div className="total-metric-card score-card">
+                                            <span className="total-metric-label">Total Score</span>
+                                            <span className="total-metric-val score-val">
+                                              {p.levels.reduce((acc, curr) => acc + (curr.score || 0), 0)} pts
+                                            </span>
+                                          </div>
+                                          <div className="total-metric-card time-card">
+                                            <span className="total-metric-label">Total Time</span>
+                                            <span className="total-metric-val time-val">
+                                              {formatTimeMMSS(p.levels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0))}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })
                   )}

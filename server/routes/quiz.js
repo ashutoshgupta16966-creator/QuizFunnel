@@ -341,6 +341,11 @@ router.post('/submit', async (req, res, next) => {
         const nextLvlNum = passed && !isLastLevel ? level + 1 : level;
         const finalScore = updatedStudent ? updatedStudent.totalScore : score;
         const finalTime  = updatedStudent ? updatedStudent.totalTimeTaken : elapsed;
+        const currentLevels = (updatedStudent?.levels || []).map((lvl) => ({
+          level: lvl.level,
+          score: lvl.score || 0,
+          timeTaken: lvl.timeTaken || 0,
+        }));
 
         await Room.updateOne(
           { roomCode: normalizedRoomCode, 'participants.mobile': mobile },
@@ -351,6 +356,7 @@ router.post('/submit', async (req, res, next) => {
               'participants.$.timeTaken': finalTime,
               'participants.$.status': newStatus,
               'participants.$.isDisqualified': Boolean(isDisqualified),
+              'participants.$.levels': currentLevels,
               'participants.$.lastActive': new Date(),
             },
           }
@@ -367,6 +373,7 @@ router.post('/submit', async (req, res, next) => {
             timeTaken: finalTime,
             status: newStatus,
             isDisqualified: Boolean(isDisqualified),
+            levels: currentLevels,
             lastActive: new Date(),
           });
         }

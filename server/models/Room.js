@@ -1,5 +1,11 @@
 const mongoose = require('mongoose');
 
+const ParticipantLevelSchema = new mongoose.Schema({
+  level:          { type: Number, required: true },
+  score:          { type: Number, default: 0 },
+  timeTaken:      { type: Number, default: 0 },
+}, { _id: false });
+
 const ParticipantSchema = new mongoose.Schema({
   mobile:         { type: String, required: true },
   name:           { type: String, required: true },
@@ -14,6 +20,7 @@ const ParticipantSchema = new mongoose.Schema({
   },
   isDisqualified: { type: Boolean, default: false },
   isReattempt:    { type: Boolean, default: false },
+  levels:         [ParticipantLevelSchema],
   joinedAt:       { type: Date, default: Date.now },
   lastActive:     { type: Date, default: Date.now },
 }, { _id: false });
