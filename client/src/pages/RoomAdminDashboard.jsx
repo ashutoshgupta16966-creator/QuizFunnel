@@ -73,7 +73,23 @@ export default function RoomAdminDashboard() {
 
     const cleanupSocket = joinAdminRoomSocket(roomCode, adminPassword, {
       onJoined: (data) => {
-        setRoom((prev) => (prev ? { ...prev, ...data } : data));
+        setRoom((prev) => {
+          if (!prev) return data;
+          const incoming = data?.participants || [];
+          const merged = incoming.map((p) => {
+            const existing = (prev.participants || []).find((old) => old.mobile === p.mobile);
+            const hasLevels = Array.isArray(p.levels) && p.levels.length > 0;
+            return {
+              ...p,
+              levels: hasLevels ? p.levels : (existing?.levels || []),
+            };
+          });
+          return {
+            ...prev,
+            ...data,
+            participants: merged.length > 0 ? merged : (data?.participants || prev.participants || []),
+          };
+        });
         if (Array.isArray(data?.reattemptRequests)) {
           setPendingRequests(data.reattemptRequests);
         }
@@ -100,9 +116,15 @@ export default function RoomAdminDashboard() {
           if (!prev) return prev;
           return {
             ...prev,
-            participants: (prev.participants || []).map((p) =>
-              p.mobile === update.mobile ? { ...p, ...update } : p
-            ),
+            participants: (prev.participants || []).map((p) => {
+              if (p.mobile !== update.mobile) return p;
+              const hasLevels = Array.isArray(update.levels) && update.levels.length > 0;
+              return {
+                ...p,
+                ...update,
+                levels: hasLevels ? update.levels : (p.levels || []),
+              };
+            }),
           };
         });
       },
@@ -645,81 +667,109 @@ export default function RoomAdminDashboard() {
                           </tr>
 
                           {/* ── Expandable Accordion: Level-wise Breakdown ── */}
-                          {isExpanded && (
-                            <tr className="expanded-details-row">
-                              <td colSpan="8" className="expanded-details-cell">
-                                <div className="level-breakdown-card">
-                                  <div className="level-breakdown-header">
-                                    <div className="breakdown-title-left">
-                                      <span className="breakdown-icon">📊</span>
-                                      <span className="breakdown-title-text">
-                                        Level-wise Breakdown: <strong>{p.name}</strong>
-                                      </span>
-                                      <span className="breakdown-branch-pill">{p.branch || 'CSE'}</span>
-                                    </div>
-                                    <span className="breakdown-mobile-meta">📱 {p.mobile}</span>
-                                  </div>
+                          {isExpanded && (() => {
+                            const studentLevels = Array.isArray(p.levels) ? p.levels : [];
+                            const totalScoreVal = p.computedTotalScore ?? (studentLevels.length > 0
+                              ? studentLevels.reduce((acc, curr) => acc + (curr.score || 0), 0)
+                              : (p.score ?? 0));
+                            const totalTimeVal = p.computedTotalTime ?? (studentLevels.length > 0
+                              ? studentLevels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0)
+                              : (p.timeTaken ?? 0));
 
-                                  {(!p.levels || p.levels.length === 0) ? (
-                                    <div className="level-breakdown-empty">
-                                      <span className="pulse-dot-sm" />
-                                      <span>Currently on Level {p.level || 1}. No completed level submissions yet.</span>
+                            return (
+                              <tr className="expanded-details-row">
+                                <td colSpan="8" className="expanded-details-cell">
+                                  <div className="level-breakdown-card">
+                                    <div className="level-breakdown-header">
+                                      <div className="breakdown-title-left">
+                                        <span className="breakdown-icon">📊</span>
+                                        <span className="breakdown-title-text">
+                                          Level-wise Breakdown: <strong>{p.name}</strong>
+                                        </span>
+                                        <span className="breakdown-branch-pill">{p.branch || 'CSE'}</span>
+                                      </div>
+                                      <span className="breakdown-mobile-meta">📱 {p.mobile}</span>
                                     </div>
-                                  ) : (
-                                    <>
-                                      <div className="level-breakdown-table-wrapper">
-                                        <table className="level-breakdown-table">
-                                          <thead>
-                                            <tr>
-                                              <th>Level</th>
-                                              <th className="th-center">Score</th>
-                                              <th className="th-center">Time Taken</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {p.levels.map((lvl) => (
-                                              <tr key={lvl.level}>
+
+                                    <div className="level-breakdown-table-wrapper">
+                                      <table className="level-breakdown-table">
+                                        <thead>
+                                          <tr>
+                                            <th>Level</th>
+                                            <th className="th-center">Score</th>
+                                            <th className="th-center">Time Taken</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {[1, 2, 3, 4].map((lvlNum) => {
+                                            const lvlData = studentLevels.find((l) => l.level === lvlNum);
+                                            const isCurrentPlaying =
+                                              !lvlData &&
+                                              p.level === lvlNum &&
+                                              (p.status === 'in-progress' || p.status === 'advanced');
+                                            const isNotAttempted = !lvlData && !isCurrentPlaying;
+
+                                            return (
+                                              <tr key={lvlNum} className={isNotAttempted ? 'row-not-attempted' : ''}>
                                                 <td>
-                                                  <span className="breakdown-level-badge">Level {lvl.level}</span>
+                                                  <span
+                                                    className={`breakdown-level-badge ${
+                                                      isNotAttempted ? 'badge-muted' : isCurrentPlaying ? 'badge-active-level' : ''
+                                                    }`}
+                                                  >
+                                                    Level {lvlNum}
+                                                  </span>
                                                 </td>
                                                 <td className="td-center breakdown-score-cell">
-                                                  <strong>{lvl.score ?? 0}</strong> pts
+                                                  {lvlData ? (
+                                                    <span><strong>{lvlData.score ?? 0}</strong> pts</span>
+                                                  ) : isCurrentPlaying ? (
+                                                    <span className="text-subtle">—</span>
+                                                  ) : (
+                                                    <span className="text-muted">—</span>
+                                                  )}
                                                 </td>
                                                 <td className="td-center breakdown-time-cell">
-                                                  {formatTimeMMSS(lvl.timeTaken || 0)}
+                                                  {lvlData ? (
+                                                    formatTimeMMSS(lvlData.timeTaken || 0)
+                                                  ) : isCurrentPlaying ? (
+                                                    <span className="status-badge-inline in-progress">In progress ⏳</span>
+                                                  ) : (
+                                                    <span className="status-badge-inline not-attempted">Not attempted</span>
+                                                  )}
                                                 </td>
                                               </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
 
-                                      {/* Separate Total Section below the level breakdown */}
-                                      <div className="breakdown-total-container">
-                                        <div className="total-container-header">
-                                          <span className="total-heading">Total (Sum Across All Levels)</span>
+                                    {/* Separate Total Section below the level breakdown */}
+                                    <div className="breakdown-total-container">
+                                      <div className="total-container-header">
+                                        <span className="total-heading">Total (Sum Across All Levels)</span>
+                                      </div>
+                                      <div className="total-metric-items">
+                                        <div className="total-metric-card score-card">
+                                          <span className="total-metric-label">Total Score:</span>
+                                          <span className="total-metric-val score-val">
+                                            {totalScoreVal} pts
+                                          </span>
                                         </div>
-                                        <div className="total-metric-items">
-                                          <div className="total-metric-card score-card">
-                                            <span className="total-metric-label">Total Score</span>
-                                            <span className="total-metric-val score-val">
-                                              {p.levels.reduce((acc, curr) => acc + (curr.score || 0), 0)} pts
-                                            </span>
-                                          </div>
-                                          <div className="total-metric-card time-card">
-                                            <span className="total-metric-label">Total Time</span>
-                                            <span className="total-metric-val time-val">
-                                              {formatTimeMMSS(p.levels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0))}
-                                            </span>
-                                          </div>
+                                        <div className="total-metric-card time-card">
+                                          <span className="total-metric-label">Total Time:</span>
+                                          <span className="total-metric-val time-val">
+                                            {formatTimeMMSS(totalTimeVal)}
+                                          </span>
                                         </div>
                                       </div>
-                                    </>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })()}
                         </Fragment>
                       );
                     })

@@ -5509,5 +5509,43 @@ a { color: inherit; }
   }
 }
 
+/* Breakdown Badges & States */
+.breakdown-level-badge.badge-muted {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-soft, #71717a);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
 
+.breakdown-level-badge.badge-active-level {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
 
+.row-not-attempted td {
+  opacity: 0.65;
+}
+
+.status-badge-inline {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.status-badge-inline.not-attempted {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-soft, #71717a);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.status-badge-inline.in-progress {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.text-subtle {
+  color: var(--text-soft, #a1a1aa);
+  font-size: 0.82rem;
+}

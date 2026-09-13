@@ -22,12 +22,13 @@ function initRoomSocket(io) {
         }
 
         socket.join(`room:${normalizedCode}`);
+        const enrichedParticipants = await Room.enrichParticipantsWithLevels(room.participants || [], normalizedCode);
         socket.emit('admin:joined-success', {
           roomCode: room.roomCode,
           adminName: room.adminName,
           status: room.status,
           maxCapacity: room.maxCapacity,
-          participants: room.participants || [],
+          participants: enrichedParticipants,
           reattemptRequests: (room.reattemptRequests || []).filter((r) => r.status === 'pending'),
         });
       } catch (err) {
@@ -52,6 +53,7 @@ function initRoomSocket(io) {
           timeTaken: 0,
           status: 'in-progress',
           isDisqualified: false,
+          levels: [],
           joinedAt: new Date(),
         });
       } catch (err) {
@@ -65,14 +67,47 @@ function initRoomSocket(io) {
         if (!roomCode || !mobile) return;
         const normalizedCode = roomCode.trim().toUpperCase();
 
+        const Student = require('../models/Student');
+        const student = await Student.findOne({ mobile }).select('name branch levels attemptHistory').lean();
+        let levels = [];
+        if (student) {
+          if (Array.isArray(student.levels) && student.levels.length > 0) {
+            levels = student.levels.map((lvl) => ({
+              level: lvl.level,
+              score: lvl.score || 0,
+              timeTaken: lvl.timeTaken || 0,
+            }));
+          } else if (Array.isArray(student.attemptHistory) && student.attemptHistory.length > 0) {
+            const matched = [...student.attemptHistory].reverse().find((a) => a.roomCode === normalizedCode);
+            if (matched && Array.isArray(matched.levelsSummary)) {
+              levels = matched.levelsSummary.map((lvl) => ({
+                level: lvl.level,
+                score: lvl.score || 0,
+                timeTaken: lvl.timeTaken || 0,
+              }));
+            }
+          }
+        }
+
+        const computedTotalScore = levels.length > 0
+          ? levels.reduce((acc, curr) => acc + (curr.score || 0), 0)
+          : (score || 0);
+
+        const computedTotalTime = levels.length > 0
+          ? levels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0)
+          : (timeTaken || 0);
+
         // Broadcast to admin room
         io.to(`room:${normalizedCode}`).emit('student:updated', {
           mobile,
+          name: student?.name,
+          branch: student?.branch,
           level,
-          score,
-          timeTaken,
+          score: computedTotalScore,
+          timeTaken: computedTotalTime,
           status,
           isDisqualified: Boolean(isDisqualified),
+          levels,
           lastActive: new Date(),
         });
 
@@ -82,10 +117,11 @@ function initRoomSocket(io) {
           {
             $set: {
               'participants.$.level': level,
-              'participants.$.score': score,
-              'participants.$.timeTaken': timeTaken,
+              'participants.$.score': computedTotalScore,
+              'participants.$.timeTaken': computedTotalTime,
               'participants.$.status': status,
               'participants.$.isDisqualified': Boolean(isDisqualified),
+              'participants.$.levels': levels,
               'participants.$.lastActive': new Date(),
             },
           }

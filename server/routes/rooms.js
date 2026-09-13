@@ -3,55 +3,8 @@ const router = express.Router();
 const Room = require('../models/Room');
 const Student = require('../models/Student');
 
-/**
- * Enriches participant objects with their level-wise breakdown (level, score, timeTaken)
- * by checking the participant's saved levels or pulling from Student active levels / attempt history.
- */
-async function enrichParticipantsWithLevels(participants, roomCode) {
-  if (!participants || participants.length === 0) return [];
-  try {
-    const mobiles = participants.map((p) => p.mobile).filter(Boolean);
-    if (mobiles.length === 0) return participants;
-
-    const students = await Student.find({ mobile: { $in: mobiles } })
-      .select('mobile levels attemptHistory')
-      .lean();
-    const studentMap = new Map(students.map((s) => [s.mobile, s]));
-
-    return participants.map((p) => {
-      let levels = Array.isArray(p.levels) && p.levels.length > 0 ? p.levels : [];
-      if (levels.length === 0) {
-        const student = studentMap.get(p.mobile);
-        if (student) {
-          if (Array.isArray(student.levels) && student.levels.length > 0) {
-            levels = student.levels.map((lvl) => ({
-              level: lvl.level,
-              score: lvl.score || 0,
-              timeTaken: lvl.timeTaken || 0,
-            }));
-          } else if (Array.isArray(student.attemptHistory) && student.attemptHistory.length > 0) {
-            const matchedAttempt = [...student.attemptHistory]
-              .reverse()
-              .find((a) => a.roomCode === roomCode);
-            if (matchedAttempt && Array.isArray(matchedAttempt.levelsSummary)) {
-              levels = matchedAttempt.levelsSummary.map((lvl) => ({
-                level: lvl.level,
-                score: lvl.score || 0,
-                timeTaken: lvl.timeTaken || 0,
-              }));
-            }
-          }
-        }
-      }
-      return {
-        ...p,
-        levels: levels || [],
-      };
-    });
-  } catch (err) {
-    console.error('Error enriching participants with levels:', err.message);
-    return participants;
-  }
+function enrichParticipantsWithLevels(participants, roomCode) {
+  return Room.enrichParticipantsWithLevels(participants, roomCode);
 }
 
 /**
