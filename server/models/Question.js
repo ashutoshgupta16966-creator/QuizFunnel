@@ -47,9 +47,20 @@ const QuestionSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  // If set, this question belongs exclusively to an AI-generated room session.
+  // Standard quizzes and manual rooms only query questions where roomCode is null.
+  roomCode: {
+    type: String,
+    uppercase: true,
+    trim: true,
+    default: null,
+    index: true,
+  },
 }, { timestamps: true });
 
-// Compound index for fast level+section queries
-QuestionSchema.index({ level: 1, section: 1 });
+// Compound index for fast level+section queries (standard quiz)
+QuestionSchema.index({ level: 1, section: 1, roomCode: 1 });
+// Compound index for room-scoped question queries
+QuestionSchema.index({ roomCode: 1, level: 1 });
 
 module.exports = mongoose.model('Question', QuestionSchema);

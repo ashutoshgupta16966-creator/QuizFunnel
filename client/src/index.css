@@ -5549,3 +5549,511 @@ a { color: inherit; }
   color: var(--text-soft, #a1a1aa);
   font-size: 0.82rem;
 }
+
+/* ==========================================================================
+   AI QUIZ GENERATOR STYLES
+   ========================================================================== */
+
+/* AI Role Action Pill */
+.role-action-pill.role-action-ai {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+  color: #ffffff;
+  border: none;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.role-action-pill.role-action-ai:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+/* Dual action row */
+.ai-actions-row {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.ai-actions-row .btn {
+  flex: 1;
+}
+
+/* AI Input Methods (Camera vs File Upload) */
+.ai-input-methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.ai-method-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  border-radius: var(--r-lg, 14px);
+  border: 2px dashed var(--border-2, rgba(255, 255, 255, 0.15));
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.ai-method-btn:hover {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.08);
+  transform: translateY(-2px);
+}
+
+.ai-method-camera:hover {
+  border-color: #ec4899;
+  background: rgba(236, 72, 153, 0.08);
+}
+
+.ai-method-btn .method-icon {
+  font-size: 2.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.ai-method-btn .method-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text, #ffffff);
+  margin-bottom: 0.25rem;
+}
+
+.ai-method-btn .method-desc {
+  font-size: 0.75rem;
+  color: var(--text-soft, #a1a1aa);
+  line-height: 1.3;
+}
+
+/* Selected Files Container */
+.ai-files-container {
+  margin-top: 1rem;
+  background: var(--surface-2, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border-2, rgba(255, 255, 255, 0.08));
+  border-radius: var(--r-md, 10px);
+  padding: 0.85rem;
+}
+
+.ai-files-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-soft, #a1a1aa);
+}
+
+.ai-clear-btn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.ai-clear-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.ai-files-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.6rem;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.ai-file-card {
+  position: relative;
+  background: var(--surface, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.ai-file-thumb {
+  width: 100%;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.ai-file-pdf-badge {
+  width: 100%;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.ai-file-info {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ai-file-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-file-size {
+  font-size: 0.68rem;
+  color: var(--text-soft, #71717a);
+}
+
+.ai-remove-file-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  border: none;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.ai-remove-file-btn:hover {
+  background: #ef4444;
+}
+
+/* AI Parsing Animation State */
+.ai-parsing-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+
+.ai-spinner-glow {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 4px solid rgba(139, 92, 246, 0.2);
+  border-top-color: #8b5cf6;
+  border-right-color: #ec4899;
+  animation: aiSpin 0.9s linear infinite;
+  margin-bottom: 1.25rem;
+  filter: drop-shadow(0 0 12px rgba(139, 92, 246, 0.6));
+}
+
+@keyframes aiSpin {
+  to { transform: rotate(360deg); }
+}
+
+.ai-parsing-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text, #fff);
+  margin: 0 0 0.5rem;
+}
+
+.ai-parsing-desc {
+  font-size: 0.82rem;
+  color: var(--text-soft, #a1a1aa);
+  max-width: 380px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Review Screen Editors */
+.ai-meta-editor-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-2, rgba(255, 255, 255, 0.08));
+  border-radius: var(--r-md, 10px);
+  padding: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.ai-meta-field .form-label {
+  font-size: 0.78rem;
+  margin-bottom: 0.3rem;
+}
+
+.ai-questions-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.ai-questions-count {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text, #fff);
+}
+
+.btn-outline-primary {
+  background: transparent;
+  border: 1px dashed #8b5cf6;
+  color: #8b5cf6;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-outline-primary:hover {
+  background: rgba(139, 92, 246, 0.12);
+  border-style: solid;
+}
+
+/* Question Cards in Editor */
+.ai-questions-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.ai-question-edit-card {
+  background: var(--surface, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--r-md, 10px);
+  padding: 0.9rem;
+  transition: border-color 0.15s ease;
+}
+
+.ai-question-edit-card:hover {
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+.ai-q-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.65rem;
+}
+
+.ai-q-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.ai-q-badge {
+  background: #6366f1;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.ai-q-selects {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.ai-select-mini {
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--border-2, rgba(255, 255, 255, 0.12));
+  color: var(--text, #fff);
+  font-size: 0.74rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.ai-q-delete-btn {
+  background: none;
+  border: none;
+  font-size: 0.95rem;
+  cursor: pointer;
+  opacity: 0.6;
+  padding: 4px;
+  border-radius: 4px;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.ai-q-delete-btn:hover {
+  opacity: 1;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.ai-q-textarea {
+  resize: vertical;
+  min-height: 52px;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.ai-options-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ai-options-label {
+  font-size: 0.72rem;
+  color: var(--text-soft, #a1a1aa);
+  font-weight: 600;
+}
+
+.ai-option-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface-2, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border-2, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  padding: 3px 8px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.ai-option-input-row.is-correct-row {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.ai-correct-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-opt-letter {
+  font-weight: 800;
+  font-size: 0.76rem;
+  color: var(--text, #fff);
+  width: 14px;
+}
+
+.ai-opt-input {
+  flex: 1;
+  border: none !important;
+  background: transparent !important;
+  font-size: 0.82rem;
+  padding: 4px 6px;
+}
+
+.ai-opt-input:focus {
+  box-shadow: none !important;
+}
+
+/* ==========================================================================
+   STUDENT QUIZ-TAKING SUBJECT / UNIT BANNER
+   ========================================================================== */
+.quiz-subject-unit-banner {
+  margin: 0.25rem 0 0.85rem;
+  padding: 0.45rem 0.85rem;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.12) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: var(--r-md, 10px);
+  animation: fadeInDown 0.3s ease;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.quiz-banner-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.84rem;
+  line-height: 1.3;
+}
+
+.quiz-banner-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.quiz-banner-icon {
+  font-size: 0.95rem;
+}
+
+.quiz-banner-label {
+  color: var(--text-soft, #a1a1aa);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+
+.quiz-banner-subject .quiz-banner-value {
+  color: #a78bfa;
+  font-weight: 700;
+}
+
+.quiz-banner-unit .quiz-banner-value {
+  color: var(--text, #e4e4e7);
+  font-weight: 600;
+}
+
+.quiz-banner-dot {
+  color: var(--text-soft, #71717a);
+  font-size: 0.7rem;
+}
+
+@media (max-width: 600px) {
+  .ai-input-methods {
+    grid-template-columns: 1fr;
+  }
+  .ai-meta-editor-card {
+    grid-template-columns: 1fr;
+  }
+  .quiz-banner-inner {
+    font-size: 0.78rem;
+    gap: 0.4rem;
+  }
+}
+

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { createRoom, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom } from '../api';
+import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
 
@@ -100,6 +100,22 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   });
   const [studentLoading, setStudentLoading] = useState(false);
   const [studentError, setStudentError] = useState('');
+
+  // ── AI Quiz Generator state ──────────────────────────────────────────────────
+  const [aiForm, setAiForm] = useState({
+    adminName: homeFormData?.name || '',
+    adminPhone: homeFormData?.mobile || '',
+    quizTitle: '',
+    roomCode: '',
+    roomPassword: '',
+  });
+  const [aiFiles, setAiFiles] = useState([]); // [{ file, name, size, type, previewUrl }]
+  const [aiParsing, setAiParsing] = useState(false);
+  const [aiParseError, setAiParseError] = useState('');
+  const [aiResult, setAiResult] = useState({ subject: '', unit: '', questions: [] });
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiDetailsError, setAiDetailsError] = useState('');
+  const [aiReviewError, setAiReviewError] = useState('');
 
   // ── Scroll lock while modal is open ─────────────────────────────────────────
   useEffect(() => {
@@ -232,6 +248,248 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   }, [step, pendingData, onClose, navigate, saveStudent, setRoomSession]);
 
   if (!isOpen) return null;
+
+  // ── AI Quiz Generator Handlers ─────────────────────────────────────────────
+  const handleAutoGenerateAiCode = () => {
+    const code = generateRandomRoomCode();
+    setAiForm((prev) => ({ ...prev, roomCode: code }));
+  };
+
+  const handleAiDetailsSubmit = (e) => {
+    e.preventDefault();
+    setAiDetailsError('');
+
+    if (!aiForm.adminName.trim()) {
+      setAiDetailsError('Please enter your Host / Admin Name.');
+      return;
+    }
+    if (!aiForm.adminPhone.trim() || !/^\d{10}$/.test(aiForm.adminPhone.trim())) {
+      setAiDetailsError('Please enter a valid 10-digit Phone Number.');
+      return;
+    }
+    if (!aiForm.roomCode.trim()) {
+      setAiDetailsError('Please enter or auto-generate a Room Code.');
+      return;
+    }
+    if (!aiForm.roomPassword.trim()) {
+      setAiDetailsError('Please set a secret Room Password.');
+      return;
+    }
+
+    setStep('admin_ai_upload');
+  };
+
+  const handleAiFileSelect = (e) => {
+    const selected = Array.from(e.target.files || []);
+    if (selected.length === 0) return;
+    setAiParseError('');
+
+    const existingHasPdf = aiFiles.some((f) => f.type === 'application/pdf');
+    const newHasPdf = selected.some((f) => f.type === 'application/pdf');
+
+    if (newHasPdf) {
+      if (selected.length > 1 || aiFiles.length > 0) {
+        setAiParseError('When uploading a PDF, please upload only a single PDF without additional files.');
+        return;
+      }
+    } else if (existingHasPdf) {
+      setAiParseError('A PDF is already uploaded. Remove it first if you want to upload images instead.');
+      return;
+    }
+
+    const combined = [...aiFiles];
+    for (const file of selected) {
+      if (file.type === 'application/pdf') {
+        combined.push({
+          file,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          previewUrl: null,
+        });
+      } else if (file.type.startsWith('image/')) {
+        if (combined.length >= 10) {
+          setAiParseError('Maximum 10 images allowed. Extra images were skipped.');
+          break;
+        }
+        combined.push({
+          file,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          previewUrl: URL.createObjectURL(file),
+        });
+      } else {
+        setAiParseError(`Unsupported file format: ${file.name}. Only JPG, PNG, WEBP, and PDF are supported.`);
+      }
+    }
+
+    const totalBytes = combined.reduce((acc, f) => acc + f.size, 0);
+    if (totalBytes > 15 * 1024 * 1024) {
+      setAiParseError(`Total file size (${(totalBytes / (1024 * 1024)).toFixed(1)} MB) exceeds the 15 MB limit.`);
+      return;
+    }
+
+    setAiFiles(combined);
+    e.target.value = '';
+  };
+
+  const handleRemoveAiFile = (index) => {
+    setAiFiles((prev) => {
+      const target = prev[index];
+      if (target?.previewUrl) {
+        try { URL.revokeObjectURL(target.previewUrl); } catch { /* noop */ }
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const handleClearAiFiles = () => {
+    aiFiles.forEach((f) => {
+      if (f.previewUrl) {
+        try { URL.revokeObjectURL(f.previewUrl); } catch { /* noop */ }
+      }
+    });
+    setAiFiles([]);
+    setAiParseError('');
+  };
+
+  const handleAiParseSubmit = async () => {
+    if (aiFiles.length === 0) {
+      setAiParseError('Please capture a photo or upload an image/PDF first.');
+      return;
+    }
+
+    const totalBytes = aiFiles.reduce((acc, f) => acc + f.size, 0);
+    if (totalBytes > 15 * 1024 * 1024) {
+      setAiParseError(`Total upload size (${(totalBytes / (1024 * 1024)).toFixed(1)} MB) exceeds the 15 MB limit.`);
+      return;
+    }
+
+    setAiParsing(true);
+    setAiParseError('');
+
+    try {
+      const formData = new FormData();
+      aiFiles.forEach((f) => {
+        formData.append('files', f.file);
+      });
+
+      const res = await parseAiQuizDocument(formData);
+      const { subject, unit, questions } = res.data;
+
+      setAiResult({
+        subject: subject || 'General Quiz',
+        unit: unit || '',
+        questions: Array.isArray(questions) ? questions : [],
+      });
+      setStep('admin_ai_review');
+    } catch (err) {
+      console.error('AI Document Parse error:', err);
+      setAiParseError(
+        err.response?.data?.error || err.message || 'Failed to parse document with Gemini Vision. Please try a clearer photo or file.'
+      );
+    } finally {
+      setAiParsing(false);
+    }
+  };
+
+  const handleAiQuestionChange = (qIdx, field, value) => {
+    setAiResult((prev) => {
+      const nextQs = [...prev.questions];
+      nextQs[qIdx] = { ...nextQs[qIdx], [field]: value };
+      return { ...prev, questions: nextQs };
+    });
+  };
+
+  const handleAiOptionChange = (qIdx, optIdx, value) => {
+    setAiResult((prev) => {
+      const nextQs = [...prev.questions];
+      const nextOpts = [...nextQs[qIdx].options];
+      nextOpts[optIdx] = value;
+      nextQs[qIdx] = { ...nextQs[qIdx], options: nextOpts };
+      return { ...prev, questions: nextQs };
+    });
+  };
+
+  const handleAiRemoveQuestion = (qIdx) => {
+    if (aiResult.questions.length <= 1) {
+      alert('The quiz must contain at least one question.');
+      return;
+    }
+    setAiResult((prev) => ({
+      ...prev,
+      questions: prev.questions.filter((_, i) => i !== qIdx),
+    }));
+  };
+
+  const handleAiAddQuestion = () => {
+    setAiResult((prev) => ({
+      ...prev,
+      questions: [
+        ...prev.questions,
+        {
+          questionText: '',
+          options: ['', '', '', ''],
+          correctAnswerIndex: 0,
+          level: 1,
+          section: 'Technical',
+          difficulty: 'medium',
+          explanation: '',
+        },
+      ],
+    }));
+  };
+
+  const handleAiConfirmAndCreate = async () => {
+    setAiReviewError('');
+
+    for (let i = 0; i < aiResult.questions.length; i++) {
+      const q = aiResult.questions[i];
+      if (!q.questionText.trim()) {
+        setAiReviewError(`Question #${i + 1} is missing question text.`);
+        return;
+      }
+      for (let j = 0; j < 4; j++) {
+        if (!q.options[j] || !q.options[j].trim()) {
+          setAiReviewError(`Question #${i + 1} has an empty Option ${['A', 'B', 'C', 'D'][j]}. All 4 options are required.`);
+          return;
+        }
+      }
+    }
+
+    setAiSaving(true);
+    try {
+      const code = aiForm.roomCode.trim().toUpperCase();
+      const pwd = aiForm.roomPassword.trim();
+
+      await createAiRoom({
+        adminName: aiForm.adminName.trim(),
+        adminPhone: aiForm.adminPhone.trim(),
+        roomCode: code,
+        roomPassword: pwd,
+        quizTitle: aiForm.quizTitle.trim() || (aiResult.subject ? `${aiResult.subject} Quiz` : 'AI Generated Quiz'),
+        subject: aiResult.subject.trim(),
+        unit: aiResult.unit.trim(),
+        questions: aiResult.questions,
+      });
+
+      // Save admin credentials to sessionStorage for live dashboard authentication
+      sessionStorage.setItem(`room_admin_pwd_${code}`, pwd);
+      sessionStorage.setItem(`room_admin_name_${code}`, aiForm.adminName.trim());
+      sessionStorage.setItem('room_admin_phone', aiForm.adminPhone.trim());
+      sessionStorage.setItem('room_admin_pin', pwd);
+
+      handleClearAiFiles();
+      onClose();
+      navigate(`/room/admin/${code}`);
+    } catch (err) {
+      console.error('Create AI Room error:', err);
+      setAiReviewError(err.response?.data?.error || 'Failed to create AI Quiz room. Please check the details and try again.');
+    } finally {
+      setAiSaving(false);
+    }
+  };
 
   // ── Auto-generate room code for Admin ───────────────────────────────────────
   const handleAutoGenerateCode = () => {
@@ -602,6 +860,17 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                   >
                     My Live Rooms 📜
                   </button>
+                  <button
+                    type="button"
+                    className="role-action-pill role-action-ai"
+                    onClick={() => {
+                      setStep('admin_ai_details');
+                      if (!aiForm.roomCode) handleAutoGenerateAiCode();
+                    }}
+                    title="Generate an instant quiz from question paper photo or PDF using Gemini Vision"
+                  >
+                    AI Quiz Generator 🤖✨
+                  </button>
                 </div>
               </div>
 
@@ -617,6 +886,390 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                 </p>
                 <span className="role-action-pill">Join Room →</span>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP: AI QUIZ GENERATOR DETAILS ── */}
+        {step === 'admin_ai_details' && (
+          <div className="room-form-view ai-details-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">🤖</span>
+              <h2 className="room-modal-title">AI Quiz Generator</h2>
+              <p className="room-modal-subtitle">
+                Step 1 of 3: Set up quiz session &amp; room access details
+              </p>
+            </div>
+
+            {aiDetailsError && <div className="server-error" role="alert">⚠️ {aiDetailsError}</div>}
+
+            <form onSubmit={handleAiDetailsSubmit} className="room-form" noValidate>
+              <div className="form-group">
+                <label className="form-label">Host / Admin Name</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Prof. R. K. Sharma"
+                  value={aiForm.adminName}
+                  onChange={(e) => setAiForm({ ...aiForm, adminName: e.target.value })}
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Quiz / Room Title <span className="label-optional">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Unit 3 Midterm Test, Python Assessment"
+                  value={aiForm.quizTitle}
+                  onChange={(e) => setAiForm({ ...aiForm, quizTitle: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Admin Phone Number</label>
+                <input
+                  type="tel"
+                  className="form-input"
+                  placeholder="10-digit mobile number"
+                  maxLength={10}
+                  value={aiForm.adminPhone}
+                  onChange={(e) => setAiForm({ ...aiForm, adminPhone: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <div className="label-with-action">
+                  <label className="form-label">Room Code</label>
+                  <button
+                    type="button"
+                    className="auto-code-btn"
+                    onClick={handleAutoGenerateAiCode}
+                  >
+                    ⚡ Auto-Generate
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  className="form-input code-input"
+                  placeholder="e.g. QUIZ88"
+                  maxLength={12}
+                  value={aiForm.roomCode}
+                  onChange={(e) => setAiForm({ ...aiForm, roomCode: e.target.value.toUpperCase() })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Set Room Password</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="Secret password for students to join"
+                  value={aiForm.roomPassword}
+                  onChange={(e) => setAiForm({ ...aiForm, roomPassword: e.target.value })}
+                />
+              </div>
+
+              <div className="ai-actions-row">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setStep('select_role')}
+                >
+                  ← Back
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                >
+                  Next: Upload Question Paper →
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* ── STEP: AI QUIZ UPLOAD SCREEN ── */}
+        {step === 'admin_ai_upload' && (
+          <div className="room-form-view ai-upload-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">📸</span>
+              <h2 className="room-modal-title">Upload Question Paper</h2>
+              <p className="room-modal-subtitle">
+                Snap photos with your camera or select files (up to 10 images or 1 PDF • max 15MB)
+              </p>
+            </div>
+
+            {aiParseError && <div className="server-error" role="alert">⚠️ {aiParseError}</div>}
+
+            {/* Input method buttons */}
+            <div className="ai-input-methods">
+              {/* Native Camera Button */}
+              <label className="ai-method-btn ai-method-camera">
+                <span className="method-icon">📷</span>
+                <span className="method-title">Snap with Camera</span>
+                <span className="method-desc">Directly take photos of printed questions</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleAiFileSelect}
+                  style={{ display: 'none' }}
+                  disabled={aiParsing}
+                />
+              </label>
+
+              {/* File Picker Button */}
+              <label className="ai-method-btn ai-method-upload">
+                <span className="method-icon">📁</span>
+                <span className="method-title">Upload Image / PDF</span>
+                <span className="method-desc">Select from gallery, photos, or documents</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  multiple
+                  onChange={handleAiFileSelect}
+                  style={{ display: 'none' }}
+                  disabled={aiParsing}
+                />
+              </label>
+            </div>
+
+            {/* Selected Files List & Summary */}
+            {aiFiles.length > 0 && (
+              <div className="ai-files-container">
+                <div className="ai-files-header">
+                  <span className="ai-files-count">
+                    📑 <strong>{aiFiles.length}</strong> file{aiFiles.length !== 1 ? 's' : ''} selected
+                    {' '}({(aiFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(2)} MB / 15 MB)
+                  </span>
+                  <button
+                    type="button"
+                    className="ai-clear-btn"
+                    onClick={handleClearAiFiles}
+                    disabled={aiParsing}
+                  >
+                    Clear All
+                  </button>
+                </div>
+
+                <div className="ai-files-grid">
+                  {aiFiles.map((item, idx) => (
+                    <div key={idx} className="ai-file-card">
+                      {item.previewUrl ? (
+                        <img src={item.previewUrl} alt={item.name} className="ai-file-thumb" />
+                      ) : (
+                        <div className="ai-file-pdf-badge">📄 PDF</div>
+                      )}
+                      <div className="ai-file-info">
+                        <span className="ai-file-name" title={item.name}>{item.name}</span>
+                        <span className="ai-file-size">{(item.size / 1024).toFixed(0)} KB</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="ai-remove-file-btn"
+                        onClick={() => handleRemoveAiFile(idx)}
+                        disabled={aiParsing}
+                        title="Remove file"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Submit or loading state */}
+            {aiParsing ? (
+              <div className="ai-parsing-state">
+                <div className="ai-spinner-glow" />
+                <h4 className="ai-parsing-title">Gemini Vision is Processing…</h4>
+                <p className="ai-parsing-desc">
+                  Analyzing question paper text, options, and diagrams. This usually takes 5–15 seconds.
+                </p>
+              </div>
+            ) : (
+              <div className="ai-actions-row" style={{ marginTop: '1.5rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setStep('admin_ai_details')}
+                >
+                  ← Back
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary ai-parse-submit-btn"
+                  onClick={handleAiParseSubmit}
+                  disabled={aiFiles.length === 0}
+                >
+                  ✨ Extract Questions with Gemini
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── STEP: AI QUIZ REVIEW & EDIT SCREEN ── */}
+        {step === 'admin_ai_review' && (
+          <div className="room-form-view ai-review-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">✏️</span>
+              <h2 className="room-modal-title">Review &amp; Edit Questions</h2>
+              <p className="room-modal-subtitle">
+                Verify extracted content before launching your live quiz room.
+              </p>
+            </div>
+
+            {aiReviewError && <div className="server-error" role="alert">⚠️ {aiReviewError}</div>}
+
+            {/* Metadata Fields: Subject & Unit */}
+            <div className="ai-meta-editor-card">
+              <div className="ai-meta-field">
+                <label className="form-label">Subject / Course Name</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Data Structures & Algorithms"
+                  value={aiResult.subject}
+                  onChange={(e) => setAiResult({ ...aiResult, subject: e.target.value })}
+                />
+              </div>
+              <div className="ai-meta-field">
+                <label className="form-label">Unit / Chapter / Topic</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Unit 2: Stack & Queue"
+                  value={aiResult.unit}
+                  onChange={(e) => setAiResult({ ...aiResult, unit: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Questions List Header */}
+            <div className="ai-questions-toolbar">
+              <span className="ai-questions-count">
+                📝 <strong>{aiResult.questions.length}</strong> Question{aiResult.questions.length !== 1 ? 's' : ''}
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-primary"
+                onClick={handleAiAddQuestion}
+              >
+                + Add Question
+              </button>
+            </div>
+
+            {/* Questions Scrollable Editor */}
+            <div className="ai-questions-editor-list">
+              {aiResult.questions.map((q, qIdx) => (
+                <div key={qIdx} className="ai-question-edit-card">
+                  <div className="ai-q-header">
+                    <div className="ai-q-title-group">
+                      <span className="ai-q-badge">Q{qIdx + 1}</span>
+                      <div className="ai-q-selects">
+                        <select
+                          className="ai-select-mini"
+                          value={q.level || 1}
+                          onChange={(e) => handleAiQuestionChange(qIdx, 'level', parseInt(e.target.value, 10))}
+                          title="Level (1–4)"
+                        >
+                          <option value={1}>Level 1 (Foundation)</option>
+                          <option value={2}>Level 2 (Intermediate)</option>
+                          <option value={3}>Level 3 (Advanced)</option>
+                          <option value={4}>Level 4 (Final Round)</option>
+                        </select>
+
+                        <select
+                          className="ai-select-mini"
+                          value={q.section || 'Technical'}
+                          onChange={(e) => handleAiQuestionChange(qIdx, 'section', e.target.value)}
+                          title="Section"
+                        >
+                          <option value="Technical">Technical</option>
+                          <option value="GK">GK</option>
+                          <option value="Reasoning">Reasoning</option>
+                          <option value="Aptitude">Aptitude</option>
+                          <option value="Mixed">Mixed</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="ai-q-delete-btn"
+                      onClick={() => handleAiRemoveQuestion(qIdx)}
+                      title="Delete this question"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Question Text</label>
+                    <textarea
+                      className="form-input ai-q-textarea"
+                      rows={2}
+                      value={q.questionText}
+                      onChange={(e) => handleAiQuestionChange(qIdx, 'questionText', e.target.value)}
+                      placeholder="Enter question text..."
+                    />
+                  </div>
+
+                  <div className="ai-options-editor">
+                    <span className="ai-options-label">Options (click radio to select correct answer):</span>
+                    {(q.options || []).map((opt, optIdx) => (
+                      <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`}>
+                        <label className="ai-correct-radio-label" title={`Mark Option ${['A', 'B', 'C', 'D'][optIdx]} as correct`}>
+                          <input
+                            type="radio"
+                            name={`correct_${qIdx}`}
+                            checked={q.correctAnswerIndex === optIdx}
+                            onChange={() => handleAiQuestionChange(qIdx, 'correctAnswerIndex', optIdx)}
+                          />
+                          <span className="ai-opt-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
+                        </label>
+                        <input
+                          type="text"
+                          className="form-input ai-opt-input"
+                          value={opt}
+                          onChange={(e) => handleAiOptionChange(qIdx, optIdx, e.target.value)}
+                          placeholder={`Option ${['A', 'B', 'C', 'D'][optIdx]}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer buttons */}
+            <div className="ai-actions-row" style={{ marginTop: '1.5rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setStep('admin_ai_upload')}
+                disabled={aiSaving}
+              >
+                ← Re-upload / Back
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleAiConfirmAndCreate}
+                disabled={aiSaving || aiResult.questions.length === 0}
+              >
+                {aiSaving ? (
+                  <><span className="btn-spinner" />Creating AI Room…</>
+                ) : (
+                  `Confirm & Launch Live Room (${aiResult.questions.length} Qs) 🚀`
+                )}
+              </button>
             </div>
           </div>
         )}

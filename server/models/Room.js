@@ -45,6 +45,9 @@ const RoomSchema = new mongoose.Schema({
   roomPassword: { type: String, required: true },
   maxCapacity:  { type: Number, default: 60 },
   status:       { type: String, enum: ['active', 'closed'], default: 'active' },
+  isAiGenerated: { type: Boolean, default: false },
+  subject:      { type: String, trim: true, default: '' },
+  unit:         { type: String, trim: true, default: '' },
   participants: [ParticipantSchema],
   reattemptRequests: [ReattemptRequestSchema],
 }, { timestamps: true });

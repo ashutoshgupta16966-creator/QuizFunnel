@@ -70,9 +70,12 @@ export const deleteStudentAttempt = (data) =>
   api.post('/api/students/delete-attempt', data);
 
 // ── Quiz endpoints ───────────────────────────────────────────────────────────
-export const getQuestions = (level, mobile) =>
+export const getQuestions = (level, mobile, roomCode) =>
   api.get(`/api/quiz/questions/${level}`, {
-    headers: { 'x-student-mobile': mobile },
+    headers: {
+      'x-student-mobile': mobile,
+      ...(roomCode ? { 'x-room-code': roomCode } : {}),
+    },
   });
 
 export const submitQuiz = (payload) =>
@@ -83,6 +86,16 @@ export const getQuizReview = (mobile) =>
 
 export const generateAiQuestions = (data) =>
   api.post('/api/generate-questions', data);
+
+// ── AI Quiz Generator endpoints ──────────────────────────────────────────────
+export const parseAiQuizDocument = (formData) =>
+  api.post('/api/rooms/ai/parse', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000, // 60s timeout for multimodal vision processing
+  });
+
+export const createAiRoom = (data) =>
+  api.post('/api/rooms/create-ai', data);
 
 // ── Feedback endpoints ────────────────────────────────────────────────────────
 export const submitFeedback = (payload) =>

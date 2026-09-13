@@ -400,6 +400,14 @@ export default function RoomAdminDashboard() {
                   </div>
                 )}
 
+                {(room.subject || room.unit || room.isAiGenerated) && (
+                  <div className="room-subject-subhead" style={{ marginTop: '0.35rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {room.isAiGenerated && <span className="badge-ai-indicator" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 700 }}>🤖 AI Quiz</span>}
+                    {room.subject && <span className="badge-subject" style={{ background: 'var(--color-surface-hover, rgba(255,255,255,0.08))', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem' }}>📚 {room.subject}</span>}
+                    {room.unit && <span className="badge-unit" style={{ background: 'var(--color-surface-hover, rgba(255,255,255,0.08))', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem' }}>🔖 {room.unit}</span>}
+                  </div>
+                )}
+
                 <div className="room-admin-meta">
                   <span>Host: <strong>{room.adminName}</strong></span>
                   {room.adminPhone && <span>· Phone: <strong>{room.adminPhone}</strong></span>}

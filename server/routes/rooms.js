@@ -1,7 +1,18 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const Room = require('../models/Room');
 const Student = require('../models/Student');
+const Question = require('../models/Question');
+const { parseQuizDocumentWithGemini } = require('../controllers/aiVisionController');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 15 * 1024 * 1024, // 15MB
+    files: 10,
+  },
+});
 
 function enrichParticipantsWithLevels(participants, roomCode) {
   return Room.enrichParticipantsWithLevels(participants, roomCode);
@@ -54,6 +65,175 @@ router.post('/create', async (req, res, next) => {
         quizTitle: room.quizTitle,
         adminName: room.adminName,
         maxCapacity: room.maxCapacity,
+        createdAt: room.createdAt,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Middleware wrapper for multer upload handling friendly errors
+ */
+function handleFileUpload(req, res, next) {
+  upload.array('files', 10)(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          success: false,
+          error: 'Total upload size exceeds 15 MB limit. Please upload fewer or smaller files.',
+        });
+      }
+      if (err.code === 'LIMIT_FILE_COUNT') {
+        return res.status(400).json({
+          success: false,
+          error: 'Maximum 10 files allowed per upload.',
+        });
+      }
+      return res.status(400).json({ success: false, error: err.message });
+    } else if (err) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next();
+  });
+}
+
+/**
+ * POST /api/rooms/ai/parse
+ * Uploads images/PDFs and parses them with Gemini Vision into structured questions, subject, and unit.
+ */
+router.post('/ai/parse', handleFileUpload, async (req, res, next) => {
+  try {
+    const files = req.files;
+    if (!files || files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No files uploaded. Please take a photo or select an image/PDF.',
+      });
+    }
+
+    const result = await parseQuizDocumentWithGemini(files);
+    res.json(result);
+  } catch (err) {
+    console.error('[AI Parse Error]:', err.message);
+    res.status(400).json({
+      success: false,
+      error: err.message || 'Failed to parse document with AI.',
+    });
+  }
+});
+
+/**
+ * POST /api/rooms/create-ai
+ * Confirms reviewed AI-generated questions and creates an isolated live room.
+ * Stores questions in Question collection tagged with roomCode.
+ */
+router.post('/create-ai', async (req, res, next) => {
+  try {
+    const { adminName, adminPhone, roomCode, roomPassword, quizTitle, subject, unit, questions } = req.body;
+
+    if (!adminName?.trim() || !adminPhone?.trim() || !roomCode?.trim() || !roomPassword?.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Admin Name, Phone Number, Room Code, and Room Password are required.',
+      });
+    }
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one valid question is required to create an AI quiz room.',
+      });
+    }
+
+    const normalizedCode = roomCode.trim().toUpperCase();
+    const cleanPhone = adminPhone.trim().replace(/\D/g, '').slice(-10);
+
+    // Phone-scoped uniqueness: same host cannot have two ACTIVE rooms with same code
+    const existing = await Room.findOne({ roomCode: normalizedCode, adminPhone: cleanPhone, status: 'active' });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        error: `You already have an active room with code "${normalizedCode}". Close it first or choose a different code.`,
+      });
+    }
+
+    // Clean up any stale questions previously assigned to this room code
+    await Question.deleteMany({ roomCode: normalizedCode });
+
+    // Validate and sanitize questions to match QuestionSchema
+    const questionDocs = [];
+    for (const q of questions) {
+      const qText = String(q.questionText || '').trim();
+      if (!qText) continue;
+
+      const opts = Array.isArray(q.options)
+        ? q.options.map((o) => String(o).trim()).filter(Boolean)
+        : [];
+      if (opts.length !== 4) continue;
+
+      let cIdx = parseInt(q.correctAnswerIndex, 10);
+      if (isNaN(cIdx) || cIdx < 0 || cIdx > 3) cIdx = 0;
+
+      let lvl = parseInt(q.level, 10);
+      if (isNaN(lvl) || lvl < 1 || lvl > 4) lvl = 1;
+
+      const sec = ['GK', 'Technical', 'Reasoning', 'Aptitude', 'Mixed'].includes(q.section)
+        ? q.section
+        : 'Technical';
+
+      const diff = ['easy', 'medium', 'hard'].includes(q.difficulty)
+        ? q.difficulty
+        : 'medium';
+
+      questionDocs.push({
+        roomCode: normalizedCode,
+        level: lvl,
+        section: sec,
+        questionText: qText,
+        options: opts,
+        correctAnswerIndex: cIdx,
+        difficulty: diff,
+        explanation: String(q.explanation || '').trim(),
+      });
+    }
+
+    if (questionDocs.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No valid questions found. Each question must have non-empty text and exactly 4 options.',
+      });
+    }
+
+    // Insert questions strictly isolated to this room
+    const inserted = await Question.insertMany(questionDocs);
+
+    const room = await Room.create({
+      roomCode: normalizedCode,
+      quizTitle: quizTitle?.trim() || (subject ? `${subject} Quiz` : 'AI Generated Quiz'),
+      adminName: adminName.trim(),
+      adminPhone: cleanPhone,
+      roomPassword: roomPassword.trim(),
+      maxCapacity: 60,
+      status: 'active',
+      isAiGenerated: true,
+      subject: subject?.trim() || '',
+      unit: unit?.trim() || '',
+      participants: [],
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        roomCode: room.roomCode,
+        quizTitle: room.quizTitle,
+        subject: room.subject,
+        unit: room.unit,
+        adminName: room.adminName,
+        maxCapacity: room.maxCapacity,
+        isAiGenerated: room.isAiGenerated,
+        questionCount: inserted.length,
         createdAt: room.createdAt,
       },
     });
@@ -300,8 +480,12 @@ router.post('/join', async (req, res, next) => {
         },
         room: {
           roomCode: room.roomCode,
+          quizTitle: room.quizTitle || '',
           adminName: room.adminName,
           maxCapacity: room.maxCapacity,
+          isAiGenerated: Boolean(room.isAiGenerated),
+          subject: room.subject || '',
+          unit: room.unit || '',
         },
       },
     });
@@ -921,6 +1105,9 @@ router.get('/:roomCode', async (req, res, next) => {
         participantCount: enrichedParticipants.length,
         reattemptRequests: (room.reattemptRequests || []).filter((r) => r.status === 'pending'),
         quizTitle: room.quizTitle || '',
+        isAiGenerated: Boolean(room.isAiGenerated),
+        subject: room.subject || '',
+        unit: room.unit || '',
         createdAt: room.createdAt,
       },
     });
@@ -1052,6 +1239,9 @@ const deleteRoomHandler = async (req, res, next) => {
       { 'attemptHistory.roomCode': normalizedCode },
       { $pull: { attemptHistory: { roomCode: normalizedCode } } }
     );
+
+    // 3. Clean up any AI-generated questions associated with this room code
+    await Question.deleteMany({ roomCode: normalizedCode });
 
     res.json({
       success: true,

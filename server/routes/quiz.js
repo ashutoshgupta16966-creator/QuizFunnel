@@ -68,6 +68,19 @@ router.get('/questions/:level', async (req, res, next) => {
       return res.status(403).json({ success: false, error: 'This level has already been submitted.' });
     }
 
+    // ── Check if student is in an active Room (AI or Manual) ───────────
+    const roomCodeHeader = (req.headers['x-room-code'] || req.query.roomCode || '').trim().toUpperCase();
+    let activeRoom = null;
+    if (roomCodeHeader) {
+      activeRoom = await Room.findOne({ roomCode: roomCodeHeader, status: 'active' }).lean();
+    } else {
+      // Fallback: check if student is an active participant in an active room
+      activeRoom = await Room.findOne({ 'participants.mobile': mobile, status: 'active' }).lean();
+    }
+
+    const roomSubject = activeRoom?.subject || '';
+    const roomUnit = activeRoom?.unit || '';
+
     // ── RESUME: return same shuffled questions if session exists ──────────
     if (student.quizSession && student.quizSession.level === level) {
       const qIds = student.quizSession.questions.map((q) => q.questionId);
@@ -86,13 +99,20 @@ router.get('/questions/:level', async (req, res, next) => {
         };
       }).filter(Boolean);
 
+      const qCount = clientQuestions.length;
+      const resumedCutoff = qCount < LEVELS[level].cutoff
+        ? Math.max(1, Math.ceil(qCount * 0.7))
+        : LEVELS[level].cutoff;
+
       return res.json({
         success: true,
         data: {
           questions: clientQuestions,
           level,
           timeSeconds: LEVELS[level].timeSeconds,
-          cutoff: LEVELS[level].cutoff,
+          cutoff: resumedCutoff,
+          subject: roomSubject,
+          unit: roomUnit,
           startedAt: student.quizSession.startedAt,
           isResumed: true,
         },
@@ -103,26 +123,41 @@ router.get('/questions/:level', async (req, res, next) => {
     const levelConfig = LEVELS[level];
     let allQuestions = [];
 
-    // Attempt section-wise fetching first
-    for (const section of levelConfig.sections) {
-      const qs = await Question.find({ level, section }).lean();
-      const picked = qs.sort(() => Math.random() - 0.5).slice(0, levelConfig.questionsPerSection);
-      allQuestions.push(...picked);
-    }
+    // STRICT ISOLATION:
+    // If student is in an AI-generated room with custom questions, ONLY fetch questions tagged with this roomCode.
+    if (activeRoom && activeRoom.isAiGenerated && activeRoom.roomCode) {
+      let roomQs = await Question.find({ roomCode: activeRoom.roomCode, level }).lean();
+      if (roomQs.length === 0) {
+        // If no questions specific to this level, fetch all questions for this room
+        roomQs = await Question.find({ roomCode: activeRoom.roomCode }).lean();
+      }
+      allQuestions = roomQs;
+    } else {
+      // Standard Solo Quiz or Manual Room:
+      // STRICT ISOLATION: Only fetch questions where roomCode is null or does not exist.
+      const defaultFilter = { $or: [{ roomCode: null }, { roomCode: { $exists: false } }] };
 
-    // Fallback: If section breakdown didn't yield exact required count (e.g. 20 for L1),
-    // fetch all questions for this level directly from DB to guarantee exact count
-    if (allQuestions.length < levelConfig.questions) {
-      const allLevelQuestions = await Question.find({ level }).lean();
-      allQuestions = allLevelQuestions
-        .sort(() => Math.random() - 0.5)
-        .slice(0, levelConfig.questions);
+      // Attempt section-wise fetching first
+      for (const section of levelConfig.sections) {
+        const qs = await Question.find({ level, section, ...defaultFilter }).lean();
+        const picked = qs.sort(() => Math.random() - 0.5).slice(0, levelConfig.questionsPerSection);
+        allQuestions.push(...picked);
+      }
+
+      // Fallback: If section breakdown didn't yield exact required count (e.g. 20 for L1),
+      // fetch all questions for this level directly from DB to guarantee exact count
+      if (allQuestions.length < levelConfig.questions) {
+        const allLevelQuestions = await Question.find({ level, ...defaultFilter }).lean();
+        allQuestions = allLevelQuestions
+          .sort(() => Math.random() - 0.5)
+          .slice(0, levelConfig.questions);
+      }
     }
 
     if (allQuestions.length === 0) {
       return res.status(500).json({
         success: false,
-        error: `No questions found for level ${level}. Run the seed script first.`,
+        error: `No questions found for level ${level}.`,
       });
     }
 
@@ -158,13 +193,20 @@ router.get('/questions/:level', async (req, res, next) => {
       }
     );
 
+    const actualCount = clientQuestions.length;
+    const effectiveCutoff = actualCount < levelConfig.cutoff
+      ? Math.max(1, Math.ceil(actualCount * 0.7))
+      : levelConfig.cutoff;
+
     res.json({
       success: true,
       data: {
         questions: clientQuestions,
         level,
         timeSeconds: levelConfig.timeSeconds,
-        cutoff: levelConfig.cutoff,
+        cutoff: effectiveCutoff,
+        subject: roomSubject,
+        unit: roomUnit,
         startedAt,
         isResumed: false,
       },
@@ -258,8 +300,12 @@ router.post('/submit', async (req, res, next) => {
 
     // ── CUTOFF CHECK ─────────────────────────────────────────────────────
     const isLastLevel = level === 4;
+    const sessionCount = session.questions?.length || levelConfig.questions;
+    const dynamicCutoff = sessionCount < levelConfig.cutoff
+      ? Math.max(1, Math.ceil(sessionCount * 0.7))
+      : levelConfig.cutoff;
     // Level 4 has no cutoff — everyone who reaches it gets ranked
-    const passed = isDisqualified ? false : (isLastLevel ? true : score >= levelConfig.cutoff);
+    const passed = isDisqualified ? false : (isLastLevel ? true : score >= dynamicCutoff);
 
     let newStatus, newCurrentLevel;
     let completedAt;

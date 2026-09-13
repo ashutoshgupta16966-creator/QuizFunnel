@@ -32,6 +32,11 @@ export default function Quiz() {
   const [showExitModal, setShowExitModal] = useState(false);
   const [showUnattemptedModal, setShowUnattemptedModal] = useState(false);
   const [isRoomClosed, setIsRoomClosed] = useState(false);
+  const [quizSubject, setQuizSubject]   = useState('');
+  const [quizUnit, setQuizUnit]         = useState('');
+
+  const displaySubject = quizSubject || roomSession?.subject || '';
+  const displayUnit    = quizUnit || roomSession?.unit || '';
 
   // Storage keys for auto-saving progress & bookmarks
   const progressKey = student?.mobile ? `quiz_progress_${student.mobile}_${levelNum}` : null;
@@ -195,9 +200,11 @@ export default function Quiz() {
     try {
       setLoading(true);
       setLoadError(null);
-      const res = await getQuestions(levelNum, student.mobile);
-      const { questions: qs, startedAt: sAt } = res.data.data;
+      const res = await getQuestions(levelNum, student.mobile, roomSession?.roomCode);
+      const { questions: qs, startedAt: sAt, subject: resSub, unit: resUn } = res.data.data;
       setQuestions(qs);
+      if (resSub) setQuizSubject(resSub);
+      if (resUn) setQuizUnit(resUn);
       setStartedAt(new Date(sAt));
       restoreSavedProgress(qs);
     } catch (err) {
@@ -498,6 +505,29 @@ export default function Quiz() {
         total={questions.length}
         answered={answeredCount}
       />
+
+      {/* ── Subject & Unit Metadata Info Banner ── */}
+      {(displaySubject || displayUnit) && (
+        <div className="quiz-subject-unit-banner" role="region" aria-label="Topic Information">
+          <div className="quiz-banner-inner">
+            {displaySubject && (
+              <span className="quiz-banner-item quiz-banner-subject">
+                <span className="quiz-banner-icon">📚</span>
+                <span className="quiz-banner-label">Subject:</span>
+                <strong className="quiz-banner-value">{displaySubject}</strong>
+              </span>
+            )}
+            {displaySubject && displayUnit && <span className="quiz-banner-dot" aria-hidden>•</span>}
+            {displayUnit && (
+              <span className="quiz-banner-item quiz-banner-unit">
+                <span className="quiz-banner-icon">📖</span>
+                <span className="quiz-banner-label">Unit/Topic:</span>
+                <span className="quiz-banner-value">{displayUnit}</span>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Question card (slides in on change) ── */}
       {currentQuestion && (
