@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom, sendAdminOtp, verifyAdminOtp, resetAdminPin, generateMcqOptions } from '../api';
+import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom, sendAdminOtp, verifyAdminOtp, resetAdminPin, generateMcqOptions, sendSmsOtp, verifySmsOtp, resetPasswordWithOtp } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
 
@@ -121,6 +121,15 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   });
   const [studentLoading, setStudentLoading] = useState(false);
   const [studentError, setStudentError] = useState('');
+
+  // ── Student PIN Reset (Forgot PIN) OTP state ──────────────────────────────
+  const [studentPinResetStep, setStudentPinResetStep] = useState(null); // null | 'send_otp' | 'verify_otp' | 'new_pin'
+  const [studentPinResetOtp, setStudentPinResetOtp] = useState('');
+  const [studentPinResetNewPin, setStudentPinResetNewPin] = useState('');
+  const [studentPinResetLoading, setStudentPinResetLoading] = useState(false);
+  const [studentPinResetError, setStudentPinResetError] = useState('');
+  const [studentPinResetNotice, setStudentPinResetNotice] = useState('');
+  const [studentPinVerifiedOtp, setStudentPinVerifiedOtp] = useState('');
 
   // ── AI Quiz Generator state ──────────────────────────────────────────────────
   const [aiForm, setAiForm] = useState({
@@ -977,6 +986,77 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       setStudentError(err.response?.data?.error || 'Failed to join room. Please check your credentials.');
     } finally {
       setStudentLoading(false);
+    }
+  };
+
+  // ── Student "Forgot PIN?" OTP Reset handlers ─────────────────────────────────
+  const handleStudentForgotPin = async () => {
+    const mobile = studentForm.mobile.trim();
+    if (!mobile || !/^\d{10}$/.test(mobile)) {
+      setStudentPinResetError('Please enter your 10-digit mobile number in the form above first.');
+      setStudentPinResetStep('send_otp');
+      return;
+    }
+    setStudentPinResetLoading(true);
+    setStudentPinResetError('');
+    setStudentPinResetNotice('');
+    try {
+      const res = await sendSmsOtp({ mobile });
+      setStudentPinResetNotice(
+        `OTP sent to +91 ${mobile}. Demo OTP: ${res.data.demoOtp || '****'}`
+      );
+      setStudentPinResetStep('verify_otp');
+    } catch (err) {
+      setStudentPinResetError(err.response?.data?.error || 'Failed to send OTP. Please try again.');
+      setStudentPinResetStep('send_otp');
+    } finally {
+      setStudentPinResetLoading(false);
+    }
+  };
+
+  const handleStudentVerifyOtp = async () => {
+    const mobile = studentForm.mobile.trim();
+    if (!studentPinResetOtp.trim()) {
+      setStudentPinResetError('Please enter the 4-digit OTP.');
+      return;
+    }
+    setStudentPinResetLoading(true);
+    setStudentPinResetError('');
+    try {
+      await verifySmsOtp({ mobile, otp: studentPinResetOtp.trim() });
+      setStudentPinVerifiedOtp(studentPinResetOtp.trim());
+      setStudentPinResetNotice('OTP verified! Please set your new 4-digit PIN.');
+      setStudentPinResetStep('new_pin');
+    } catch (err) {
+      setStudentPinResetError(err.response?.data?.error || 'Invalid OTP. Please try again.');
+    } finally {
+      setStudentPinResetLoading(false);
+    }
+  };
+
+  const handleStudentUpdatePin = async () => {
+    const mobile = studentForm.mobile.trim();
+    if (!studentPinResetNewPin.trim() || studentPinResetNewPin.trim().length < 4) {
+      setStudentPinResetError('New PIN must be at least 4 characters.');
+      return;
+    }
+    setStudentPinResetLoading(true);
+    setStudentPinResetError('');
+    try {
+      await resetPasswordWithOtp({ mobile, otp: studentPinVerifiedOtp, newPassword: studentPinResetNewPin.trim() });
+      // Auto-fill the new PIN into the join form
+      setStudentForm((prev) => ({ ...prev, password: studentPinResetNewPin.trim() }));
+      // Close reset flow
+      setStudentPinResetStep(null);
+      setStudentPinResetOtp('');
+      setStudentPinResetNewPin('');
+      setStudentPinVerifiedOtp('');
+      setStudentPinResetNotice('');
+      setStudentError('PIN updated successfully! You may now submit the form.');
+    } catch (err) {
+      setStudentPinResetError(err.response?.data?.error || 'Failed to update PIN. Please try again.');
+    } finally {
+      setStudentPinResetLoading(false);
     }
   };
 
@@ -2150,7 +2230,125 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                     onChange={(e) => setStudentForm({ ...studentForm, password: e.target.value })}
                   />
                   <p className="form-hint">Used to privately view your results in My Results.</p>
+                  {/* Forgot PIN link */}
+                  <button
+                    type="button"
+                    className="forgot-pin-link"
+                    onClick={() => {
+                      setStudentPinResetStep('send_otp');
+                      setStudentPinResetError('');
+                      setStudentPinResetNotice('');
+                      setStudentPinResetOtp('');
+                      setStudentPinResetNewPin('');
+                    }}
+                  >
+                    Forgot Secret PIN?
+                  </button>
                 </div>
+
+                {/* ── Inline PIN Reset OTP Flow ── */}
+                {studentPinResetStep && (
+                  <div className="student-pin-reset-box">
+                    <div className="pin-reset-header">
+                      <span>🔑 Reset Your Secret PIN</span>
+                      <button
+                        type="button"
+                        className="pin-reset-close-btn"
+                        onClick={() => {
+                          setStudentPinResetStep(null);
+                          setStudentPinResetError('');
+                          setStudentPinResetNotice('');
+                          setStudentPinResetOtp('');
+                          setStudentPinResetNewPin('');
+                        }}
+                        aria-label="Close PIN reset"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {studentPinResetNotice && (
+                      <p className="pin-reset-notice">{studentPinResetNotice}</p>
+                    )}
+                    {studentPinResetError && (
+                      <p className="pin-reset-error">⚠️ {studentPinResetError}</p>
+                    )}
+
+                    {/* Step 1: Send OTP */}
+                    {studentPinResetStep === 'send_otp' && (
+                      <div className="pin-reset-step">
+                        <p className="pin-reset-desc">
+                          We will send a 4-digit OTP to your registered mobile number{' '}
+                          {studentForm.mobile ? <strong>+91 {studentForm.mobile}</strong> : 'entered above'}.
+                        </p>
+                        <button
+                          type="button"
+                          className="btn btn-primary pin-reset-action-btn"
+                          onClick={handleStudentForgotPin}
+                          disabled={studentPinResetLoading}
+                        >
+                          {studentPinResetLoading ? <><span className="btn-spinner" />Sending…</> : 'Send OTP'}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Step 2: Verify OTP */}
+                    {studentPinResetStep === 'verify_otp' && (
+                      <div className="pin-reset-step">
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="Enter 4-digit OTP"
+                          maxLength={4}
+                          value={studentPinResetOtp}
+                          onChange={(e) => setStudentPinResetOtp(e.target.value)}
+                          autoFocus
+                        />
+                        <div className="pin-reset-row">
+                          <button
+                            type="button"
+                            className="btn btn-primary pin-reset-action-btn"
+                            onClick={handleStudentVerifyOtp}
+                            disabled={studentPinResetLoading}
+                          >
+                            {studentPinResetLoading ? <><span className="btn-spinner" />Verifying…</> : 'Verify OTP'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost pin-reset-resend-btn"
+                            onClick={handleStudentForgotPin}
+                            disabled={studentPinResetLoading}
+                          >
+                            Resend OTP
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step 3: Set new PIN */}
+                    {studentPinResetStep === 'new_pin' && (
+                      <div className="pin-reset-step">
+                        <input
+                          type="password"
+                          className="form-input"
+                          placeholder="New 4-digit PIN"
+                          maxLength={20}
+                          value={studentPinResetNewPin}
+                          onChange={(e) => setStudentPinResetNewPin(e.target.value)}
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary pin-reset-action-btn"
+                          onClick={handleStudentUpdatePin}
+                          disabled={studentPinResetLoading}
+                        >
+                          {studentPinResetLoading ? <><span className="btn-spinner" />Updating…</> : 'Update PIN & Continue'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <button

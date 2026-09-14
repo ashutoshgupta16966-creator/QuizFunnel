@@ -14,7 +14,7 @@ import AntiCheatModal from '../components/AntiCheatModal';
 import QuestionPalette from '../components/QuestionPalette';
 import UnattemptedWarningModal from '../components/UnattemptedWarningModal';
 
-const MAX_TAB_SWITCH_ALLOWED = 3;
+const MAX_TAB_SWITCH_ALLOWED = 4;
 
 export default function Quiz() {
   const { level: levelParam } = useParams();
@@ -461,10 +461,11 @@ export default function Quiz() {
           setShowAntiCheatModal(true);
           executeSubmit(true);
         } else {
-          // Switches 1 to 3: Trigger warning toast displaying remaining attempts
+          // Switches 1 to (MAX-1): Trigger warning toast displaying remaining attempts
+          const capped = Math.min(nextCount, MAX_TAB_SWITCH_ALLOWED);
           setToast({
             type: 'warning',
-            message: `Warning ${nextCount}/${MAX_TAB_SWITCH_ALLOWED}: Switching tabs is monitored`,
+            message: `Warning ${capped}/${MAX_TAB_SWITCH_ALLOWED}: Switching tabs is monitored. ${MAX_TAB_SWITCH_ALLOWED}th switch will auto-disqualify.`,
             duration: 4000,
           });
           setShowAntiCheatModal(true);

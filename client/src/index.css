@@ -6793,3 +6793,117 @@ a { color: inherit; }
   50% { box-shadow: 0 4px 28px rgba(16, 185, 129, 0.75); }
 }
 
+/* ── Student Forgot PIN / OTP Reset ─────────────────────────────────────── */
+
+.forgot-pin-link {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #60a5fa;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+}
+.forgot-pin-link:hover {
+  color: #93c5fd;
+}
+
+.student-pin-reset-box {
+  margin-top: 0.85rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border, #28456b);
+  border-radius: 10px;
+  background: rgba(22, 34, 54, 0.85);
+  animation: fade-in-down 0.2s ease;
+}
+
+@keyframes fade-in-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pin-reset-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #e2e8f0;
+  margin-bottom: 0.6rem;
+}
+
+.pin-reset-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #94a3b8);
+  font-size: 1rem;
+  padding: 0 0.2rem;
+  transition: color 0.15s;
+}
+.pin-reset-close-btn:hover {
+  color: #f87171;
+}
+
+.pin-reset-notice {
+  font-size: 0.8rem;
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.08);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  border-radius: 6px;
+  padding: 0.45rem 0.7rem;
+  margin-bottom: 0.65rem;
+}
+
+.pin-reset-error {
+  font-size: 0.8rem;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 6px;
+  padding: 0.45rem 0.7rem;
+  margin-bottom: 0.65rem;
+}
+
+.pin-reset-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.pin-reset-desc {
+  font-size: 0.83rem;
+  color: var(--text-soft, #94a3b8);
+  margin: 0;
+}
+
+.pin-reset-action-btn {
+  width: 100%;
+  padding: 0.6rem 1rem;
+  font-size: 0.88rem;
+}
+
+.pin-reset-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pin-reset-resend-btn {
+  flex-shrink: 0;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.82rem;
+  color: #60a5fa;
+  background: transparent;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: 8px;
+}
+.pin-reset-resend-btn:hover {
+  border-color: #60a5fa;
+  background: rgba(96, 165, 250, 0.08);
+}
+

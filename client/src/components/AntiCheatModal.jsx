@@ -1,7 +1,7 @@
 export default function AntiCheatModal({
   isOpen,
   count = 1,
-  maxLimit = 3,
+  maxLimit = 4,
   isLimitReached = false,
   onAcknowledge,
   onTerminalProceed,
@@ -18,7 +18,9 @@ export default function AntiCheatModal({
         </div>
 
         <h3 className="anti-cheat-title">
-          {isLimitReached ? 'Test Terminated: Limit Exceeded' : 'Tab Switching Detected!'}
+          {isLimitReached
+            ? `Violation: Tab-Switch Limit Exceeded (${maxLimit}/${maxLimit})`
+            : 'Tab Switching Detected!'}
         </h3>
 
         <div className={`warning-counter-pill ${isLimitReached ? 'critical' : ''}`}>
@@ -29,14 +31,17 @@ export default function AntiCheatModal({
         <p className="anti-cheat-message">
           {isLimitReached ? (
             <>
-              You have exceeded the maximum limit of <strong>{maxLimit} tab switches</strong>.
-              Your quiz has been automatically submitted to maintain assessment integrity.
+              You have been <strong>automatically disqualified</strong> for exceeding the maximum
+              allowed tab switches (<strong>{maxLimit}/{maxLimit}</strong>). Your quiz session has
+              been terminated and submitted to maintain assessment integrity. Contact your host if
+              you believe this was a mistake.
             </>
           ) : (
             <>
               Leaving the test window or switching browser tabs is strictly monitored.
-              You have <strong>{remaining} warning{remaining === 1 ? '' : 's'}</strong> remaining
-              before your quiz is automatically terminated and submitted.
+              You have <strong>{remaining} warning{remaining === 1 ? '' : 's'}</strong> remaining.
+              The <strong>{maxLimit}{maxLimit === 4 ? 'th' : 'th'} switch</strong> will automatically
+              disqualify you from this quiz.
             </>
           )}
         </p>
