@@ -54,6 +54,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [pendingData, setPendingData] = useState(null);
   const [approvalDenied, setApprovalDenied] = useState(false);
   const [approvalSuccess, setApprovalSuccess] = useState(false);
+  const [approvedPayload, setApprovedPayload] = useState(null);
 
   // ── Admin Create form state ──────────────────────────────────────────────────
   const [adminForm, setAdminForm] = useState({
@@ -169,6 +170,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       setPendingData(null);
       setApprovalDenied(false);
       setApprovalSuccess(false);
+      setApprovedPayload(null);
       setEditingRoomCode(null);
       setDeleteConfirmRoom(null);
 
@@ -222,19 +224,14 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         roomCode: pendingData.roomCode,
       };
 
+      setApprovedPayload({ studentObj, roomObj });
       saveStudent(studentObj);
       setRoomSession({
         isRoomQuiz: true,
         roomCode: roomObj.roomCode,
         adminName: roomObj.adminName || '',
       });
-
-      setTimeout(() => {
-        if (isSubscribed) {
-          onClose();
-          navigate('/quiz/1');
-        }
-      }, 1200);
+      joinStudentRoomSocket(roomObj.roomCode, studentObj);
     };
 
     const handleDenied = () => {
@@ -273,6 +270,29 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       clearInterval(pollInterval);
     };
   }, [step, pendingData, onClose, navigate, saveStudent, setRoomSession]);
+
+  // ── Launch Quiz On Approval ──────────────────────────────────────────────────
+  const handleStartQuizNow = () => {
+    const studentObj = approvedPayload?.studentObj || {
+      name: pendingData?.name,
+      mobile: pendingData?.mobile,
+      branch: pendingData?.branch,
+      status: 'in-progress',
+      currentLevel: 1,
+    };
+    const roomCode = approvedPayload?.roomObj?.roomCode || pendingData?.roomCode;
+
+    saveStudent(studentObj);
+    setRoomSession({
+      isRoomQuiz: true,
+      roomCode,
+      adminName: approvedPayload?.roomObj?.adminName || '',
+    });
+    joinStudentRoomSocket(roomCode, studentObj);
+
+    onClose();
+    navigate('/quiz/play');
+  };
 
   if (!isOpen) return null;
 
@@ -2183,7 +2203,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
 
               {approvalSuccess && (
                 <div className="approval-success-alert">
-                  ✅ <strong>Re-attempt Approved by Host!</strong> Starting Quiz…
+                  ✅ <strong>Re-attempt Approved by Host!</strong> You can now launch your quiz.
                 </div>
               )}
 
@@ -2195,6 +2215,17 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
               )}
             </div>
 
+            {approvalSuccess && (
+              <button
+                type="button"
+                className="btn btn-primary room-submit-btn start-quiz-now-btn"
+                onClick={handleStartQuizNow}
+                style={{ marginTop: '1rem', marginBottom: '0.75rem', fontWeight: 700, fontSize: '1.05rem' }}
+              >
+                🚀 Start Quiz Now
+              </button>
+            )}
+
             <button
               type="button"
               className="btn btn-secondary room-submit-btn"
@@ -2203,6 +2234,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                 setPendingData(null);
                 setApprovalDenied(false);
                 setApprovalSuccess(false);
+                setApprovedPayload(null);
                 onClose();
               }}
             >

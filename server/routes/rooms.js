@@ -351,7 +351,7 @@ router.post('/join', async (req, res, next) => {
     if (existingStudentInDB && existingStudentInDB.password !== password.trim()) {
       return res.status(401).json({
         success: false,
-        error: 'Is mobile number se aap ye quiz already de chuke hain. Apna sahi password enter karein.',
+        error: 'You have already attempted this quiz using this mobile number. Please enter your secret PIN to authenticate or request a re-attempt.',
       });
     }
 
@@ -469,6 +469,16 @@ router.post('/join', async (req, res, next) => {
     };
 
     if (existingParticipant) {
+      const prevAttemptData = existingParticipant.previousAttempt || {
+        score: existingParticipant.score || 0,
+        timeTaken: existingParticipant.timeTaken || 0,
+        level: existingParticipant.level || 1,
+        status: existingParticipant.status || 'eliminated',
+        isDisqualified: Boolean(existingParticipant.isDisqualified),
+        levels: existingParticipant.levels || [],
+        joinedAt: existingParticipant.joinedAt,
+      };
+
       await Room.updateOne(
         { roomCode: normalizedCode, 'participants.mobile': cleanMobile },
         {
@@ -480,6 +490,7 @@ router.post('/join', async (req, res, next) => {
             'participants.$.levels': [],
             'participants.$.isDisqualified': false,
             'participants.$.isReattempt': isReattemptStudent,
+            'participants.$.previousAttempt': prevAttemptData,
             'participants.$.lastActive': new Date(),
           },
         }

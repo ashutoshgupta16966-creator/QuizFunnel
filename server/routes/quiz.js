@@ -402,7 +402,7 @@ router.post('/submit', async (req, res, next) => {
     let completedAt;
 
     if (isDisqualified) {
-      newStatus = 'eliminated';
+      newStatus = 'disqualified';
       newCurrentLevel = student.currentLevel;
     } else if (isLastLevel) {
       newStatus = 'completed';
@@ -435,7 +435,7 @@ router.post('/submit', async (req, res, next) => {
     if (completedAt) updateDoc.$set.completedAt = completedAt;
 
     // ── MULTI-ATTEMPT PERSISTENCE: Save finished attempt into history array ──
-    if (newStatus === 'completed' || newStatus === 'eliminated' || isDisqualified) {
+    if (newStatus === 'completed' || newStatus === 'eliminated' || newStatus === 'disqualified' || isDisqualified) {
       const CUMULATIVE_MAX = { 1: 20, 2: 35, 3: 45, 4: 50 };
       const clearedLevel = newStatus === 'completed' ? 4 : level;
       const maxPossible = CUMULATIVE_MAX[clearedLevel] || 50;

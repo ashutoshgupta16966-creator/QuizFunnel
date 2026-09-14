@@ -14,12 +14,15 @@ import AntiCheatModal from '../components/AntiCheatModal';
 import QuestionPalette from '../components/QuestionPalette';
 import UnattemptedWarningModal from '../components/UnattemptedWarningModal';
 
+const MAX_TAB_SWITCH_ALLOWED = 3;
+
 export default function Quiz() {
   const { level: levelParam } = useParams();
-  const levelNum = parseInt(levelParam, 10);
-  const levelConfig = LEVELS[levelNum];
-  const navigate = useNavigate();
+  const isPlayRoute = !levelParam || levelParam === 'play';
   const { student, updateStudent, setLastResult, clearStudent, isRoomQuiz, roomSession, clearRoomSession } = useQuiz();
+  const levelNum = isPlayRoute ? (student?.currentLevel || 1) : parseInt(levelParam, 10);
+  const levelConfig = LEVELS[levelNum] || LEVELS[1];
+  const navigate = useNavigate();
 
   const [questions, setQuestions]       = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -104,12 +107,12 @@ export default function Quiz() {
     if (student.status === 'eliminated' || student.status === 'completed') {
       navigate('/results'); return;
     }
-    if (student.currentLevel !== levelNum) {
+    if (!isPlayRoute && student.currentLevel !== levelNum) {
       navigate(`/quiz/${student.currentLevel}`); return;
     }
     loadQuestions();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [levelNum]);
+  }, [levelNum, isPlayRoute]);
 
   // ── Sync with Live Room Socket (Only if isRoomQuiz === true) ─────────────
   useEffect(() => {
@@ -311,7 +314,7 @@ export default function Quiz() {
       // Update context so student object has updated totals
       updateStudent({
         currentLevel:   result.nextLevel ?? student.currentLevel,
-        status:         isDisqualified ? 'eliminated' : result.status,
+        status:         isDisqualified ? 'disqualified' : result.status,
         totalScore:     result.totalScore,
         totalTimeTaken: result.totalTimeTaken,
       });
@@ -324,7 +327,7 @@ export default function Quiz() {
           currentLevel:   levelNum,
           score:          result.totalScore ?? 0,
           timeTaken:      result.totalTimeTaken ?? elapsed,
-          status:         isDisqualified ? 'eliminated' : (result.passed ? (result.nextLevel ? 'advanced' : 'completed') : 'eliminated'),
+          status:         isDisqualified ? 'disqualified' : (result.passed ? (result.nextLevel ? 'advanced' : 'completed') : 'eliminated'),
           isDisqualified: Boolean(isDisqualified),
         });
       }
@@ -402,8 +405,8 @@ export default function Quiz() {
           } catch { /* noop */ }
         }
 
-        if (nextCount >= 10) {
-          // Mark this session as anti-cheat terminated — blocks detailed review
+        if (nextCount > MAX_TAB_SWITCH_ALLOWED) {
+          // 4th Switch (> 3): Immediately auto-submit the quiz, terminate session, mark DISQUALIFIED
           if (student?.mobile) {
             try {
               localStorage.setItem(`quiz_anti_cheated_${student.mobile}`, '1');
@@ -434,7 +437,7 @@ export default function Quiz() {
                   accuracyPct: 0,
                   totalTimeTaken: student.totalTimeTaken || 0,
                   timeFormatted: '00:00',
-                  status: 'eliminated',
+                  status: 'disqualified',
                   isDisqualified: true,
                   isRoom: Boolean(isRoomQuiz),
                   roomCode: roomSession?.roomCode || '',
@@ -444,6 +447,7 @@ export default function Quiz() {
               } else {
                 const updated = existing.map((a) => (a.id === attemptId ? {
                   ...a,
+                  status: 'disqualified',
                   isDisqualified: true,
                   isRoom: Boolean(isRoomQuiz || a.isRoom),
                   roomCode: roomSession?.roomCode || a.roomCode || '',
@@ -457,6 +461,12 @@ export default function Quiz() {
           setShowAntiCheatModal(true);
           executeSubmit(true);
         } else {
+          // Switches 1 to 3: Trigger warning toast displaying remaining attempts
+          setToast({
+            type: 'warning',
+            message: `Warning ${nextCount}/${MAX_TAB_SWITCH_ALLOWED}: Switching tabs is monitored`,
+            duration: 4000,
+          });
           setShowAntiCheatModal(true);
         }
         return nextCount;
@@ -655,7 +665,7 @@ export default function Quiz() {
       <AntiCheatModal
         isOpen={showAntiCheatModal}
         count={tabSwitchCount}
-        maxLimit={10}
+        maxLimit={MAX_TAB_SWITCH_ALLOWED}
         isLimitReached={isAntiCheatTerminal}
         onAcknowledge={() => setShowAntiCheatModal(false)}
         onTerminalProceed={() => navigate('/results')}

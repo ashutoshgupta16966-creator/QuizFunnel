@@ -35,6 +35,7 @@ export default function RoomAdminDashboard() {
 
   // ── Expandable Student Row (Accordion: only 1 row expanded at a time) ───────
   const [expandedMobile, setExpandedMobile] = useState(null);
+  const [attemptTabMap, setAttemptTabMap] = useState({}); // { [mobile]: 'current' | 'previous' }
   const toggleExpandRow = (mobile) => {
     setExpandedMobile((prev) => (prev === mobile ? null : mobile));
   };
@@ -666,13 +667,37 @@ export default function RoomAdminDashboard() {
 
                           {/* ── Expandable Accordion: Level-wise Breakdown ── */}
                           {isExpanded && (() => {
-                            const studentLevels = Array.isArray(p.levels) ? p.levels : [];
-                            const totalScoreVal = p.computedTotalScore ?? (studentLevels.length > 0
-                              ? studentLevels.reduce((acc, curr) => acc + (curr.score || 0), 0)
-                              : (p.score ?? 0));
-                            const totalTimeVal = p.computedTotalTime ?? (studentLevels.length > 0
-                              ? studentLevels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0)
-                              : (p.timeTaken ?? 0));
+                            const hasReattempt = Boolean(
+                              p.isReattempt ||
+                              p.previousAttempt ||
+                              (pendingRequests || []).some((r) => r.mobile === p.mobile)
+                            );
+                            const activeTab = attemptTabMap[p.mobile] || 'current';
+                            const isPreviousView = hasReattempt && activeTab === 'previous';
+
+                            const studentLevels = isPreviousView
+                              ? (Array.isArray(p.previousAttempt?.levels) ? p.previousAttempt.levels : [])
+                              : (Array.isArray(p.levels) ? p.levels : []);
+
+                            const totalScoreVal = isPreviousView
+                              ? (p.previousAttempt?.score ?? 0)
+                              : (p.computedTotalScore ?? (studentLevels.length > 0
+                                  ? studentLevels.reduce((acc, curr) => acc + (curr.score || 0), 0)
+                                  : (p.score ?? 0)));
+
+                            const totalTimeVal = isPreviousView
+                              ? (p.previousAttempt?.timeTaken ?? 0)
+                              : (p.computedTotalTime ?? (studentLevels.length > 0
+                                  ? studentLevels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0)
+                                  : (p.timeTaken ?? 0)));
+
+                            const finalStatusVal = isPreviousView
+                              ? (p.previousAttempt?.status || (p.previousAttempt?.isDisqualified ? 'Disqualified' : 'Eliminated'))
+                              : (p.isDisqualified ? 'Disqualified' : (
+                                  p.status === 'completed' ? 'Completed' :
+                                  p.status === 'eliminated' ? 'Eliminated' :
+                                  p.status === 'advanced' ? 'Advanced' : 'In Progress'
+                                ));
 
                             return (
                               <tr className="expanded-details-row">
@@ -689,6 +714,35 @@ export default function RoomAdminDashboard() {
                                       <span className="breakdown-mobile-meta">📱 {p.mobile}</span>
                                     </div>
 
+                                    {/* ── Multi-Attempt Toggle Switch ── */}
+                                    {hasReattempt && (
+                                      <div className="attempt-toggle-tabs-bar">
+                                        <div className="attempt-toggle-tabs" role="tablist">
+                                          <button
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={activeTab === 'previous'}
+                                            className={`attempt-tab-btn ${activeTab === 'previous' ? 'active' : ''}`}
+                                            onClick={() => setAttemptTabMap((prev) => ({ ...prev, [p.mobile]: 'previous' }))}
+                                          >
+                                            📜 Previous Attempt
+                                          </button>
+                                          <button
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={activeTab === 'current'}
+                                            className={`attempt-tab-btn ${activeTab === 'current' ? 'active' : ''}`}
+                                            onClick={() => setAttemptTabMap((prev) => ({ ...prev, [p.mobile]: 'current' }))}
+                                          >
+                                            ⚡ Re-attempt Data
+                                          </button>
+                                        </div>
+                                        <span className="attempt-tab-mode-tag">
+                                          {isPreviousView ? 'Initial Attempt Score & History' : 'Current Re-attempt Performance'}
+                                        </span>
+                                      </div>
+                                    )}
+
                                     <div className="level-breakdown-table-wrapper">
                                       <table className="level-breakdown-table">
                                         <thead>
@@ -702,6 +756,7 @@ export default function RoomAdminDashboard() {
                                           {[1, 2, 3, 4].map((lvlNum) => {
                                             const lvlData = studentLevels.find((l) => l.level === lvlNum);
                                             const isCurrentPlaying =
+                                              !isPreviousView &&
                                               !lvlData &&
                                               p.level === lvlNum &&
                                               (p.status === 'in-progress' || p.status === 'advanced');
@@ -746,7 +801,9 @@ export default function RoomAdminDashboard() {
                                     {/* Separate Total Section below the level breakdown */}
                                     <div className="breakdown-total-container">
                                       <div className="total-container-header">
-                                        <span className="total-heading">Total (Sum Across All Levels)</span>
+                                        <span className="total-heading">
+                                          {isPreviousView ? 'Initial Attempt Performance Summary' : 'Total (Sum Across All Levels)'}
+                                        </span>
                                       </div>
                                       <div className="total-metric-items">
                                         <div className="total-metric-card score-card">
@@ -759,6 +816,12 @@ export default function RoomAdminDashboard() {
                                           <span className="total-metric-label">Total Time:</span>
                                           <span className="total-metric-val time-val">
                                             {formatTimeMMSS(totalTimeVal)}
+                                          </span>
+                                        </div>
+                                        <div className="total-metric-card status-card">
+                                          <span className="total-metric-label">Final Status:</span>
+                                          <span className={`total-metric-val status-val status-${String(finalStatusVal).toLowerCase().replace(/\s+/g, '-')}`}>
+                                            {finalStatusVal}
                                           </span>
                                         </div>
                                       </div>

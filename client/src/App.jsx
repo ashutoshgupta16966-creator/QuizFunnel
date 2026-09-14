@@ -15,6 +15,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/"                      element={<EntryForm />} />
+          <Route path="/quiz/play"             element={<Quiz />} />
           <Route path="/quiz/:level"           element={<Quiz />} />
           <Route path="/level-up"              element={<LevelTransition />} />
           <Route path="/results"               element={<Results />} />

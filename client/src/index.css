@@ -6679,3 +6679,117 @@ a { color: inherit; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   MULTI-ATTEMPT EXPANDED ROW TOGGLE TABS
+───────────────────────────────────────────────────────────────── */
+.attempt-toggle-tabs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.45rem 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  flex-wrap: wrap;
+}
+
+.attempt-toggle-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 0.25rem;
+}
+
+.attempt-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition: all var(--t-fast);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  outline: none;
+}
+
+.attempt-tab-btn:hover:not(.active) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.attempt-tab-btn.active {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px var(--primary-glow);
+}
+
+.attempt-tab-mode-tag {
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-weight: 600;
+  background: rgba(76, 201, 240, 0.1);
+  border: 1px solid rgba(76, 201, 240, 0.25);
+  padding: 0.2rem 0.65rem;
+  border-radius: var(--r-full);
+}
+
+.total-metric-card.status-card .status-val {
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.status-val.status-completed {
+  color: var(--success);
+}
+
+.status-val.status-eliminated {
+  color: var(--danger);
+}
+
+.status-val.status-disqualified {
+  color: #ff3366;
+}
+
+.status-val.status-advanced {
+  color: var(--accent);
+}
+
+.status-val.status-in-progress {
+  color: var(--warning);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   ONE-CLICK START QUIZ NOW BUTTON (RE-ATTEMPT APPROVAL)
+───────────────────────────────────────────────────────────────── */
+.start-quiz-now-btn {
+  background: linear-gradient(135deg, #10B981, #059669);
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.45);
+  animation: start-pulse 2s ease-in-out infinite;
+  transition: transform var(--t-fast), box-shadow var(--t-fast);
+}
+
+.start-quiz-now-btn:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 24px rgba(16, 185, 129, 0.6);
+}
+
+@keyframes start-pulse {
+  0%, 100% { box-shadow: 0 4px 18px rgba(16, 185, 129, 0.4); }
+  50% { box-shadow: 0 4px 28px rgba(16, 185, 129, 0.75); }
+}
+

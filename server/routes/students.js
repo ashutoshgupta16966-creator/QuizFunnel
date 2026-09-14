@@ -50,7 +50,7 @@ router.post('/register', async (req, res, next) => {
       return res.status(409).json({
         success: false,
         requiresConfirmation: true,
-        error: 'Is mobile number se aap ye quiz already de chuke hain. Kya aap phir se attempt karna chahte hain?',
+        error: 'You have already attempted this quiz using this mobile number. Would you like to re-attempt?',
       });
     }
 
