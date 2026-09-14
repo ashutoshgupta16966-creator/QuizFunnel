@@ -6422,3 +6422,260 @@ a { color: inherit; }
 .pwa-success-banner {
   animation: fadeIn 0.3s ease;
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   LEVEL DISTRIBUTION CHART — Dashboard Pie/Donut Chart
+───────────────────────────────────────────────────────────────── */
+.level-chart-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-card);
+}
+
+.level-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.level-chart-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.level-chart-total-pill {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 0.2rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.level-chart-body {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.donut-wrapper {
+  flex-shrink: 0;
+  position: relative;
+  width: 150px;
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.donut-wrapper svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.donut-center-text {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  pointer-events: none;
+}
+
+.donut-center-count {
+  display: block;
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+}
+
+.donut-center-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 0.2rem;
+}
+
+.chart-legend-grid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 160px;
+}
+
+.legend-item-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-sm);
+  padding: 0.45rem 0.7rem;
+  cursor: default;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast), opacity var(--t-fast);
+}
+
+.legend-item-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-glow);
+}
+
+.legend-item-card.dimmed {
+  opacity: 0.35;
+}
+
+.legend-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 80px;
+}
+
+.legend-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.legend-count-pct {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.legend-count {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 18px;
+  text-align: right;
+}
+
+.legend-pct {
+  font-size: 0.72rem;
+  color: var(--text-soft);
+  min-width: 34px;
+  text-align: right;
+}
+
+.legend-mini-bar {
+  width: 60px;
+  height: 5px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.legend-mini-fill {
+  height: 100%;
+  border-radius: var(--r-full);
+  transition: width 0.6s ease;
+}
+
+.level-chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  color: var(--text-dim);
+}
+
+.level-chart-empty span:first-child {
+  font-size: 2rem;
+}
+
+.level-chart-empty span:last-child {
+  font-size: 0.85rem;
+}
+
+@media (max-width: 500px) {
+  .level-chart-body {
+    flex-direction: column;
+    align-items: center;
+  }
+  .chart-legend-grid {
+    width: 100%;
+  }
+  .legend-mini-bar {
+    display: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   FLOATING PWA INSTALL ICON BUTTON — entry-top-right pill
+───────────────────────────────────────────────────────────────── */
+.pwa-float-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-full);
+  border: 2px solid var(--primary);
+  background: rgba(67, 97, 238, 0.12);
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(67, 97, 238, 0.35);
+  transition: background var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+  animation: pwa-icon-float 2.2s ease-in-out infinite;
+  outline: none;
+}
+
+.pwa-float-icon-btn:hover {
+  background: rgba(67, 97, 238, 0.25);
+  box-shadow: 0 0 20px rgba(67, 97, 238, 0.55);
+  transform: translateY(-3px) scale(1.08);
+  animation: none;
+}
+
+.pwa-float-icon-btn:active {
+  transform: scale(0.95);
+}
+
+.pwa-float-phone {
+  font-size: 1.25rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+@keyframes pwa-icon-float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-5px); }
+}
+
+.pwa-float-toast {
+  background: var(--success);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: var(--r-full);
+  padding: 0.25rem 0.65rem;
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

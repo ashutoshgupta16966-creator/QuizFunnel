@@ -248,7 +248,7 @@ router.post('/create-ai', async (req, res, next) => {
       isAiGenerated: true,
       subject: subject?.trim() || '',
       unit: unit?.trim() || '',
-      questions: questionDocs,
+      questions: inserted,
       participants: [],
     });
 
@@ -793,16 +793,23 @@ router.post('/ai/generate-options', async (req, res, next) => {
       return res.status(500).json({ success: false, error: 'Gemini API key not configured.' });
     }
 
-    const { GoogleGenerativeAI } = require('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(apiKey);
+    let GoogleGenAI;
+    try {
+      const genaiPkg = require('@google/genai');
+      GoogleGenAI = genaiPkg.GoogleGenAI;
+    } catch (e) {
+      console.warn('[generate-options]: @google/genai SDK not available:', e.message);
+    }
 
-    const FALLBACK_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
+    if (!GoogleGenAI) {
+      return res.status(500).json({ success: false, error: '@google/genai SDK not available on server.' });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
     let result = null;
 
-    for (const modelName of FALLBACK_MODELS) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const prompt = `You are an expert quiz question generator.
+    const prompt = `You are an expert quiz question generator.
 
 Given this quiz question:
 "${questionText.trim()}"
@@ -817,11 +824,24 @@ Respond ONLY with a valid JSON object in this exact format (no markdown, no expl
 
 Where correctIndex is 0-based (0=A, 1=B, 2=C, 3=D).`;
 
-        const response = await model.generateContent(prompt);
-        const raw = response.response.text().trim();
+    for (const modelName of FALLBACK_MODELS) {
+      try {
+        let response;
+        try {
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config: { responseMimeType: 'application/json' },
+          });
+        } catch {
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+          });
+        }
 
-        // Strip markdown code fences if present
-        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+        const raw = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
+        const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
         const parsed = JSON.parse(cleaned);
 
         if (
@@ -835,7 +855,6 @@ Where correctIndex is 0-based (0=A, 1=B, 2=C, 3=D).`;
           break;
         }
       } catch (modelErr) {
-        // Try next model in fallback ladder
         console.warn(`[generate-options] Model ${modelName} failed:`, modelErr.message);
         continue;
       }
@@ -1328,8 +1347,15 @@ router.get('/:roomCode/questions', async (req, res, next) => {
       roomQuestions = await Question.find({ roomCode: normalizedCode }).lean();
     }
 
+    const targetLevel = parseInt(level, 10) || 1;
+
+    // Fallback for manual rooms: load default questions for this level
+    if (roomQuestions.length === 0) {
+      const defaultFilter = { $or: [{ roomCode: null }, { roomCode: { $exists: false } }, { roomCode: '' }] };
+      roomQuestions = await Question.find({ level: targetLevel, ...defaultFilter }).lean();
+    }
+
     // If level filter provided and matching questions exist, filter by level
-    const targetLevel = parseInt(level, 10);
     let filteredQuestions = roomQuestions;
     if (!isNaN(targetLevel) && targetLevel >= 1 && targetLevel <= 4) {
       const levelMatches = roomQuestions.filter((q) => q.level === targetLevel);
@@ -1344,10 +1370,33 @@ router.get('/:roomCode/questions', async (req, res, next) => {
       questionText: q.questionText,
       questionType: q.questionType || (q.options && q.options.length > 0 ? 'mcq' : 'direct'),
       options: q.options || [],
-      level: q.level || 1,
+      level: q.level || targetLevel,
       section: q.section || 'Technical',
       difficulty: q.difficulty || 'medium',
     }));
+
+    // Auto-sync session for student if mobile is provided
+    const mobile = (req.headers['x-student-mobile'] || req.query.mobile || '').trim();
+    if (mobile && clientQuestions.length > 0) {
+      const sessionQuestions = clientQuestions.map((q) => ({
+        questionId: q._id,
+        questionType: q.questionType,
+        shuffleMap: [0, 1, 2, 3],
+      }));
+      const Student = require('../models/Student');
+      await Student.updateOne(
+        { mobile },
+        {
+          $set: {
+            quizSession: {
+              level: targetLevel,
+              startedAt: new Date(),
+              questions: sessionQuestions,
+            },
+          },
+        }
+      ).catch((e) => console.warn('[syncSession Error]:', e.message));
+    }
 
     res.json({
       success: true,

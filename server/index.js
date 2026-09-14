@@ -33,7 +33,14 @@ const corsOptions = {
         }
       },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Student-Mobile'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Student-Mobile',
+    'X-Room-Code',
+    'x-student-mobile',
+    'x-room-code',
+  ],
 };
 
 app.use(cors(corsOptions));

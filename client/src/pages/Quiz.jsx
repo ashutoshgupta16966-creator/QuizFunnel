@@ -338,12 +338,15 @@ export default function Quiz() {
       hasSubmitted.current = false;
       setSubmitting(false);
 
+      console.error('[executeSubmit Error]:', err.response?.data || err.message || err);
+
       // 409 = already submitted → treat as success and navigate
       if (err.response?.status === 409) {
         navigate('/results');
         return;
       }
-      setToast({ type: 'error', message: 'Submission failed. Please try again.', duration: 5000 });
+      const errorMsg = err.response?.data?.error || err.message || 'Submission failed. Please try again.';
+      setToast({ type: 'error', message: errorMsg, duration: 6000 });
     }
   }, [answers, questions, startedAt, levelNum, student, navigate, setLastResult, updateStudent, levelConfig, isRoomQuiz, roomSession]);
 

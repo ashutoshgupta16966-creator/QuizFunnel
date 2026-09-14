@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getRoomDetails, closeRoom, getRoomAnalytics, approveReattempt, denyReattempt, exportRoomResultsXLSX } from '../api';
 import { joinAdminRoomSocket, disconnectSocket } from '../utils/socket';
 import ThemeToggle from '../components/ThemeToggle';
+import LevelDistributionChart from '../components/LevelDistributionChart';
 
 
 function formatTimeMMSS(seconds) {
@@ -483,6 +484,9 @@ export default function RoomAdminDashboard() {
                 </div>
               </div>
             )}
+
+            {/* ── Level Distribution Pie Chart ── */}
+            <LevelDistributionChart participants={participants} />
 
             {/* ── Control Action Strip ── */}
             <div className="dashboard-control-strip">

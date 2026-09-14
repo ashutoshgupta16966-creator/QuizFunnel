@@ -72,6 +72,7 @@ export const deleteStudentAttempt = (data) =>
 // ── Quiz endpoints ───────────────────────────────────────────────────────────
 export const getQuestions = (level, mobile, roomCode) =>
   api.get(`/api/quiz/questions/${level}`, {
+    params: roomCode ? { roomCode } : undefined,
     headers: {
       'x-student-mobile': mobile,
       ...(roomCode ? { 'x-room-code': roomCode } : {}),
@@ -147,8 +148,11 @@ export const verifyAdminOtp = (data) =>
 export const resetAdminPin = (data) =>
   api.post('/api/rooms/admin/reset-pin', data);
 
-export const getRoomQuestions = (roomCode, level) =>
-  api.get(`/api/rooms/${encodeURIComponent(roomCode)}/questions`, { params: { level } });
+export const getRoomQuestions = (roomCode, level, mobile) =>
+  api.get(`/api/rooms/${encodeURIComponent(roomCode)}/questions`, {
+    params: { level, ...(mobile ? { mobile } : {}) },
+    headers: mobile ? { 'x-student-mobile': mobile } : {},
+  });
 
 export const renameRoom = (roomCode, data) =>
   api.post(`/api/rooms/${encodeURIComponent(roomCode)}/rename`, data);

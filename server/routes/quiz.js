@@ -296,19 +296,25 @@ router.post('/submit', async (req, res, next) => {
       });
     }
 
-    // Validate active session
-    if (!student.quizSession || student.quizSession.level !== level) {
-      return res.status(400).json({
-        success: false,
-        error: 'No active session for this level. Please load the questions first.',
-      });
+    // Validate or auto-recover active session
+    let session = student.quizSession;
+    const levelConfig = LEVELS[level] || { questions: answers.length, cutoff: Math.ceil(answers.length * 0.7), timeSeconds: 300 };
+
+    if (!session || session.level !== level) {
+      console.warn(`[POST /submit] Reconstructing missing/mismatched quizSession for student ${mobile} at level ${level}...`);
+      session = {
+        level,
+        startedAt: new Date(Date.now() - (Number(timeTaken) || 30) * 1000),
+        questions: answers.map((a) => ({
+          questionId: a.questionId,
+          questionType: a.questionType || 'mcq',
+          shuffleMap: [0, 1, 2, 3],
+        })),
+      };
     }
 
-    const session = student.quizSession;
-    const levelConfig = LEVELS[level];
-
     // Fetch questions to access correctAnswerIndex and directAnswer
-    const questionIds = session.questions.map((q) => q.questionId);
+    const questionIds = session.questions.map((q) => q.questionId).filter(Boolean);
     let dbQuestions = await Question.find({ _id: { $in: questionIds } }).lean();
 
     // Fallback: check room.questions if some questions were embedded directly on the room
@@ -316,27 +322,29 @@ router.post('/submit', async (req, res, next) => {
       const normalizedRoomCode = (roomCode || '').trim().toUpperCase();
       const room = await Room.findOne({ roomCode: normalizedRoomCode }).lean();
       if (room && Array.isArray(room.questions)) {
-        const embeddedMap = Object.fromEntries(room.questions.map((q) => [q._id.toString(), q]));
-        const existingIds = new Set(dbQuestions.map((q) => q._id.toString()));
+        const embeddedMap = Object.fromEntries(room.questions.map((q) => [String(q._id), q]));
+        const existingIds = new Set(dbQuestions.map((q) => String(q._id)));
         for (const qId of questionIds) {
-          if (!existingIds.has(qId.toString()) && embeddedMap[qId.toString()]) {
-            dbQuestions.push(embeddedMap[qId.toString()]);
+          const strId = String(qId);
+          if (!existingIds.has(strId) && embeddedMap[strId]) {
+            dbQuestions.push(embeddedMap[strId]);
           }
         }
       }
     }
 
-    const qMap = Object.fromEntries(dbQuestions.map((q) => [q._id.toString(), q]));
+    const qMap = Object.fromEntries(dbQuestions.map((q) => [String(q._id), q]));
 
     // ── SCORING ──────────────────────────────────────────────────────────
     let score = 0;
     const scoredAnswers = [];
 
     for (const answer of answers) {
+      const ansIdStr = String(answer.questionId || '');
       const sessionQ = session.questions.find(
-        (sq) => sq.questionId.toString() === answer.questionId.toString()
+        (sq) => String(sq.questionId || '') === ansIdStr
       );
-      const dbQ = qMap[answer.questionId.toString()];
+      const dbQ = qMap[ansIdStr];
       if (!sessionQ || !dbQ) continue;
 
       const isDirect = dbQ.questionType === 'direct' || sessionQ.questionType === 'direct' || (!dbQ.options || dbQ.options.length === 0);
@@ -529,6 +537,7 @@ router.post('/submit', async (req, res, next) => {
       },
     });
   } catch (err) {
+    console.error('[POST /api/quiz/submit Error]:', err);
     next(err);
   }
 });

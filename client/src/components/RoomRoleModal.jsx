@@ -1028,13 +1028,6 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                   </button>
                   <button
                     type="button"
-                    className="role-action-pill role-action-secondary"
-                    onClick={() => setStep('admin_rejoin')}
-                  >
-                    Join Previous Room ↩
-                  </button>
-                  <button
-                    type="button"
                     className="role-action-pill role-action-history"
                     onClick={() => setStep('admin_my_rooms_auth')}
                   >
@@ -1676,71 +1669,6 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                   <><span className="btn-spinner" />Creating Room…</>
                 ) : (
                   'Launch Live Room Dashboard →'
-                )}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* ── STEP 2C: ADMIN RE-JOIN ── */}
-        {step === 'admin_rejoin' && (
-          <div className="room-form-view">
-            <div className="room-modal-header">
-              <span className="room-modal-icon">↩️</span>
-              <h2 className="room-modal-title">Re-join Your Room</h2>
-              <p className="room-modal-subtitle">
-                Enter your credentials to reconnect and view live / final stats
-              </p>
-            </div>
-
-            {rejoinError && <div className="server-error" role="alert">⚠️ {rejoinError}</div>}
-
-            <form onSubmit={handleRejoinSubmit} className="room-form" noValidate>
-              <div className="form-group">
-                <label className="form-label">Admin Phone Number</label>
-                <input
-                  type="tel"
-                  className="form-input"
-                  placeholder="10-digit number used when creating the room"
-                  maxLength={10}
-                  value={rejoinForm.adminPhone}
-                  onChange={(e) => setRejoinForm({ ...rejoinForm, adminPhone: e.target.value })}
-                  autoFocus
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Room Code</label>
-                <input
-                  type="text"
-                  className="form-input code-input"
-                  placeholder="e.g. ROOM42"
-                  maxLength={12}
-                  value={rejoinForm.roomCode}
-                  onChange={(e) => setRejoinForm({ ...rejoinForm, roomCode: e.target.value.toUpperCase() })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Room Password</label>
-                <input
-                  type="password"
-                  className="form-input"
-                  placeholder="Secret password set when creating the room"
-                  value={rejoinForm.roomPassword}
-                  onChange={(e) => setRejoinForm({ ...rejoinForm, roomPassword: e.target.value })}
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="btn btn-primary room-submit-btn"
-                disabled={rejoinLoading}
-              >
-                {rejoinLoading ? (
-                  <><span className="btn-spinner" />Verifying &amp; Reconnecting…</>
-                ) : (
-                  'Reconnect to Dashboard →'
                 )}
               </button>
             </form>

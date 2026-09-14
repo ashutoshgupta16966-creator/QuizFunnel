@@ -30,7 +30,7 @@ const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
 export default function EntryForm() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { saveStudent } = useQuiz();
+  const { saveStudent, clearRoomSession } = useQuiz();
 
   // QR Modal state
   const [showQrModal, setShowQrModal] = useState(false);
@@ -146,18 +146,20 @@ export default function EntryForm() {
     }
   };
 
-  // Auto-open Room Modal if ?joinRoom / ?openRooms query parameter or router state is present
+  // Auto-open Room Modal if ?joinRoom / ?openRooms query parameter or router state is present.
+  // Otherwise, clear any stale roomSession from storage to guarantee default non-room quiz flow.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('joinRoom') || params.get('openRooms')) {
       setShowRoomRoleModal(true);
-    }
-    if (location.state?.openRoomModal) {
+    } else if (location.state?.openRoomModal) {
       setRoomModalStep(location.state.initialStep || 'select_role');
       setRoomModalPhone(location.state.initialPhone || '');
       setShowRoomRoleModal(true);
+    } else {
+      if (clearRoomSession) clearRoomSession();
     }
-  }, [location.state]);
+  }, [location.state, clearRoomSession]);
 
   useEffect(() => {
     let interval = null;
@@ -197,6 +199,7 @@ export default function EntryForm() {
     setLoading(true);
     setServerError('');
     try {
+      if (clearRoomSession) clearRoomSession();
       const res = await registerStudent({
         name:             form.name.trim(),
         mobile:           form.mobile.trim(),
@@ -494,7 +497,7 @@ export default function EntryForm() {
         </button>
       </div>
 
-      {/* Top Right Stack: My Results (Top) + Quiz Rooms (Below) */}
+      {/* Top Right Stack: My Results (Top) + Quiz Rooms + PWA Install Icon */}
       <div className="entry-top-right">
         <button
           type="button"
@@ -512,6 +515,22 @@ export default function EntryForm() {
         >
           🏫 <span className="btn-text">Quiz Rooms</span>
         </button>
+        {!isAppInstalled && (
+          <button
+            type="button"
+            className="pwa-float-icon-btn"
+            onClick={handleInstallApp}
+            title="Install Quiz Funnel as an App"
+            aria-label="Install App"
+          >
+            <span className="pwa-float-phone" aria-hidden>📲</span>
+          </button>
+        )}
+        {pwaSuccessMsg && (
+          <div className="pwa-float-toast" role="status">
+            {pwaSuccessMsg}
+          </div>
+        )}
       </div>
 
       <QrModal isOpen={showQrModal} onClose={() => setShowQrModal(false)} />
@@ -635,33 +654,6 @@ export default function EntryForm() {
           </button>
         </form>
 
-        {/* ── Animated PWA Install Feature ────────────────────────────── */}
-        {!isAppInstalled && (
-          <div className="pwa-install-container">
-            <button
-              type="button"
-              className="pwa-install-pulse-btn"
-              onClick={handleInstallApp}
-              title="Install Quiz Funnel as an App on your phone/desktop"
-            >
-              <span className="pwa-pulse-halo" aria-hidden />
-              <span className="pwa-inner-wrap">
-                <span className="pwa-app-icon" aria-hidden>📱</span>
-                <span className="pwa-text-group">
-                  <span className="pwa-main-text">Install App</span>
-                  <span className="pwa-sub-text">1-Tap Home Screen Access</span>
-                </span>
-                <span className="pwa-action-badge">Install ⚡</span>
-              </span>
-            </button>
-          </div>
-        )}
-
-        {pwaSuccessMsg && (
-          <div className="form-success-banner pwa-success-banner" role="status">
-            {pwaSuccessMsg}
-          </div>
-        )}
 
         {/* Quiz structure info */}
         <div className="level-info">

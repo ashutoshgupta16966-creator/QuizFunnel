@@ -7,8 +7,10 @@ const mongoose = require('mongoose');
  * isCorrect      → computed at submission time
  */
 const AnswerSchema = new mongoose.Schema({
-  questionId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Question' },
+  questionId:    { type: mongoose.Schema.Types.Mixed },
+  questionType:  { type: String, enum: ['mcq', 'direct'], default: 'mcq' },
   selectedIndex: Number,
+  directAnswer:  { type: String, default: '' },
   shuffleMap:    [Number],
   isCorrect:     Boolean,
 }, { _id: false });
@@ -51,8 +53,9 @@ const AttemptHistorySchema = new mongoose.Schema({
  * shuffle order so scoring can be done server-side.
  */
 const SessionQuestionSchema = new mongoose.Schema({
-  questionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Question' },
-  shuffleMap: [Number],
+  questionId:   { type: mongoose.Schema.Types.Mixed },
+  questionType: { type: String, enum: ['mcq', 'direct'], default: 'mcq' },
+  shuffleMap:   [Number],
 }, { _id: false });
 
 const QuizSessionSchema = new mongoose.Schema({
