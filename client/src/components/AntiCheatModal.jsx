@@ -8,7 +8,8 @@ export default function AntiCheatModal({
 }) {
   if (!isOpen) return null;
 
-  const remaining = Math.max(0, maxLimit - count);
+  const displayCount = Math.min(count, maxLimit);
+  const remaining = Math.max(0, maxLimit - displayCount);
 
   return (
     <div className="modal-backdrop anti-cheat-backdrop" role="alertdialog" aria-modal="true">
@@ -19,28 +20,26 @@ export default function AntiCheatModal({
 
         <h3 className="anti-cheat-title">
           {isLimitReached
-            ? `Violation: Tab-Switch Limit Exceeded (${maxLimit}/${maxLimit})`
+            ? 'Violation: Tab-Switch Limit Exceeded (4/4)'
             : 'Tab Switching Detected!'}
         </h3>
 
         <div className={`warning-counter-pill ${isLimitReached ? 'critical' : ''}`}>
           <span>Warning count:</span>
-          <strong>{count}/{maxLimit}</strong>
+          <strong>{displayCount}/{maxLimit}</strong>
         </div>
 
         <p className="anti-cheat-message">
           {isLimitReached ? (
             <>
-              You have been <strong>automatically disqualified</strong> for exceeding the maximum
-              allowed tab switches (<strong>{maxLimit}/{maxLimit}</strong>). Your quiz session has
-              been terminated and submitted to maintain assessment integrity. Contact your host if
-              you believe this was a mistake.
+              Your quiz attempt was terminated and locked due to exceeding the maximum allowed limit of <strong>{maxLimit} tab switches</strong>.
+              All answers and performance scores for this session have been disqualified to uphold academic integrity.
             </>
           ) : (
             <>
               Leaving the test window or switching browser tabs is strictly monitored.
               You have <strong>{remaining} warning{remaining === 1 ? '' : 's'}</strong> remaining.
-              The <strong>{maxLimit}{maxLimit === 4 ? 'th' : 'th'} switch</strong> will automatically
+              The <strong>{maxLimit}th switch</strong> will automatically
               disqualify you from this quiz.
             </>
           )}

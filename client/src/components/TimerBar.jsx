@@ -7,13 +7,16 @@ import { useState, useEffect, useRef } from 'react';
  *   startedAt    — Date object of when the session began (from server)
  *   onTimeUp     — callback when timer reaches 0
  */
-export default function TimerBar({ totalSeconds, startedAt, onTimeUp }) {
+export default function TimerBar({ totalSeconds, startedAt, onTimeUp, isPaused = false }) {
   const [remaining, setRemaining] = useState(totalSeconds);
   const calledRef = useRef(false);
   const intervalRef = useRef(null);
 
   useEffect(() => {
-    if (!startedAt) return;
+    if (!startedAt || isPaused) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      return;
+    }
 
     const tick = () => {
       const elapsed = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
@@ -30,7 +33,7 @@ export default function TimerBar({ totalSeconds, startedAt, onTimeUp }) {
     tick(); // immediate first tick
     intervalRef.current = setInterval(tick, 1000);
     return () => clearInterval(intervalRef.current);
-  }, [startedAt, totalSeconds, onTimeUp]);
+  }, [startedAt, totalSeconds, onTimeUp, isPaused]);
 
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;

@@ -74,13 +74,31 @@ export default function Quiz() {
   const [tabSwitchCount, setTabSwitchCount] = useState(() => {
     try {
       if (student?.mobile) {
-        return parseInt(localStorage.getItem(`quiz_tab_switches_${student.mobile}`) || '0', 10);
+        const stored = parseInt(localStorage.getItem(`quiz_tab_switches_${student.mobile}`) || '0', 10);
+        return Math.min(Math.max(stored, 0), MAX_TAB_SWITCH_ALLOWED);
       }
     } catch { /* noop */ }
     return 0;
   });
   const [showAntiCheatModal, setShowAntiCheatModal] = useState(false);
   const [isAntiCheatTerminal, setIsAntiCheatTerminal] = useState(false);
+
+  // ── Unique Idempotent Attempt ID for current quiz run ─────────────────────
+  const activeAttemptId = useRef(
+    (() => {
+      try {
+        const storageKey = student?.mobile ? `quiz_active_attempt_${student.mobile}_lvl${levelNum}` : null;
+        let existingId = storageKey ? sessionStorage.getItem(storageKey) : null;
+        if (!existingId) {
+          existingId = `att_${student?.mobile || 'cand'}_lvl${levelNum}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+          if (storageKey) sessionStorage.setItem(storageKey, existingId);
+        }
+        return existingId;
+      } catch {
+        return `att_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      }
+    })()
+  );
 
   // Intercept browser back button & mobile swipe-back gesture to trigger Exit Confirmation modal
   useEffect(() => {
@@ -97,7 +115,7 @@ export default function Quiz() {
     };
   }, []);
 
-  // Prevent double-submit (timer + manual button race)
+  // Prevent double-submit (timer + manual button race + tab switch)
   const hasSubmitted = useRef(false);
 
   // ── Guard: redirect if student isn't supposed to be here ─────────────────
@@ -236,7 +254,7 @@ export default function Quiz() {
 
   // ── Answer selection & clearing ───────────────────────────────────────────
   const handleAnswer = useCallback((questionId, val) => {
-    if (isRoomClosed) return;
+    if (isRoomClosed || isAntiCheatTerminal || hasSubmitted.current) return;
     setAnswers((prev) => {
       const next = { ...prev };
       if (val === null || val === undefined || (typeof val === 'string' && val.trim() === '')) {
@@ -246,7 +264,7 @@ export default function Quiz() {
       }
       return next;
     });
-  }, [isRoomClosed]);
+  }, [isRoomClosed, isAntiCheatTerminal]);
 
   // Helper to check if a question has been answered (supports MCQ index and direct string)
   const isQuestionAnswered = useCallback((qId) => {
@@ -300,13 +318,14 @@ export default function Quiz() {
 
     try {
       const res = await submitQuiz({
-        mobile:         student.mobile,
-        level:          levelNum,
-        answers:        answersArray,
-        timeTaken:      elapsed,
-        isDisqualified: Boolean(isDisqualified),
-        isRoom:         Boolean(isRoomQuiz),
-        roomCode:       roomSession?.roomCode || '',
+        mobile:          student.mobile,
+        level:           levelNum,
+        answers:         answersArray,
+        timeTaken:       elapsed,
+        isDisqualified:  Boolean(isDisqualified),
+        isRoom:          Boolean(isRoomQuiz),
+        roomCode:        roomSession?.roomCode || '',
+        activeAttemptId: activeAttemptId.current,
       });
       const result = res.data.data;
       setLastResult({ ...result, isDisqualified: Boolean(isDisqualified || result.isDisqualified) });
@@ -392,21 +411,26 @@ export default function Quiz() {
     let lastSwitchTime = 0;
 
     const handleSwitchViolation = () => {
-      if (hasSubmitted.current) return;
+      if (hasSubmitted.current || isAntiCheatTerminal) return;
       const now = Date.now();
       if (now - lastSwitchTime < 800) return; // Debounce blur + visibilitychange
       lastSwitchTime = now;
 
       setTabSwitchCount((prev) => {
         const nextCount = prev + 1;
+        const clampedCount = Math.min(nextCount, MAX_TAB_SWITCH_ALLOWED);
         if (student?.mobile) {
           try {
-            localStorage.setItem(`quiz_tab_switches_${student.mobile}`, String(nextCount));
+            localStorage.setItem(`quiz_tab_switches_${student.mobile}`, String(clampedCount));
           } catch { /* noop */ }
         }
 
-        if (nextCount > MAX_TAB_SWITCH_ALLOWED) {
-          // 4th Switch (> 3): Immediately auto-submit the quiz, terminate session, mark DISQUALIFIED
+        if (nextCount >= MAX_TAB_SWITCH_ALLOWED) {
+          // Exact 4th detection (if switchCount >= 4): immediately stop quiz timers, invalidate input handlers, route to disqualification flow without execution lag
+          hasSubmitted.current = true;
+          setIsAntiCheatTerminal(true);
+          setShowAntiCheatModal(true);
+
           if (student?.mobile) {
             try {
               localStorage.setItem(`quiz_anti_cheated_${student.mobile}`, '1');
@@ -422,7 +446,7 @@ export default function Quiz() {
               // Immediately record isDisqualified: true in LocalStorage attempt history
               const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
               const existing = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
-              const attemptId = `${student.mobile}_${levelNum}_${student.totalScore || 0}_${student.totalTimeTaken || 0}`;
+              const attemptId = activeAttemptId.current || `${student.mobile}_lvl${levelNum}_${student.totalScore || 0}_${student.totalTimeTaken || 0}`;
               const alreadySaved = existing.some((a) => a.id === attemptId);
               if (!alreadySaved) {
                 const newRecord = {
@@ -457,20 +481,19 @@ export default function Quiz() {
               }
             } catch { /* noop */ }
           }
-          setIsAntiCheatTerminal(true);
-          setShowAntiCheatModal(true);
+
           executeSubmit(true);
+          return clampedCount;
         } else {
           // Switches 1 to (MAX-1): Trigger warning toast displaying remaining attempts
-          const capped = Math.min(nextCount, MAX_TAB_SWITCH_ALLOWED);
           setToast({
             type: 'warning',
-            message: `Warning ${capped}/${MAX_TAB_SWITCH_ALLOWED}: Switching tabs is monitored. ${MAX_TAB_SWITCH_ALLOWED}th switch will auto-disqualify.`,
+            message: `Warning ${clampedCount}/${MAX_TAB_SWITCH_ALLOWED}: Switching tabs is monitored. ${MAX_TAB_SWITCH_ALLOWED}th switch will auto-disqualify.`,
             duration: 4000,
           });
           setShowAntiCheatModal(true);
+          return clampedCount;
         }
-        return nextCount;
       });
     };
 
@@ -547,6 +570,7 @@ export default function Quiz() {
             totalSeconds={levelConfig.timeSeconds}
             startedAt={startedAt}
             onTimeUp={handleTimeUp}
+            isPaused={isAntiCheatTerminal || submitting || hasSubmitted.current}
           />
         )}
       </header>
@@ -665,7 +689,7 @@ export default function Quiz() {
 
       <AntiCheatModal
         isOpen={showAntiCheatModal}
-        count={tabSwitchCount}
+        count={Math.min(tabSwitchCount, MAX_TAB_SWITCH_ALLOWED)}
         maxLimit={MAX_TAB_SWITCH_ALLOWED}
         isLimitReached={isAntiCheatTerminal}
         onAcknowledge={() => setShowAntiCheatModal(false)}

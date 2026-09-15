@@ -8,13 +8,13 @@ try {
   console.log('[AI Question Generator]: @google/genai package loading optional');
 }
 
+// Gemini Model Fallback Ladder (gemini-3.6-flash primary with gemini-3.5-flash-lite fallback, 3.x series)
 const FALLBACK_MODELS = [
-  'gemini-3.7-flash',
   'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.7-flash',
   'gemini-3.6-flash-lite',
   'gemini-3.5-flash',
-  'gemini-2.5-flash',
-  'gemini-1.5-flash',
 ];
 
 /**

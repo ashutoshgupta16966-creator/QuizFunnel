@@ -260,10 +260,10 @@ function ResultsContent() {
           </h1>
           <div className="disqualification-pill">
             <span>Violation:</span>
-            <strong>Tab-Switch Limit Exceeded (10/10)</strong>
+            <strong>Tab-Switch Limit Exceeded (4/4)</strong>
           </div>
           <p className="disqualification-modal-desc">
-            Your quiz attempt was terminated and locked due to exceeding the maximum allowed limit of <strong>10 tab switches</strong>.
+            Your quiz attempt was terminated and locked due to exceeding the maximum allowed limit of <strong>4 tab switches</strong>.
             All answers and performance scores for this session have been disqualified to uphold academic integrity.
           </p>
           <div className="disqualification-modal-actions">

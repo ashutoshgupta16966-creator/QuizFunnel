@@ -817,7 +817,13 @@ router.post('/ai/generate-options', async (req, res, next) => {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+    const FALLBACK_MODELS = [
+      'gemini-3.6-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.7-flash',
+      'gemini-3.6-flash-lite',
+      'gemini-3.5-flash',
+    ];
     let result = null;
 
     const prompt = `You are an expert quiz question generator.

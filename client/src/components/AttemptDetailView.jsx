@@ -176,7 +176,7 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
         </h3>
         {isDisqualified && (
           <p style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.875rem', marginTop: '0.35rem' }}>
-            ⚠️ Terminated due to exceeding the maximum allowed limit of 10 tab switches.
+            ⚠️ Terminated due to exceeding the maximum allowed limit of 4 tab switches.
           </p>
         )}
         <p className="detail-hero-meta">

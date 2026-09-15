@@ -11,14 +11,13 @@ const ALLOWED_DIFFICULTIES = ['easy', 'medium', 'hard'];
 const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_IMAGES = 10;
 
-// Gemini Multimodal Model Fallback Ladder (Prioritizes 3.7 -> 3.6 -> 3.6-lite -> 3.5 series with 2.5/1.5 safety fallbacks)
+// Gemini Multimodal Model Fallback Ladder (gemini-3.6-flash primary with gemini-3.5-flash-lite fallback, 3.x series)
 const FALLBACK_MODELS = [
-  'gemini-3.7-flash',
   'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.7-flash',
   'gemini-3.6-flash-lite',
   'gemini-3.5-flash',
-  'gemini-2.5-flash',
-  'gemini-1.5-flash',
 ];
 
 /**
@@ -72,12 +71,26 @@ async function parseQuizDocumentWithGemini(files) {
   const ai = new GoogleGenAI({ apiKey });
 
   // ── Build Multimodal Prompt Parts ────────────────────────────────────────
-  const inlineParts = files.map((f) => ({
-    inlineData: {
-      mimeType: f.mimetype === 'image/jpg' ? 'image/jpeg' : f.mimetype,
-      data: f.buffer.toString('base64'),
-    },
-  }));
+  const inlineParts = files.map((f) => {
+    let base64Data = '';
+    if (f.buffer && Buffer.isBuffer(f.buffer)) {
+      base64Data = f.buffer.toString('base64');
+    } else if (typeof f.buffer === 'string') {
+      base64Data = f.buffer;
+    } else if (f.data) {
+      base64Data = Buffer.isBuffer(f.data) ? f.data.toString('base64') : String(f.data);
+    }
+    if (base64Data.includes('base64,')) {
+      base64Data = base64Data.split('base64,')[1];
+    }
+    const mimeType = (f.mimetype === 'image/jpg' ? 'image/jpeg' : (f.mimetype || 'image/jpeg')).trim();
+    return {
+      inlineData: {
+        mimeType,
+        data: base64Data,
+      },
+    };
+  });
 
   const promptText = `You are a Strict Verbatim OCR Digitizer and Academic Assessment Extraction Engine.
 Your job is to perform STRICT VERBATIM OCR EXTRACTION on the provided document (exam paper, test sheet, lecture quiz, or question bank).

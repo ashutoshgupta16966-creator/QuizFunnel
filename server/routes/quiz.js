@@ -274,7 +274,7 @@ router.get('/questions/:level', async (req, res, next) => {
  */
 router.post('/submit', async (req, res, next) => {
   try {
-    const { mobile, level: rawLevel, answers, timeTaken, isDisqualified, isRoom, roomCode } = req.body;
+    const { mobile, level: rawLevel, answers, timeTaken, isDisqualified, isRoom, roomCode, activeAttemptId } = req.body;
     const level = parseInt(rawLevel, 10);
 
     if (!mobile || !level || !Array.isArray(answers)) {
@@ -288,11 +288,18 @@ router.post('/submit', async (req, res, next) => {
 
     // Idempotency: if already submitted, return the stored result
     const existing = student.levels.find((l) => l.level === level && l.submittedAt);
-    if (existing) {
+    const existingAttempt = activeAttemptId
+      ? (student.attemptHistory || []).find((a) => a.attemptId === activeAttemptId)
+      : null;
+
+    if (existing || existingAttempt) {
       return res.status(409).json({
         success: false,
-        error: 'This level has already been submitted.',
-        data: { score: existing.score },
+        error: 'This level or attempt has already been submitted.',
+        data: {
+          score: existing ? existing.score : (existingAttempt ? existingAttempt.totalScore : 0),
+          isDisqualified: existingAttempt ? existingAttempt.isDisqualified : false,
+        },
       });
     }
 
@@ -446,9 +453,16 @@ router.post('/submit', async (req, res, next) => {
       const isRoomQuiz = Boolean(isRoom);
       const normalizedRoomCode = isRoomQuiz && roomCode ? roomCode.trim().toUpperCase() : null;
 
+      const finalAttemptId = activeAttemptId || `${mobile}_${Date.now()}`;
+      const existingHistoryIndex = (student.attemptHistory || []).findIndex(
+        (a) => a.attemptId === finalAttemptId
+      );
+
       const historyRecord = {
-        attemptId: `${mobile}_${Date.now()}`,
-        attemptNumber: (student.attemptHistory?.length || 0) + 1,
+        attemptId: finalAttemptId,
+        attemptNumber: existingHistoryIndex >= 0
+          ? student.attemptHistory[existingHistoryIndex].attemptNumber
+          : (student.attemptHistory?.length || 0) + 1,
         attemptDate: new Date(),
         levelReached: clearedLevel,
         totalScore: cumScore,
@@ -463,10 +477,25 @@ router.post('/submit', async (req, res, next) => {
         levelsSummary: [...(student.levels || []), levelAttempt],
       };
 
-      updateDoc.$push.attemptHistory = historyRecord;
+      if (existingHistoryIndex >= 0) {
+        updateDoc.$set[`attemptHistory.${existingHistoryIndex}`] = historyRecord;
+      } else {
+        updateDoc.$push.attemptHistory = historyRecord;
+      }
     }
 
-    await Student.updateOne({ mobile }, updateDoc);
+    // Atomic update with idempotency protection against concurrent double-submits
+    if (updateDoc.$push?.attemptHistory) {
+      const historyToPush = updateDoc.$push.attemptHistory;
+      delete updateDoc.$push.attemptHistory;
+      await Student.updateOne({ mobile }, updateDoc);
+      await Student.updateOne(
+        { mobile, 'attemptHistory.attemptId': { $ne: historyToPush.attemptId } },
+        { $push: { attemptHistory: historyToPush } }
+      );
+    } else {
+      await Student.updateOne({ mobile }, updateDoc);
+    }
 
     // Fetch updated totals after calculation
     const updatedStudent = await Student.findOne({ mobile }).lean();
