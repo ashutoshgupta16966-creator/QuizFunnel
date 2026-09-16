@@ -216,11 +216,17 @@ CRITICAL RULES:
   }
 
   // ── Sanitize & Validate Questions against QuestionSchema ────────────────
+  const seenQuestionTexts = new Set();
   const validatedQuestions = [];
   for (let i = 0; i < rawQuestions.length; i++) {
     const q = rawQuestions[i];
     const qText = (q.questionText || q.question || '').trim();
     if (!qText) continue;
+
+    // Deduplicate questions by normalized text (ignore case, whitespace, special characters)
+    const normalizedKey = qText.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (seenQuestionTexts.has(normalizedKey)) continue;
+    seenQuestionTexts.add(normalizedKey);
 
     const isDirect = q.questionType === 'direct' ||
       ((!Array.isArray(q.options) || q.options.length === 0) && Boolean(q.directAnswer || q.correctAnswer));

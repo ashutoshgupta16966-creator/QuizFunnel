@@ -4,6 +4,7 @@ import { useQuiz } from '../context/QuizContext';
 import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom, sendAdminOtp, verifyAdminOtp, resetAdminPin, generateMcqOptions, sendSmsOtp, verifySmsOtp, resetPasswordWithOtp } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
+import ThemeToggle from './ThemeToggle';
 
 /**
  * Generate a random, readable 6-character room code.
@@ -1138,15 +1139,18 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
           ) : (
             <div className="nav-placeholder" />
           )}
-          <button
-            type="button"
-            className="room-close-btn"
-            onClick={onClose}
-            aria-label="Close modal"
-            title="Close modal"
-          >
-            ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <ThemeToggle />
+            <button
+              type="button"
+              className="room-close-btn"
+              onClick={onClose}
+              aria-label="Close modal"
+              title="Close modal"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* ── STEP 1: SELECT YOUR ROLE ── */}

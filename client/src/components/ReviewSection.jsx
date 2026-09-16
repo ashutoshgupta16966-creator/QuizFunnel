@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getQuizReview } from '../api';
 
-export default function ReviewSection({ mobile }) {
+export default function ReviewSection({ mobile, totalQuestions }) {
   const [reviewData, setReviewData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -56,6 +56,7 @@ export default function ReviewSection({ mobile }) {
   const totalAttempted = allQuestions.length;
   const totalCorrect = allQuestions.filter((q) => q.isCorrect).length;
   const totalIncorrect = allQuestions.filter((q) => !q.isCorrect).length;
+  const overallTotal = Number(totalQuestions) > 0 ? Number(totalQuestions) : totalAttempted;
 
   return (
     <div className="review-section-wrapper">
@@ -104,6 +105,10 @@ export default function ReviewSection({ mobile }) {
             <>
               {/* Quick Metrics Bar */}
               <div className="review-metrics-strip">
+                <div className="review-metric-pill overall-total">
+                  <span className="metric-pill-label">📋 Total Questions:</span>
+                  <span className="metric-pill-value">{overallTotal}</span>
+                </div>
                 <div className="review-metric-pill total">
                   <span className="metric-pill-label">Total Attempted:</span>
                   <span className="metric-pill-value">{totalAttempted}</span>

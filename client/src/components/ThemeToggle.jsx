@@ -20,8 +20,35 @@ export default function ThemeToggle() {
     } catch { /* noop */ }
   }, [theme]);
 
+  // Synchronize across multiple ThemeToggle instances on the same page and across tabs
+  useEffect(() => {
+    const handleSync = (e) => {
+      const newTheme = e.detail;
+      if (newTheme && (newTheme === 'dark' || newTheme === 'light')) {
+        setTheme(newTheme);
+      }
+    };
+
+    const handleStorage = (e) => {
+      if (e.key === 'quiz_theme' && e.newValue) {
+        setTheme(e.newValue);
+      }
+    };
+
+    window.addEventListener('quiz:theme-change', handleSync);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('quiz:theme-change', handleSync);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
   const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+    setTheme((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      window.dispatchEvent(new CustomEvent('quiz:theme-change', { detail: next }));
+      return next;
+    });
   };
 
   const isLight = theme === 'light';

@@ -494,10 +494,10 @@ export default function EntryForm() {
       {/* Top Left Stack: Dark/Light Mode Toggle + QR Code Button + Self Practice */}
       <div className="entry-top-left">
         <ThemeToggle />
-        <div className="entry-top-left-actions">
+        <div className="entry-top-left-actions-grid">
           <button
             type="button"
-            className="qr-trigger-btn nav-pill-btn"
+            className="qr-trigger-btn nav-pill-btn uniform-top-pill"
             onClick={() => setShowQrModal(true)}
             title="Show Quiz Direct Access QR Code"
           >
@@ -505,7 +505,7 @@ export default function EntryForm() {
           </button>
           <button
             type="button"
-            className="self-practice-btn nav-pill-btn"
+            className="self-practice-btn nav-pill-btn uniform-top-pill"
             onClick={() => {
               setPracticeReattemptData(null);
               setShowAiPracticeModal(true);

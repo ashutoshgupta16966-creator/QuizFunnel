@@ -123,7 +123,9 @@ function ResultsContent() {
   }, [student, navigate]);
 
   const levelNum = Number(lastResult?.level || student?.currentLevel || 1);
-  const clearedLevel = isCompleted ? 4 : (levelNum > 0 ? levelNum : 1);
+  const clearedLevel = isCompleted
+    ? (lastResult?.level || student?.currentLevel || (Array.isArray(student?.levels) && student.levels.length > 0 ? student.levels[student.levels.length - 1]?.level : 4))
+    : (levelNum > 0 ? levelNum : 1);
   const levelConfig = LEVELS[clearedLevel] || LEVELS[1];
 
   const score = Number(
@@ -308,14 +310,14 @@ function ResultsContent() {
         <div className="results-icon win-trophy-pop" role="img" aria-label="Trophy">🏆</div>
         <h1 className="results-title completed win-title-glow">Congratulations! You Won!</h1>
         <p className="results-message">
-          Exceptional performance, <strong>{student.name || 'Champion'}</strong>! You cleared all 4 levels of the Quiz Funnel.
+          Exceptional performance, <strong>{student.name || 'Champion'}</strong>! You cleared all {clearedLevel} level{clearedLevel > 1 ? 's' : ''} of the Quiz Funnel.
           Your score has been registered for the final leaderboard rankings.
         </p>
 
         <div className="score-card win-score-card">
           <p className="score-card-title">🏆 Champion Performance Summary</p>
           <div className="score-row">
-            <span className="score-label">Level 4 Final Score</span>
+            <span className="score-label">Level {clearedLevel} Final Score</span>
             <span className="score-value">{score} / {total}</span>
           </div>
           <div className="score-row">
@@ -338,7 +340,7 @@ function ResultsContent() {
         </div>
 
         {/* Detailed Question Review */}
-        <ReviewSection mobile={student.mobile} />
+        <ReviewSection mobile={student.mobile} totalQuestions={maxPossible} />
 
         <div className="results-actions-container" style={{ marginTop: '2rem', textAlign: 'center' }}>
           <button className="btn btn-primary win-home-btn" onClick={handleReturnHome}>
@@ -399,7 +401,7 @@ function ResultsContent() {
       </div>
 
       {/* Detailed Question Review — ONLY for legitimate non-disqualified attempts */}
-      <ReviewSection mobile={student.mobile} />
+      <ReviewSection mobile={student.mobile} totalQuestions={maxPossible} />
 
       <div className="results-actions-container" style={{ marginTop: '2rem', textAlign: 'center' }}>
         <button className="btn btn-secondary win-home-btn" onClick={handleReturnHome}>

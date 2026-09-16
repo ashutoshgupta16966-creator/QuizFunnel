@@ -146,20 +146,22 @@ router.get('/questions/:level', async (req, res, next) => {
     const levelConfig = LEVELS[level];
     let allQuestions = [];
 
+    // STRICT UNIQUE QUESTION GUARANTEE:
+    // Gather all question IDs already attempted in earlier levels of this attempt
+    const alreadyAttemptedQIds = new Set(
+      (student.levels || []).flatMap((lvl) => (lvl.answers || []).map((a) => String(a.questionId)))
+    );
+
     // STRICT ISOLATION:
-    // If student is in an AI-generated room with custom questions, ONLY fetch questions tagged with this roomCode.
+    // If student is in an AI-generated room with custom questions, ONLY fetch questions tagged with this roomCode for this level.
     if (activeRoom && activeRoom.isAiGenerated && activeRoom.roomCode) {
       let roomQs = await Question.find({ roomCode: activeRoom.roomCode, level }).lean();
-      if (roomQs.length === 0) {
-        // If no questions specific to this level, fetch all questions for this room
-        roomQs = await Question.find({ roomCode: activeRoom.roomCode }).lean();
-      }
-      // Fallback directly to embedded activeRoom.questions array if Question collection returned empty
+      // Fallback to embedded activeRoom.questions array if Question collection has not synced yet
       if (roomQs.length === 0 && Array.isArray(activeRoom.questions) && activeRoom.questions.length > 0) {
-        const levelMatches = activeRoom.questions.filter((q) => q.level === level);
-        roomQs = levelMatches.length > 0 ? levelMatches : activeRoom.questions;
+        roomQs = activeRoom.questions.filter((q) => (q.level || 1) === level);
       }
-      allQuestions = roomQs;
+      // Strict filter: Never serve questions already attempted in previous levels
+      allQuestions = roomQs.filter((q) => !alreadyAttemptedQIds.has(String(q._id)));
     } else {
       // Standard Solo Quiz or Manual Room:
       // STRICT ISOLATION: Only fetch questions where roomCode is null or does not exist.
@@ -168,7 +170,10 @@ router.get('/questions/:level', async (req, res, next) => {
       // Attempt section-wise fetching first
       for (const section of levelConfig.sections) {
         const qs = await Question.find({ level, section, ...defaultFilter }).lean();
-        const picked = qs.sort(() => Math.random() - 0.5).slice(0, levelConfig.questionsPerSection);
+        const picked = qs
+          .filter((q) => !alreadyAttemptedQIds.has(String(q._id)))
+          .sort(() => Math.random() - 0.5)
+          .slice(0, levelConfig.questionsPerSection);
         allQuestions.push(...picked);
       }
 
@@ -176,14 +181,15 @@ router.get('/questions/:level', async (req, res, next) => {
       // fetch all questions for this level directly from DB to guarantee exact count
       if (allQuestions.length < levelConfig.questions) {
         const allLevelQuestions = await Question.find({ level, ...defaultFilter }).lean();
-        allQuestions = allLevelQuestions
+        const available = allLevelQuestions.filter((q) => !alreadyAttemptedQIds.has(String(q._id)));
+        allQuestions = available
           .sort(() => Math.random() - 0.5)
           .slice(0, levelConfig.questions);
       }
     }
 
     if (allQuestions.length === 0) {
-      return res.status(500).json({
+      return res.status(400).json({
         success: false,
         error: `No questions found for level ${level}.`,
       });
@@ -396,26 +402,54 @@ router.post('/submit', async (req, res, next) => {
       }
     }
 
-    // ── CUTOFF CHECK ─────────────────────────────────────────────────────
-    const isLastLevel = level === 4;
+    // ── DYNAMIC LEVEL TERMINATION & CUTOFF CHECK ─────────────────────────
+    let isLastLevel = level >= 4;
+    let effectiveMaxLevel = 4;
+    let roomDoc = null;
+
+    if (isRoom && roomCode) {
+      try {
+        const normalizedRoomCode = roomCode.trim().toUpperCase();
+        roomDoc = await Room.findOne({ roomCode: normalizedRoomCode }).select('maxLevel questions progressionMode').lean();
+        if (roomDoc) {
+          const embeddedQs = Array.isArray(roomDoc.questions) ? roomDoc.questions : [];
+          if (roomDoc.maxLevel && roomDoc.maxLevel >= 1 && roomDoc.maxLevel <= 4) {
+            effectiveMaxLevel = roomDoc.maxLevel;
+          } else if (embeddedQs.length > 0) {
+            effectiveMaxLevel = Math.min(4, Math.max(...embeddedQs.map((q) => q.level || 1), 1));
+          }
+
+          // Check if there are any unattempted questions available for level + 1
+          const attemptedIds = new Set([
+            ...(student.levels || []).flatMap((lvl) => (lvl.answers || []).map((a) => String(a.questionId))),
+            ...scoredAnswers.map((a) => String(a.questionId)),
+          ]);
+
+          const nextLevelQs = await Question.find({ roomCode: normalizedRoomCode, level: level + 1 }).lean();
+          const unattemptedNextQs = nextLevelQs.filter((q) => !attemptedIds.has(String(q._id)));
+          const embeddedNextQs = embeddedQs.filter((q) => (q.level || 1) === level + 1 && !attemptedIds.has(String(q._id)));
+
+          // Dynamically terminate quiz if reached maximum level or no more unique questions remain
+          if (level >= effectiveMaxLevel || (unattemptedNextQs.length === 0 && embeddedNextQs.length === 0)) {
+            isLastLevel = true;
+          }
+        }
+      } catch (rErr) {
+        console.warn('[Room MaxLevel Check Error]:', rErr.message);
+      }
+    }
+
     const sessionCount = session.questions?.length || levelConfig.questions;
     const dynamicCutoff = sessionCount < levelConfig.cutoff
       ? Math.max(1, Math.ceil(sessionCount * 0.7))
       : levelConfig.cutoff;
-    // Level 4 has no cutoff — everyone who reaches it gets ranked
-    let passed = isDisqualified ? false : (isLastLevel ? true : score >= dynamicCutoff);
 
-    // Open Attempt Mode: Unconditionally allow progression across all levels regardless of score
-    if (isRoom && roomCode && !isDisqualified && !isLastLevel) {
-      try {
-        const normalizedRoomCode = roomCode.trim().toUpperCase();
-        const roomDoc = await Room.findOne({ roomCode: normalizedRoomCode }).select('progressionMode').lean();
-        if (roomDoc?.progressionMode === 'open_attempt') {
-          passed = true;
-        }
-      } catch (err) {
-        console.warn('[Open Attempt Mode Check Error]:', err.message);
-      }
+    // Cutoff check: Level 4 has no cutoff. Levels 1-3 require meeting cutoff unless open_attempt mode is active.
+    let passed = isDisqualified ? false : (level === 4 ? true : score >= dynamicCutoff);
+
+    // Open Attempt Mode: Unconditionally allow progression/completion across all levels
+    if (roomDoc?.progressionMode === 'open_attempt' && !isDisqualified) {
+      passed = true;
     }
 
     let newStatus, newCurrentLevel;
@@ -424,9 +458,9 @@ router.post('/submit', async (req, res, next) => {
     if (isDisqualified) {
       newStatus = 'disqualified';
       newCurrentLevel = student.currentLevel;
-    } else if (isLastLevel) {
+    } else if (isLastLevel && passed) {
       newStatus = 'completed';
-      newCurrentLevel = student.currentLevel; // stays at 4
+      newCurrentLevel = level;
       completedAt = new Date();
     } else if (passed) {
       newStatus = 'advanced';
@@ -457,14 +491,14 @@ router.post('/submit', async (req, res, next) => {
     // ── MULTI-ATTEMPT PERSISTENCE: Save finished attempt into history array ──
     if (newStatus === 'completed' || newStatus === 'eliminated' || newStatus === 'disqualified' || isDisqualified) {
       const CUMULATIVE_MAX = { 1: 20, 2: 35, 3: 45, 4: 50 };
-      const clearedLevel = newStatus === 'completed' ? 4 : level;
+      const clearedLevel = level;
       const cumScore = (student.totalScore || 0) + score;
       const cumTime = (student.totalTimeTaken || 0) + elapsed;
 
       let maxPossible = 50;
       if (isRoom && roomCode) {
         try {
-          const rDoc = await Room.findOne({ roomCode: roomCode.trim().toUpperCase() }).select('questions').lean();
+          const rDoc = roomDoc || await Room.findOne({ roomCode: roomCode.trim().toUpperCase() }).select('questions').lean();
           if (rDoc && Array.isArray(rDoc.questions) && rDoc.questions.length > 0) {
             maxPossible = newStatus === 'completed'
               ? rDoc.questions.length
@@ -584,7 +618,7 @@ router.post('/submit', async (req, res, next) => {
     let nextLevelQuestions = null;
     if (isRoom && roomCode) {
       try {
-        const rDoc = await Room.findOne({ roomCode: roomCode.trim().toUpperCase() }).select('questions').lean();
+        const rDoc = roomDoc || await Room.findOne({ roomCode: roomCode.trim().toUpperCase() }).select('questions').lean();
         if (rDoc && Array.isArray(rDoc.questions) && rDoc.questions.length > 0) {
           quizTotalQuestions = rDoc.questions.length;
           if (passed && !isLastLevel) {

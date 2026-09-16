@@ -564,6 +564,7 @@ export default function Quiz() {
             <span className="quiz-room-tag">🏫 Room: {roomSession.roomCode}</span>
           )}
           <span className="quiz-student-name">{student.name}</span>
+          <ThemeToggle />
         </div>
         {startedAt && (
           <TimerBar

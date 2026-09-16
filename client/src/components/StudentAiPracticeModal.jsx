@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { parseAiQuizDocument, savePracticeAttempt } from '../api';
+import ThemeToggle from './ThemeToggle';
 
 const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_IMAGES = 10;
@@ -448,15 +449,18 @@ export default function StudentAiPracticeModal({
             <div className="nav-placeholder" />
           )}
 
-          <button
-            type="button"
-            className="room-close-btn"
-            onClick={onClose}
-            aria-label="Close modal"
-            title="Close"
-          >
-            ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <ThemeToggle />
+            <button
+              type="button"
+              className="room-close-btn"
+              onClick={onClose}
+              aria-label="Close modal"
+              title="Close"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* ── STEP 1: UPLOAD SCREEN (MIRRORING PROVEN ROOMROLEMODAL LAYOUT) ── */}
@@ -783,22 +787,22 @@ export default function StudentAiPracticeModal({
             </div>
 
             {/* Active Question Card */}
-            <div className="ai-quiz-runner-card" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem' }}>
+            <div className="ai-quiz-runner-card">
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.6rem' }}>
                 <span className={`ai-level-tag lvl-${currentQ.level || 1}`}>Level {currentQ.level || 1}</span>
                 <span className="ai-section-tag">{currentQ.questionType === 'direct' ? 'Numerical/Direct' : 'Multiple Choice'}</span>
               </div>
-              <h4 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.45, margin: '0 0 1.25rem 0' }}>
+              <h4 className="ai-runner-q-text">
                 {currentQ.questionText}
               </h4>
 
               {/* Input: Direct vs MCQ */}
               {currentQ.questionType === 'direct' ? (
                 <div className="form-group" style={{ marginTop: '0.75rem' }}>
-                  <label className="form-label">Your Answer:</label>
+                  <label className="form-label direct-answer-label">Your Answer:</label>
                   <input
                     type="text"
-                    className="form-input"
+                    className="form-input direct-answer-input"
                     placeholder="Enter your exact numerical or text answer…"
                     value={answers[currentIndex] !== undefined ? String(answers[currentIndex]) : ''}
                     onChange={(e) => handleSelectAnswer(e.target.value)}
@@ -813,39 +817,13 @@ export default function StudentAiPracticeModal({
                       <button
                         key={oIdx}
                         type="button"
+                        className={`ai-runner-opt-btn ${isSelected ? 'is-selected' : ''}`}
                         onClick={() => handleSelectAnswer(oIdx)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.75rem',
-                          textAlign: 'left',
-                          padding: '0.75rem 1rem',
-                          borderRadius: '8px',
-                          border: isSelected ? '1.5px solid #818cf8' : '1px solid rgba(255,255,255,0.1)',
-                          background: isSelected ? 'rgba(99, 102, 241, 0.18)' : 'rgba(255,255,255,0.02)',
-                          color: isSelected ? '#ffffff' : '#cbd5e1',
-                          fontWeight: isSelected ? 700 : 500,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
                       >
-                        <span
-                          style={{
-                            width: '24px',
-                            height: '24px',
-                            borderRadius: '50%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.78rem',
-                            fontWeight: 800,
-                            background: isSelected ? '#6366f1' : 'rgba(255,255,255,0.08)',
-                            color: '#ffffff',
-                          }}
-                        >
+                        <span className="ai-runner-opt-letter">
                           {String.fromCharCode(65 + oIdx)}
                         </span>
-                        <span style={{ fontSize: '0.9rem', lineHeight: 1.35 }}>{opt}</span>
+                        <span className="ai-runner-opt-text">{opt}</span>
                       </button>
                     );
                   })}

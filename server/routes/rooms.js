@@ -59,6 +59,7 @@ router.post('/create', async (req, res, next) => {
       maxCapacity: 60,
       status: 'active',
       progressionMode: req.body.progressionMode === 'open_attempt' ? 'open_attempt' : 'level_gated',
+      maxLevel: req.body.maxLevel ? Math.min(4, Math.max(1, parseInt(req.body.maxLevel, 10))) : 4,
       participants: [],
     });
 
@@ -70,6 +71,7 @@ router.post('/create', async (req, res, next) => {
         adminName: room.adminName,
         maxCapacity: room.maxCapacity,
         progressionMode: room.progressionMode,
+        maxLevel: room.maxLevel || 4,
         createdAt: room.createdAt,
       },
     });
@@ -238,6 +240,7 @@ router.post('/create-ai', async (req, res, next) => {
 
     // Insert questions strictly isolated to this room
     const inserted = await Question.insertMany(questionDocs);
+    const calculatedMaxLevel = Math.min(4, Math.max(...inserted.map((q) => q.level || 1), 1));
 
     const room = await Room.create({
       roomCode: normalizedCode,
@@ -251,6 +254,7 @@ router.post('/create-ai', async (req, res, next) => {
       subject: subject?.trim() || '',
       unit: unit?.trim() || '',
       progressionMode: req.body.progressionMode === 'open_attempt' ? 'open_attempt' : 'level_gated',
+      maxLevel: calculatedMaxLevel,
       questions: inserted,
       participants: [],
     });
@@ -266,6 +270,7 @@ router.post('/create-ai', async (req, res, next) => {
         maxCapacity: room.maxCapacity,
         isAiGenerated: room.isAiGenerated,
         progressionMode: room.progressionMode,
+        maxLevel: room.maxLevel || calculatedMaxLevel,
         questionCount: inserted.length,
         createdAt: room.createdAt,
       },
