@@ -67,9 +67,13 @@ export default function LevelTransition() {
 
   if (!student || !lastResult) return null;
 
-  const { score, total, nextLevel } = lastResult;
+  const { score, total, nextLevel, nextLevelQuestions } = lastResult;
   const nextConfig   = LEVELS[nextLevel];
   const clearedLevel = nextLevel - 1;
+  const dynamicNextQuestions = nextLevelQuestions || nextConfig?.questions || 15;
+  const dynamicNextCutoff = nextConfig?.cutoff
+    ? Math.min(nextConfig.cutoff, Math.max(1, Math.ceil(dynamicNextQuestions * 0.7)))
+    : 0;
 
   // Manual navigation only — user must consciously click to start next level
   const handleContinue = () => navigate(`/quiz/${nextLevel}`);
@@ -96,8 +100,8 @@ export default function LevelTransition() {
           <div className="transition-next-info">
             <strong>Up next:</strong> {nextConfig.label} — {nextConfig.sublabel}
             <br />
-            {nextConfig.questions} questions · {Math.floor(nextConfig.timeSeconds / 60)} minutes
-            {nextConfig.cutoff > 0 && ` · Need ${nextConfig.cutoff}/${nextConfig.questions} to advance`}
+            {dynamicNextQuestions} questions · {Math.floor(nextConfig.timeSeconds / 60)} minutes
+            {dynamicNextCutoff > 0 && ` · Need ${dynamicNextCutoff}/${dynamicNextQuestions} to advance`}
           </div>
         )}
 

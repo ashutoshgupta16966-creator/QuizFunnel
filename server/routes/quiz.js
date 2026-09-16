@@ -458,9 +458,28 @@ router.post('/submit', async (req, res, next) => {
     if (newStatus === 'completed' || newStatus === 'eliminated' || newStatus === 'disqualified' || isDisqualified) {
       const CUMULATIVE_MAX = { 1: 20, 2: 35, 3: 45, 4: 50 };
       const clearedLevel = newStatus === 'completed' ? 4 : level;
-      const maxPossible = CUMULATIVE_MAX[clearedLevel] || 50;
       const cumScore = (student.totalScore || 0) + score;
       const cumTime = (student.totalTimeTaken || 0) + elapsed;
+
+      let maxPossible = 50;
+      if (isRoom && roomCode) {
+        try {
+          const rDoc = await Room.findOne({ roomCode: roomCode.trim().toUpperCase() }).select('questions').lean();
+          if (rDoc && Array.isArray(rDoc.questions) && rDoc.questions.length > 0) {
+            maxPossible = newStatus === 'completed'
+              ? rDoc.questions.length
+              : (rDoc.questions.filter((q) => q.level <= clearedLevel).length || rDoc.questions.length);
+          }
+        } catch (rErr) {
+          console.warn('[Room questions count error]:', rErr.message);
+        }
+      } else {
+        const attemptedTotal = [...(student.levels || []), levelAttempt].reduce(
+          (acc, curr) => acc + (curr.answers?.length || curr.score || 0),
+          0
+        );
+        maxPossible = newStatus === 'completed' ? 50 : (attemptedTotal || CUMULATIVE_MAX[clearedLevel] || 50);
+      }
       const accuracyPct = maxPossible > 0 ? Math.min(100, Math.round((cumScore / maxPossible) * 100)) : 0;
 
       const isRoomQuiz = Boolean(isRoom);
@@ -561,15 +580,34 @@ router.post('/submit', async (req, res, next) => {
       }
     }
 
+    let quizTotalQuestions = 50;
+    let nextLevelQuestions = null;
+    if (isRoom && roomCode) {
+      try {
+        const rDoc = await Room.findOne({ roomCode: roomCode.trim().toUpperCase() }).select('questions').lean();
+        if (rDoc && Array.isArray(rDoc.questions) && rDoc.questions.length > 0) {
+          quizTotalQuestions = rDoc.questions.length;
+          if (passed && !isLastLevel) {
+            const nextLevelQs = rDoc.questions.filter((q) => q.level === level + 1);
+            nextLevelQuestions = nextLevelQs.length > 0 ? nextLevelQs.length : null;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to calculate room question totals:', err.message);
+      }
+    }
+
     res.json({
       success: true,
       data: {
         score,
-        total: levelConfig.questions,
-        cutoff: levelConfig.cutoff,
+        total: sessionCount,
+        cutoff: dynamicCutoff,
         passed,
         status: newStatus,
         nextLevel: passed && !isLastLevel ? level + 1 : null,
+        nextLevelQuestions,
+        quizTotalQuestions,
         isLastLevel,
         isDisqualified: Boolean(isDisqualified),
         isRoom: Boolean(isRoom),

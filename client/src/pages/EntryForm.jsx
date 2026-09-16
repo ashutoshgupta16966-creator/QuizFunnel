@@ -307,7 +307,10 @@ export default function EntryForm() {
         const isCompleted  = studentData.status === 'completed';
         const isDisqualified = Boolean(studentData.isDisqualified || studentData.status === 'disqualified');
         const clearedLevel = isCompleted ? 4 : (studentData.currentLevel || 1);
-        const maxPossible  = CUMULATIVE_MAX[clearedLevel] || 50;
+        const actualQsCount = Array.isArray(studentData.levels) && studentData.levels.length > 0
+          ? studentData.levels.reduce((acc, l) => acc + (l.answers?.length || l.score || 0), 0)
+          : null;
+        const maxPossible  = studentData.maxPossible || actualQsCount || CUMULATIVE_MAX[clearedLevel] || 50;
         const totalScore   = studentData.totalScore ?? 0;
         const totalTime    = studentData.totalTimeTaken ?? 0;
         const accuracyPct  = maxPossible > 0 ? Math.min(100, Math.round((totalScore / maxPossible) * 100)) : 0;
@@ -488,28 +491,30 @@ export default function EntryForm() {
 
   return (
     <div className="entry-page">
-      {/* Top Left Stack: Dark/Light Mode Toggle + QR Code Button + AI Self-Practice */}
+      {/* Top Left Stack: Dark/Light Mode Toggle + QR Code Button + Self Practice */}
       <div className="entry-top-left">
         <ThemeToggle />
-        <button
-          type="button"
-          className="qr-trigger-btn nav-pill-btn"
-          onClick={() => setShowQrModal(true)}
-          title="Show Quiz Direct Access QR Code"
-        >
-          📱 <span className="btn-text">QR Code</span>
-        </button>
-        <button
-          type="button"
-          className="ai-practice-btn nav-pill-btn"
-          onClick={() => {
-            setPracticeReattemptData(null);
-            setShowAiPracticeModal(true);
-          }}
-          title="AI Self-Practice Quiz from Document or Notes"
-        >
-          🤖 <span className="btn-text">AI Self-Practice</span>
-        </button>
+        <div className="entry-top-left-actions">
+          <button
+            type="button"
+            className="qr-trigger-btn nav-pill-btn"
+            onClick={() => setShowQrModal(true)}
+            title="Show Quiz Direct Access QR Code"
+          >
+            📱 <span className="btn-text">QR Code</span>
+          </button>
+          <button
+            type="button"
+            className="self-practice-btn nav-pill-btn"
+            onClick={() => {
+              setPracticeReattemptData(null);
+              setShowAiPracticeModal(true);
+            }}
+            title="Self-Practice Quiz from Document or Notes"
+          >
+            🤖 <span className="btn-text">Self Practice</span>
+          </button>
+        </div>
       </div>
 
       {/* Top Right Stack: My Results (Top) + Quiz Rooms + PWA Install Icon */}
@@ -961,7 +966,10 @@ export default function EntryForm() {
                             const isRoomAttempt = Boolean(attempt.isRoom || attempt.quizType === 'room');
                             const roomCode = attempt.roomCode || '';
                             const clearedLvl = isCompletedAttempt ? 4 : (attempt.levelReached || 1);
-                            const maxPoss = attempt.maxPossible || CUMULATIVE_MAX[clearedLvl] || 50;
+                            const actualAttemptQs = Array.isArray(attempt.levelsSummary) && attempt.levelsSummary.length > 0
+                              ? attempt.levelsSummary.reduce((acc, l) => acc + (l.answers?.length || l.score || 0), 0)
+                              : null;
+                            const maxPoss = attempt.maxPossible || actualAttemptQs || CUMULATIVE_MAX[clearedLvl] || 50;
                             const score = attempt.totalScore ?? 0;
                             const timeSecs = attempt.totalTimeTaken ?? 0;
                             const accuracy = attempt.accuracyPct ?? (maxPoss > 0 ? Math.round((score / maxPoss) * 100) : 0);

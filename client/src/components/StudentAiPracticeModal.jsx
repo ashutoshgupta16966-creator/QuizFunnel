@@ -21,7 +21,7 @@ export default function StudentAiPracticeModal({
   // Steps: 'upload' | 'setup_preview' | 'quiz_running' | 'results_review'
   const [step, setStep] = useState('upload');
 
-  // Student details for saving practice history
+  // Candidate details for persistent history sync
   const [candidateName, setCandidateName] = useState(homeFormData.name || '');
   const [candidateMobile, setCandidateMobile] = useState(homeFormData.mobile || '');
   const [candidateBranch, setCandidateBranch] = useState(homeFormData.branch || 'CSE');
@@ -33,14 +33,14 @@ export default function StudentAiPracticeModal({
   const [parseProgressMsg, setParseProgressMsg] = useState('');
 
   // Parsed Questions State
-  const [subject, setSubject] = useState('AI Practice Quiz');
+  const [subject, setSubject] = useState('Self Practice Quiz');
   const [unit, setUnit] = useState('');
   const [questions, setQuestions] = useState([]);
   const [bulkFormatMode, setBulkFormatMode] = useState('manual'); // 'manual' | 'all_mcq' | 'all_direct'
 
   // Practice Quiz Engine State
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState({}); // { [questionIndex]: value }
+  const [answers, setAnswers] = useState({}); // { [questionIndex]: selectedOptionIndex | textString }
   const [bookmarks, setBookmarks] = useState({});
   const [quizSeconds, setQuizSeconds] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
@@ -66,7 +66,7 @@ export default function StudentAiPracticeModal({
     if (isOpen && reattemptData) {
       const pData = reattemptData.practiceData || reattemptData;
       if (Array.isArray(pData.questions) && pData.questions.length > 0) {
-        setSubject(pData.subject || reattemptData.subject || 'AI Practice Quiz');
+        setSubject(pData.subject || reattemptData.subject || 'Self Practice Quiz');
         setUnit(pData.unit || reattemptData.unit || '');
         setQuestions(pData.questions);
         setCandidateName(reattemptData.studentName || homeFormData.name || '');
@@ -100,8 +100,8 @@ export default function StudentAiPracticeModal({
 
   if (!isOpen) return null;
 
-  // ── File Upload Handlers ──────────────────────────────────────────────────
-  const handleFileChange = (e) => {
+  // ── File Selection Handlers (Camera & Picker) ──────────────────────────────
+  const handleFileSelect = (e) => {
     setUploadError('');
     const newFiles = Array.from(e.target.files || []);
     if (!newFiles.length) return;
@@ -119,18 +119,21 @@ export default function StudentAiPracticeModal({
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'application/pdf'];
     for (const f of newFiles) {
       if (!validTypes.includes(f.type)) {
-        setUploadError(`Unsupported file format: ${f.name}. Please upload JPG, PNG, WEBP or PDF.`);
+        setUploadError(`Unsupported format: ${f.name}. Please upload JPG, PNG, WEBP or PDF.`);
         return;
       }
     }
 
-    const combined = [...files, ...newFiles.map((f) => ({
-      file: f,
-      name: f.name,
-      size: f.size,
-      type: f.type,
-      previewUrl: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
-    }))];
+    const combined = [
+      ...files,
+      ...newFiles.map((f) => ({
+        file: f,
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        previewUrl: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
+      })),
+    ];
 
     const totalSize = combined.reduce((acc, f) => acc + (f.size || 0), 0);
     if (totalSize > MAX_TOTAL_SIZE) {
@@ -139,6 +142,16 @@ export default function StudentAiPracticeModal({
     }
 
     setFiles(combined);
+    // Reset file input value so same file can be re-selected if removed
+    e.target.value = '';
+  };
+
+  const handleClearFiles = () => {
+    files.forEach((f) => {
+      if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+    });
+    setFiles([]);
+    setUploadError('');
   };
 
   const handleRemoveFile = (idx) => {
@@ -152,7 +165,7 @@ export default function StudentAiPracticeModal({
   // ── Digitize & Extract Questions with Gemini 3.x ─────────────────────────
   const handleStartExtraction = async () => {
     if (!files.length) {
-      setUploadError('Please select at least 1 image or 1 PDF document to begin.');
+      setUploadError('Please snap a photo or select at least 1 image / PDF document to begin.');
       return;
     }
 
@@ -178,7 +191,7 @@ export default function StudentAiPracticeModal({
       if (res.data?.success) {
         const rawQs = Array.isArray(res.data.questions) ? res.data.questions : [];
         if (!rawQs.length) {
-          throw new Error('No questions could be detected in this document. Please upload a clearer image.');
+          throw new Error('No questions could be detected in this document. Please upload a clearer image or document.');
         }
 
         const formattedQs = rawQs.map((q, idx) => ({
@@ -191,10 +204,10 @@ export default function StudentAiPracticeModal({
           level: [1, 2, 3, 4].includes(q.level) ? q.level : ((idx % 3) + 1),
           section: q.section || 'Technical',
           difficulty: q.difficulty || 'medium',
-          explanation: q.explanation || 'Based on core conceptual principles.',
+          explanation: q.explanation || 'Based on standard conceptual principles.',
         }));
 
-        setSubject(res.data.subject || 'AI Practice Assessment');
+        setSubject(res.data.subject || 'Self Practice Assessment');
         setUnit(res.data.unit || '');
         setQuestions(formattedQs);
         setAnswers({});
@@ -217,30 +230,31 @@ export default function StudentAiPracticeModal({
   // ── Bulk Format Toggle Handlers ───────────────────────────────────────────
   const handleApplyAllMcq = () => {
     setBulkFormatMode('all_mcq');
-    setQuestions((prev) => prev.map((q) => {
-      const opts = Array.isArray(q.options) && q.options.length === 4 ? q.options : ['Option A', 'Option B', 'Option C', 'Option D'];
-      return {
+    setQuestions((prev) =>
+      prev.map((q) => ({
         ...q,
         questionType: 'mcq',
-        options: opts,
+        options: Array.isArray(q.options) && q.options.length === 4 ? q.options : ['Option A', 'Option B', 'Option C', 'Option D'],
         correctAnswerIndex: typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : 0,
-      };
-    }));
+      }))
+    );
   };
 
   const handleApplyAllDirect = () => {
     setBulkFormatMode('all_direct');
-    setQuestions((prev) => prev.map((q) => {
-      let direct = q.directAnswer;
-      if (!direct && q.options && q.options[q.correctAnswerIndex]) {
-        direct = q.options[q.correctAnswerIndex];
-      }
-      return {
-        ...q,
-        questionType: 'direct',
-        directAnswer: direct || '',
-      };
-    }));
+    setQuestions((prev) =>
+      prev.map((q) => {
+        let direct = q.directAnswer;
+        if (!direct && q.options && q.options[q.correctAnswerIndex]) {
+          direct = q.options[q.correctAnswerIndex];
+        }
+        return {
+          ...q,
+          questionType: 'direct',
+          directAnswer: direct || '',
+        };
+      })
+    );
   };
 
   const handleToggleSingleFormat = (qIdx) => {
@@ -256,6 +270,14 @@ export default function StudentAiPracticeModal({
       };
       return next;
     });
+  };
+
+  const handleRemoveQuestion = (qIdx) => {
+    if (questions.length <= 1) {
+      alert('Practice set must have at least 1 question.');
+      return;
+    }
+    setQuestions((prev) => prev.filter((_, i) => i !== qIdx));
   };
 
   // ── Launch Practice Quiz ──────────────────────────────────────────────────
@@ -302,71 +324,63 @@ export default function StudentAiPracticeModal({
 
       if (isCorrect) score++;
 
-      // 2-line AI explanation guarantee
-      let exp = q.explanation || '';
-      if (!exp || exp.length < 20) {
+      let aiExplanation = q.explanation;
+      if (!isCorrect) {
         if (q.questionType === 'direct') {
-          exp = `The correct answer is "${q.directAnswer}". Make sure to verify your numerical formula or exact terminology.`;
+          aiExplanation = `The correct answer is "${q.directAnswer}". Ensure accurate numerical computation or spelling.`;
         } else {
-          const correctText = q.options?.[q.correctAnswerIndex] || 'designated choice';
-          exp = `Option ${['A', 'B', 'C', 'D'][q.correctAnswerIndex]} (${correctText}) is correct. Review this chapter's key formulas to solidify your understanding.`;
+          const correctOptionText = (q.options && q.options[q.correctAnswerIndex]) || `Option ${String.fromCharCode(65 + q.correctAnswerIndex)}`;
+          aiExplanation = `Correct: "${correctOptionText}". ${q.explanation || 'Review core formulas and theoretical principles for this topic.'}`;
         }
       }
 
       return {
-        questionIndex: idx,
-        questionText: q.questionText,
-        questionType: q.questionType,
-        options: q.options,
-        correctAnswerIndex: q.correctAnswerIndex,
-        directAnswer: q.directAnswer,
+        ...q,
         userAnswer: userAns,
         isCorrect,
-        level: q.level || 1,
-        section: q.section || 'Technical',
-        explanation: exp,
+        aiExplanation,
       };
     });
 
-    const total = questions.length;
-    const accuracy = total > 0 ? Math.round((score / total) * 100) : 0;
-    const timeTaken = quizSeconds;
-
-    const resultObj = {
-      score,
-      total,
-      accuracy,
-      timeTaken,
-      timeFormatted: formatMMSS(timeTaken),
+    const totalQuestions = questions.length;
+    const accuracy = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
+    const computedResults = {
       subject,
       unit,
-      details: detailedList,
+      score,
+      totalQuestions,
+      accuracy,
+      timeSeconds: quizSeconds,
+      timeFormatted: formatMMSS(quizSeconds),
+      questions: detailedList,
     };
 
-    setQuizResults(resultObj);
+    setQuizResults(computedResults);
     setStep('results_review');
 
-    // ── Permanently save into My Results (MongoDB + LocalStorage) ───────────
-    const historyId = `practice_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const historyRecord = {
-      id: historyId,
-      attemptId: historyId,
+    // ── Dual Persistence: Save to LocalStorage & MongoDB ────────────────────
+    const studentMobile = candidateMobile.trim();
+    const studentName = candidateName.trim() || 'Student';
+
+    const attemptId = `practice_${studentMobile || 'guest'}_${Date.now()}`;
+    const newRecord = {
+      id: attemptId,
       attemptDate: new Date().toISOString(),
-      studentName: candidateName || 'Practice Student',
-      mobile: candidateMobile || '',
-      branch: candidateBranch || 'CSE',
+      studentName,
+      mobile: studentMobile,
+      branch: candidateBranch,
       levelReached: 1,
       totalScore: score,
-      maxPossible: total,
+      maxPossible: totalQuestions,
       accuracyPct: accuracy,
-      totalTimeTaken: timeTaken,
-      timeFormatted: formatMMSS(timeTaken),
+      totalTimeTaken: quizSeconds,
+      timeFormatted: formatMMSS(quizSeconds),
       status: 'completed',
       isDisqualified: false,
-      quizType: 'practice',
       isPractice: true,
-      subject: subject || 'AI Self-Practice',
-      unit: unit || '',
+      quizType: 'practice',
+      subject,
+      unit,
       practiceData: {
         subject,
         unit,
@@ -377,43 +391,34 @@ export default function StudentAiPracticeModal({
     // 1. Save to LocalStorage
     try {
       const existing = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
-      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify([historyRecord, ...existing].slice(0, 40)));
-      setSaveStatus('Saved to My Results ✅');
-    } catch { /* noop */ }
+      const updated = [newRecord, ...existing.filter((a) => a.id !== attemptId)];
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed saving practice to localStorage:', e);
+    }
 
-    // 2. Save to Backend MongoDB if candidate mobile is available
-    if (candidateMobile && /^\d{10}$/.test(candidateMobile.trim())) {
+    // 2. Save to MongoDB if mobile provided
+    if (studentMobile && studentMobile.length === 10) {
+      setSaveStatus('Saving to My Results…');
       try {
         await savePracticeAttempt({
-          mobile: candidateMobile.trim(),
-          name: candidateName.trim(),
+          mobile: studentMobile,
+          studentName,
           branch: candidateBranch,
-          totalScore: score,
-          maxPossible: total,
-          accuracyPct: accuracy,
-          totalTimeTaken: timeTaken,
           subject,
           unit,
-          practiceData: {
-            subject,
-            unit,
-            questions,
-          },
+          score,
+          totalQuestions,
+          accuracy,
+          totalTimeTaken: quizSeconds,
+          practiceQuestions: questions,
         });
+        setSaveStatus('Saved to My Results ✓');
       } catch (err) {
         console.warn('Backend practice save error:', err.message);
+        setSaveStatus('');
       }
     }
-  };
-
-  // ── Re-Attempt Same Practice Set ──────────────────────────────────────────
-  const handleReattemptSameSet = () => {
-    setAnswers({});
-    setBookmarks({});
-    setCurrentIndex(0);
-    setQuizSeconds(0);
-    setTimerRunning(true);
-    setStep('quiz_running');
   };
 
   const answeredCount = Object.keys(answers).length;
@@ -422,46 +427,55 @@ export default function StudentAiPracticeModal({
   return (
     <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
       <div
-        className="modal-content ai-practice-modal-card max-h-[92vh] overflow-y-auto"
+        className="modal-content room-modal-card"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Navigation Bar */}
-        <div className="ai-practice-nav-bar">
-          <div className="ai-practice-nav-left">
-            <span className="ai-badge-icon">🤖</span>
-            <span className="ai-badge-title">AI Self-Practice Engine</span>
-            {step === 'quiz_running' && (
-              <span className="ai-practice-timer-pill">
-                ⏱️ {formatMMSS(quizSeconds)}
-              </span>
-            )}
-          </div>
+        {/* Top Header Navigation Row */}
+        <div className="room-modal-nav-row">
+          {step === 'setup_preview' ? (
+            <button
+              type="button"
+              className="room-back-btn"
+              onClick={() => setStep('upload')}
+            >
+              ← Back to Upload
+            </button>
+          ) : step === 'quiz_running' ? (
+            <div className="ai-practice-timer-pill">
+              ⏱️ {formatMMSS(quizSeconds)}
+            </div>
+          ) : (
+            <div className="nav-placeholder" />
+          )}
+
           <button
             type="button"
             className="room-close-btn"
             onClick={onClose}
-            aria-label="Close AI practice modal"
+            aria-label="Close modal"
+            title="Close"
           >
             ✕
           </button>
         </div>
 
-        {/* ── STEP 1: UPLOAD DOCUMENT ── */}
+        {/* ── STEP 1: UPLOAD SCREEN (MIRRORING PROVEN ROOMROLEMODAL LAYOUT) ── */}
         {step === 'upload' && (
-          <div className="ai-practice-step-view">
-            <div className="ai-practice-header">
-              <h2 className="ai-practice-title">Generate AI Practice Set</h2>
-              <p className="ai-practice-subtitle">
-                Upload question papers, handwritten notes, or lecture worksheets. Gemini 3.x extracts questions instantly without spoiling answers.
+          <div className="room-form-view ai-upload-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">📸</span>
+              <h2 className="room-modal-title">Self Practice: Upload Paper</h2>
+              <p className="room-modal-subtitle">
+                Snap photos with your camera or select files (up to 10 images or 1 PDF • max 15MB)
               </p>
             </div>
 
             {uploadError && <div className="server-error" role="alert">⚠️ {uploadError}</div>}
 
-            {/* Student metadata optional fields for history saving */}
-            <div className="ai-practice-user-row">
-              <div className="form-group flex-1">
-                <label className="form-label">Your Name (Optional)</label>
+            {/* Candidate metadata optional fields for history saving */}
+            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <div>
+                <label className="form-label">Your Name</label>
                 <input
                   type="text"
                   className="form-input"
@@ -470,8 +484,8 @@ export default function StudentAiPracticeModal({
                   onChange={(e) => setCandidateName(e.target.value)}
                 />
               </div>
-              <div className="form-group flex-1">
-                <label className="form-label">Mobile Number (For My Results sync)</label>
+              <div>
+                <label className="form-label">Mobile Number</label>
                 <input
                   type="tel"
                   className="form-input"
@@ -483,121 +497,158 @@ export default function StudentAiPracticeModal({
               </div>
             </div>
 
-            {/* Dropzone */}
-            <div className="ai-dropzone">
-              <input
-                type="file"
-                id="aiPracticeFileInput"
-                className="ai-file-input"
-                multiple
-                accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
-                onChange={handleFileChange}
-                disabled={isParsing}
-              />
-              <label htmlFor="aiPracticeFileInput" className="ai-dropzone-label">
-                <span className="ai-dropzone-icon">📸</span>
-                <span className="ai-dropzone-text">
-                  <strong>Click to browse</strong> or drag &amp; drop photos or 1 PDF
-                </span>
-                <span className="ai-dropzone-subtext">
-                  Up to 10 photos (JPG, PNG, WEBP) or 1 PDF file · Max total 15 MB
-                </span>
+            {/* Input method buttons */}
+            <div className="ai-input-methods">
+              {/* Native Camera Button */}
+              <label className="ai-method-btn ai-method-camera">
+                <span className="method-icon">📷</span>
+                <span className="method-title">Snap with Camera</span>
+                <span className="method-desc">Directly take photos of printed questions</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileSelect}
+                  style={{ display: 'none' }}
+                  disabled={isParsing}
+                />
+              </label>
+
+              {/* File Picker Button */}
+              <label className="ai-method-btn ai-method-upload">
+                <span className="method-icon">📁</span>
+                <span className="method-title">Upload Image / PDF</span>
+                <span className="method-desc">Select from gallery, photos, or documents</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
+                  multiple
+                  onChange={handleFileSelect}
+                  style={{ display: 'none' }}
+                  disabled={isParsing}
+                />
               </label>
             </div>
 
-            {/* File thumbnails preview */}
+            {/* Selected Files List & Summary */}
             {files.length > 0 && (
-              <div className="ai-files-preview-list">
-                {files.map((item, idx) => (
-                  <div key={idx} className="ai-file-preview-item">
-                    {item.previewUrl ? (
-                      <img src={item.previewUrl} alt={item.name} className="ai-thumb" />
-                    ) : (
-                      <div className="ai-thumb-pdf">📄 PDF</div>
-                    )}
-                    <div className="ai-file-meta">
-                      <span className="ai-file-name" title={item.name}>{item.name}</span>
-                      <span className="ai-file-size">{(item.size / 1024).toFixed(0)} KB</span>
+              <div className="ai-files-container">
+                <div className="ai-files-header">
+                  <span className="ai-files-count">
+                    📑 <strong>{files.length}</strong> file{files.length !== 1 ? 's' : ''} selected
+                    {' '}({(files.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(2)} MB / 15 MB)
+                  </span>
+                  <button
+                    type="button"
+                    className="ai-clear-btn"
+                    onClick={handleClearFiles}
+                    disabled={isParsing}
+                  >
+                    Clear All
+                  </button>
+                </div>
+
+                <div className="ai-files-grid">
+                  {files.map((item, idx) => (
+                    <div key={idx} className="ai-file-card">
+                      {item.previewUrl ? (
+                        <img src={item.previewUrl} alt={item.name} className="ai-file-thumb" />
+                      ) : (
+                        <div className="ai-file-pdf-badge">📄 PDF</div>
+                      )}
+                      <div className="ai-file-info">
+                        <span className="ai-file-name" title={item.name}>{item.name}</span>
+                        <span className="ai-file-size">{(item.size / 1024).toFixed(0)} KB</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="ai-remove-file-btn"
+                        onClick={() => handleRemoveFile(idx)}
+                        disabled={isParsing}
+                        title="Remove file"
+                      >
+                        ✕
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className="ai-remove-file-btn"
-                      onClick={() => handleRemoveFile(idx)}
-                      disabled={isParsing}
-                      title="Remove file"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Action button */}
-            <div className="ai-practice-actions-row">
-              <button
-                type="button"
-                className="btn btn-primary btn-block ai-extract-btn"
-                onClick={handleStartExtraction}
-                disabled={isParsing || files.length === 0}
-              >
-                {isParsing ? (
-                  <><span className="btn-spinner" /> {parseProgressMsg || 'Extracting Questions via Gemini 3.x…'}</>
-                ) : (
-                  `⚡ Extract & Build Practice Set (${files.length} file${files.length !== 1 ? 's' : ''})`
-                )}
-              </button>
-            </div>
+            {/* Submit or loading state */}
+            {isParsing ? (
+              <div className="ai-parsing-state">
+                <div className="ai-spinner-glow" />
+                <h4 className="ai-parsing-title">Gemini Vision is Processing…</h4>
+                <p className="ai-parsing-desc">
+                  {parseProgressMsg || 'Transcribing questions and diagrams without spoiling answers. Usually takes 5–15 seconds.'}
+                </p>
+              </div>
+            ) : (
+              <div className="ai-actions-row" style={{ marginTop: '1.25rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={onClose}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary ai-parse-submit-btn"
+                  onClick={handleStartExtraction}
+                  disabled={files.length === 0}
+                >
+                  ✨ Extract Questions with Gemini
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── STEP 2: MASKED CONFIGURATION SETUP (NO SPOILERS) ── */}
+        {/* ── STEP 2: MASKED SETUP REVIEW SCREEN (ZERO SPOILERS) ── */}
         {step === 'setup_preview' && (
-          <div className="ai-practice-step-view">
-            <div className="ai-practice-header">
-              <div className="ai-header-badge-row">
-                <span className="ai-practice-badge">🛡️ Masked Setup (Zero Spoilers)</span>
-                <span className="ai-practice-count-badge">📝 {questions.length} Questions Ready</span>
-              </div>
-              <h2 className="ai-practice-title">Configure Your Practice Run</h2>
-              <p className="ai-practice-subtitle">
-                Answer keys and choices are strictly hidden so your practice test remains unbiased and authentic.
+          <div className="room-form-view ai-review-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">🛡️</span>
+              <h2 className="room-modal-title">Review Practice Set (Masked Setup)</h2>
+              <p className="room-modal-subtitle">
+                Questions extracted. Choices and correct answers are strictly masked to avoid spoilers!
               </p>
             </div>
 
-            {/* Metadata Fields */}
+            {/* Metadata Fields: Subject & Unit */}
             <div className="ai-meta-editor-card">
               <div className="ai-meta-field">
                 <label className="form-label">Subject / Topic</label>
                 <input
                   type="text"
                   className="form-input"
+                  placeholder="e.g. Operating Systems"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  placeholder="e.g. Operating Systems"
                 />
               </div>
               <div className="ai-meta-field">
-                <label className="form-label">Unit / Chapter (Optional)</label>
+                <label className="form-label">Unit / Chapter</label>
                 <input
                   type="text"
                   className="form-input"
+                  placeholder="e.g. Unit 3: Process Synchronization"
                   value={unit}
                   onChange={(e) => setUnit(e.target.value)}
-                  placeholder="e.g. CPU Scheduling"
                 />
               </div>
             </div>
 
             {/* Bulk Format Selector Toolbar */}
             <div className="ai-bulk-format-bar">
-              <span className="ai-bulk-format-label">⚡ Format Controls:</span>
+              <span className="ai-bulk-format-label">Batch Format:</span>
               <div className="ai-bulk-btn-group">
                 <button
                   type="button"
                   className={`ai-bulk-pill ${bulkFormatMode === 'all_mcq' ? 'is-active' : ''}`}
                   onClick={handleApplyAllMcq}
-                  title="Enforce MCQ format for all questions"
                 >
                   🔘 Apply All MCQ
                 </button>
@@ -605,130 +656,196 @@ export default function StudentAiPracticeModal({
                   type="button"
                   className={`ai-bulk-pill ${bulkFormatMode === 'all_direct' ? 'is-active' : ''}`}
                   onClick={handleApplyAllDirect}
-                  title="Enforce Direct / Numerical input for all questions"
                 >
-                  ✏️ Apply All Direct/Numerical
-                </button>
-                <button
-                  type="button"
-                  className={`ai-bulk-pill ${bulkFormatMode === 'manual' ? 'is-active' : ''}`}
-                  onClick={() => setBulkFormatMode('manual')}
-                  title="Manual per-question toggle"
-                >
-                  🛠️ Manual Edit
+                  🔢 Apply All Direct/Numerical
                 </button>
               </div>
             </div>
 
-            {/* Masked Question Cards List (Zero Spoilers!) */}
-            <div className="ai-masked-questions-list">
-              {questions.map((q, idx) => (
-                <div key={idx} className="ai-masked-q-card">
-                  <div className="ai-masked-q-header">
-                    <div className="ai-masked-tags">
-                      <span className="ai-masked-q-num">Q{idx + 1}</span>
-                      <span className={`ai-level-tag lvl-${q.level || 1}`}>
-                        Level {q.level || 1}
-                      </span>
-                      <span className="ai-section-tag">{q.section || 'General'}</span>
-                    </div>
+            {/* Questions count badge */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0.5rem 0' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#818cf8' }}>
+                📝 <strong>{questions.length}</strong> Questions Ready
+              </span>
+            </div>
 
-                    <button
-                      type="button"
-                      className="ai-format-switch-btn"
-                      onClick={() => handleToggleSingleFormat(idx)}
-                      title="Toggle question between MCQ and Direct Numerical"
-                    >
-                      {q.questionType === 'direct' ? '✏️ Direct Input' : '🔘 MCQ (4 Options)'}
-                    </button>
+            {/* Masked Question List */}
+            <div className="ai-review-questions-list" style={{ maxHeight: '42vh', overflowY: 'auto', paddingRight: '0.35rem' }}>
+              {questions.map((q, qIdx) => (
+                <div key={q.id || qIdx} className="ai-review-q-card" style={{ marginBottom: '0.85rem' }}>
+                  <div className="ai-review-q-header">
+                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                      <span className="q-num-pill">Q{qIdx + 1}</span>
+                      <span className={`ai-level-tag lvl-${q.level || 1}`}>Level {q.level || 1}</span>
+                      <span className="ai-section-tag">{q.questionType === 'direct' ? 'Direct / Numerical' : 'MCQ'}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleToggleSingleFormat(qIdx)}
+                        title="Toggle between MCQ and Direct answer"
+                        style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                      >
+                        {q.questionType === 'direct' ? 'Switch to MCQ' : 'Switch to Direct'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-danger-subtle btn-sm"
+                        onClick={() => handleRemoveQuestion(qIdx)}
+                        title="Remove question"
+                        style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
 
-                  <p className="ai-masked-q-text">{q.questionText}</p>
+                  <p className="ai-review-q-text" style={{ marginTop: '0.4rem', fontWeight: 600, color: '#f8fafc', fontSize: '0.9rem' }}>
+                    {q.questionText}
+                  </p>
 
-                  <div className="ai-masked-shield-note">
-                    🔒 <em>Options &amp; Answer Keys masked until test submission</em>
+                  {/* Strictly Masked Answer Preview (Anti-Spoil) */}
+                  <div className="masked-anti-spoil-box">
+                    {q.questionType === 'direct' ? (
+                      <div className="masked-hint">
+                        🔒 <strong>Direct / Numerical Entry:</strong> Type your exact answer during the test. Correct key is hidden.
+                      </div>
+                    ) : (
+                      <div className="masked-options-grid">
+                        <div className="masked-option-pill">Option A: 🔒 Hidden (Choices revealed during test)</div>
+                        <div className="masked-option-pill">Option B: 🔒 Hidden</div>
+                        <div className="masked-option-pill">Option C: 🔒 Hidden</div>
+                        <div className="masked-option-pill">Option D: 🔒 Hidden</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Launch Practice Quiz Button */}
-            <div className="ai-practice-actions-row">
+            {/* Launch Practice Test Button */}
+            <div className="ai-actions-row" style={{ marginTop: '1.25rem' }}>
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setStep('upload')}
               >
-                ← Back / Re-Upload
+                ← Back
               </button>
               <button
                 type="button"
-                className="btn btn-primary flex-1"
+                className="btn btn-primary"
                 onClick={handleStartPracticeQuiz}
+                disabled={questions.length === 0}
+                style={{ flex: 2 }}
               >
-                🚀 Start Practice Quiz ({questions.length} Qs)
+                🚀 Start Practice Test ({questions.length} Qs)
               </button>
             </div>
           </div>
         )}
 
-        {/* ── STEP 3: INTERACTIVE PRACTICE QUIZ (UNRESTRICTED PROGRESSION) ── */}
+        {/* ── STEP 3: INTERACTIVE PRACTICE QUIZ RUNNER ── */}
         {step === 'quiz_running' && currentQ && (
-          <div className="ai-practice-step-view">
-            {/* Top Info Bar */}
-            <div className="ai-quiz-runner-header">
-              <div className="ai-runner-meta">
-                <span className={`ai-level-tag lvl-${currentQ.level || 1}`}>
-                  Level {currentQ.level || 1}
+          <div className="room-form-view ai-quiz-running-view">
+            {/* Top Bar with Subject, Unit & Current Position */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                  {subject} {unit ? `· ${unit}` : ''}
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                  Question {currentIndex + 1} of {questions.length} · {answeredCount} answered
                 </span>
-                <span className="ai-runner-subject">{subject}</span>
-                {unit && <span className="ai-runner-unit">· {unit}</span>}
               </div>
-              <div className="ai-runner-right">
-                <span className="ai-runner-progress">
-                  Question <strong>{currentIndex + 1}</strong> of <strong>{questions.length}</strong>
-                </span>
-                <button
-                  type="button"
-                  className={`ai-bookmark-btn ${bookmarks[currentIndex] ? 'is-bookmarked' : ''}`}
-                  onClick={handleToggleBookmark}
-                  title="Bookmark question"
-                >
-                  {bookmarks[currentIndex] ? '★ Bookmarked' : '☆ Bookmark'}
-                </button>
-              </div>
+              <button
+                type="button"
+                className={`bookmark-btn ${bookmarks[currentIndex] ? 'is-bookmarked' : ''}`}
+                onClick={handleToggleBookmark}
+                title="Bookmark for review"
+                style={{ padding: '0.3rem 0.65rem', fontSize: '0.8rem' }}
+              >
+                {bookmarks[currentIndex] ? '★ Bookmarked' : '☆ Bookmark'}
+              </button>
             </div>
 
-            {/* Question Card */}
-            <div className="ai-quiz-runner-card">
-              <h3 className="ai-runner-question-text">{currentQ.questionText}</h3>
+            {/* Dynamic Horizontal Progress Bar */}
+            <div className="progress-bar-track" style={{ height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', marginBottom: '1rem', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${((currentIndex + 1) / questions.length) * 100}%`,
+                  background: 'linear-gradient(90deg, #6366f1, #a855f7)',
+                  transition: 'width 0.25s ease',
+                }}
+              />
+            </div>
 
+            {/* Active Question Card */}
+            <div className="ai-quiz-runner-card" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.6rem' }}>
+                <span className={`ai-level-tag lvl-${currentQ.level || 1}`}>Level {currentQ.level || 1}</span>
+                <span className="ai-section-tag">{currentQ.questionType === 'direct' ? 'Numerical/Direct' : 'Multiple Choice'}</span>
+              </div>
+              <h4 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.45, margin: '0 0 1.25rem 0' }}>
+                {currentQ.questionText}
+              </h4>
+
+              {/* Input: Direct vs MCQ */}
               {currentQ.questionType === 'direct' ? (
-                <div className="ai-direct-input-section">
-                  <label className="form-label">Your Answer (Text or Numerical value):</label>
+                <div className="form-group" style={{ marginTop: '0.75rem' }}>
+                  <label className="form-label">Your Answer:</label>
                   <input
                     type="text"
-                    className="form-input ai-direct-play-input"
-                    placeholder="Type your answer here..."
-                    value={answers[currentIndex] !== undefined ? answers[currentIndex] : ''}
+                    className="form-input"
+                    placeholder="Enter your exact numerical or text answer…"
+                    value={answers[currentIndex] !== undefined ? String(answers[currentIndex]) : ''}
                     onChange={(e) => handleSelectAnswer(e.target.value)}
                     autoFocus
                   />
-                  <p className="form-hint">Scoring is trimmed and case-insensitive.</p>
                 </div>
               ) : (
-                <div className="ai-options-grid">
-                  {(currentQ.options || []).map((optText, optIdx) => {
-                    const isSelected = answers[currentIndex] === optIdx;
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {(currentQ.options || []).map((opt, oIdx) => {
+                    const isSelected = answers[currentIndex] === oIdx;
                     return (
                       <button
-                        key={optIdx}
+                        key={oIdx}
                         type="button"
-                        className={`ai-option-play-btn ${isSelected ? 'is-selected' : ''}`}
-                        onClick={() => handleSelectAnswer(optIdx)}
+                        onClick={() => handleSelectAnswer(oIdx)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          textAlign: 'left',
+                          padding: '0.75rem 1rem',
+                          borderRadius: '8px',
+                          border: isSelected ? '1.5px solid #818cf8' : '1px solid rgba(255,255,255,0.1)',
+                          background: isSelected ? 'rgba(99, 102, 241, 0.18)' : 'rgba(255,255,255,0.02)',
+                          color: isSelected ? '#ffffff' : '#cbd5e1',
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
                       >
-                        <span className="ai-option-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
-                        <span className="ai-option-body">{optText}</span>
+                        <span
+                          style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            background: isSelected ? '#6366f1' : 'rgba(255,255,255,0.08)',
+                            color: '#ffffff',
+                          }}
+                        >
+                          {String.fromCharCode(65 + oIdx)}
+                        </span>
+                        <span style={{ fontSize: '0.9rem', lineHeight: 1.35 }}>{opt}</span>
                       </button>
                     );
                   })}
@@ -736,23 +853,42 @@ export default function StudentAiPracticeModal({
               )}
             </div>
 
-            {/* Unrestricted Palette Grid */}
-            <div className="ai-palette-container">
-              <div className="ai-palette-header">
-                <span>Navigate Questions (Free Unrestricted Access):</span>
-                <span>{answeredCount}/{questions.length} answered</span>
+            {/* Interactive Question Palette Grid */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8' }}>Question Palette</span>
+                <span style={{ fontSize: '0.75rem', color: '#6366f1' }}>Click number to jump</span>
               </div>
-              <div className="ai-palette-grid">
-                {questions.map((q, pIdx) => {
-                  const isAns = answers[pIdx] !== undefined && answers[pIdx] !== '' && answers[pIdx] !== null;
-                  const isCur = pIdx === currentIndex;
-                  const isBmk = !!bookmarks[pIdx];
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', maxHeight: '100px', overflowY: 'auto' }}>
+                {questions.map((_, pIdx) => {
+                  const isCurrent = pIdx === currentIndex;
+                  const isAnswered = answers[pIdx] !== undefined && answers[pIdx] !== '';
+                  const isBookmarked = !!bookmarks[pIdx];
+
                   return (
                     <button
                       key={pIdx}
                       type="button"
-                      className={`ai-palette-cell ${isCur ? 'is-current' : ''} ${isAns ? 'is-answered' : ''} ${isBmk ? 'is-bmk' : ''}`}
                       onClick={() => setCurrentIndex(pIdx)}
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '6px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: isCurrent ? '2px solid #818cf8' : '1px solid rgba(255,255,255,0.1)',
+                        background: isCurrent
+                          ? '#4f46e5'
+                          : isAnswered
+                          ? 'rgba(16, 185, 129, 0.25)'
+                          : 'rgba(255,255,255,0.04)',
+                        color: isCurrent || isAnswered ? '#ffffff' : '#94a3b8',
+                        boxShadow: isBookmarked ? '0 0 0 2px #f59e0b' : 'none',
+                      }}
                     >
                       {pIdx + 1}
                     </button>
@@ -762,147 +898,150 @@ export default function StudentAiPracticeModal({
             </div>
 
             {/* Navigation Controls */}
-            <div className="ai-quiz-bottom-nav">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
                 disabled={currentIndex === 0}
               >
-                ← Prev
+                ← Previous
               </button>
 
-              <button
-                type="button"
-                className="btn btn-submit ai-finish-btn"
-                onClick={handleSubmitPractice}
-              >
-                Submit Practice Set ({answeredCount}/{questions.length}) ✓
-              </button>
-
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))}
-                disabled={currentIndex === questions.length - 1}
-              >
-                Next →
-              </button>
+              {currentIndex < questions.length - 1 ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))}
+                >
+                  Next →
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleSubmitPractice}
+                  style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                >
+                  Submit Practice Quiz ✓
+                </button>
+              )}
             </div>
           </div>
         )}
 
-        {/* ── STEP 4: SUBMISSION RESULTS & DETAILED REVIEW WITH 2-LINE AI EXPLANATIONS ── */}
+        {/* ── STEP 4: PRACTICE RESULTS & AI EXPLANATIONS ── */}
         {step === 'results_review' && quizResults && (
-          <div className="ai-practice-step-view">
-            <div className="ai-results-hero">
-              <span className="ai-results-icon">🎉</span>
-              <h2 className="ai-results-title">Practice Set Completed!</h2>
-              <p className="ai-results-sub">{subject} {unit ? `· ${unit}` : ''}</p>
-
-              <div className="ai-results-stat-bar">
-                <div className="ai-stat-card">
-                  <span className="ai-stat-val">{quizResults.score} / {quizResults.total}</span>
-                  <span className="ai-stat-lbl">Final Score</span>
-                </div>
-                <div className="ai-stat-card">
-                  <span className="ai-stat-val">{quizResults.accuracy}%</span>
-                  <span className="ai-stat-lbl">Accuracy</span>
-                </div>
-                <div className="ai-stat-card">
-                  <span className="ai-stat-val">{quizResults.timeFormatted}</span>
-                  <span className="ai-stat-lbl">Time Taken</span>
-                </div>
-              </div>
-
-              {saveStatus && (
-                <div className="ai-save-pill">
-                  {saveStatus}
-                </div>
-              )}
+          <div className="room-form-view ai-results-view">
+            <div className="room-modal-header">
+              <span className="room-modal-icon">🏆</span>
+              <h2 className="room-modal-title">Self-Practice Completed!</h2>
+              <p className="room-modal-subtitle">
+                {quizResults.subject} {quizResults.unit ? `· ${quizResults.unit}` : ''}
+              </p>
             </div>
 
-            {/* Action buttons: Re-attempt practice set or finish */}
-            <div className="ai-review-actions-bar">
-              <button
-                type="button"
-                className="btn btn-primary ai-reattempt-btn"
-                onClick={handleReattemptSameSet}
-              >
-                🔄 Re-Attempt Practice Set
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={onClose}
-              >
-                ✕ Close &amp; Return Home
-              </button>
+            {saveStatus && (
+              <div style={{ textAlign: 'center', color: '#34d399', fontSize: '0.82rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                {saveStatus}
+              </div>
+            )}
+
+            {/* Performance Score Summary Card */}
+            <div className="score-card" style={{ marginBottom: '1rem' }}>
+              <div className="score-row">
+                <span className="score-label">Performance Score</span>
+                <span className="score-value" style={{ color: '#818cf8', fontWeight: 800 }}>
+                  {quizResults.score} / {quizResults.totalQuestions}
+                </span>
+              </div>
+              <div className="score-row">
+                <span className="score-label">Accuracy Rate</span>
+                <span className="score-value">{quizResults.accuracy}%</span>
+              </div>
+              <div className="score-row">
+                <span className="score-label">Total Time</span>
+                <span className="score-value">{quizResults.timeFormatted}</span>
+              </div>
             </div>
 
             {/* Detailed Question Review List */}
-            <div className="ai-detailed-review-list">
-              <h3 className="ai-review-list-title">Detailed Solutions &amp; 2-Line AI Explanations</h3>
-              {quizResults.details.map((item, idx) => (
-                <div key={idx} className={`ai-review-card ${item.isCorrect ? 'is-pass' : 'is-fail'}`}>
-                  <div className="ai-review-card-header">
-                    <span className="ai-review-q-num">Q{idx + 1}</span>
-                    <span className={`ai-level-tag lvl-${item.level}`}>Level {item.level}</span>
-                    <span className={`ai-status-pill ${item.isCorrect ? 'pill-correct' : 'pill-wrong'}`}>
-                      {item.isCorrect ? '✅ Correct' : '❌ Incorrect'}
+            <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f8fafc', margin: '1rem 0 0.5rem 0' }}>
+              📋 Detailed Review &amp; AI Explanations
+            </h4>
+            <div style={{ maxHeight: '38vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingRight: '0.35rem' }}>
+              {quizResults.questions.map((q, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: q.isCorrect ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '10px',
+                    padding: '0.85rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8' }}>Q{idx + 1}</span>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: '4px',
+                        background: q.isCorrect ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        color: q.isCorrect ? '#34d399' : '#f87171',
+                      }}
+                    >
+                      {q.isCorrect ? '✓ Correct' : '✕ Incorrect'}
                     </span>
                   </div>
 
-                  <p className="ai-review-q-text">{item.questionText}</p>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#f8fafc', margin: '0 0 0.5rem 0' }}>
+                    {q.questionText}
+                  </p>
 
-                  <div className="ai-review-answers-box">
-                    <div className="ai-review-ans-row">
-                      <span className="ai-ans-label">Your Answer:</span>
-                      <span className={`ai-ans-val ${item.isCorrect ? 'text-correct' : 'text-wrong'}`}>
-                        {item.questionType === 'direct'
-                          ? (item.userAnswer || 'Unattempted')
-                          : (item.userAnswer !== undefined && item.options?.[item.userAnswer]
-                            ? `Option ${['A', 'B', 'C', 'D'][item.userAnswer]}: ${item.options[item.userAnswer]}`
-                            : 'Unattempted')}
-                      </span>
+                  <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', color: '#cbd5e1' }}>
+                    <div>
+                      <strong style={{ color: '#94a3b8' }}>Your Answer: </strong>
+                      {q.questionType === 'direct'
+                        ? (q.userAnswer || 'Not answered')
+                        : (q.options && q.userAnswer !== undefined ? q.options[q.userAnswer] : 'Not answered')}
                     </div>
-
-                    {!item.isCorrect && (
-                      <div className="ai-review-ans-row">
-                        <span className="ai-ans-label">Correct Answer:</span>
-                        <span className="ai-ans-val text-correct">
-                          {item.questionType === 'direct'
-                            ? item.directAnswer
-                            : `Option ${['A', 'B', 'C', 'D'][item.correctAnswerIndex]}: ${item.options?.[item.correctAnswerIndex]}`}
-                        </span>
+                    {!q.isCorrect && (
+                      <div>
+                        <strong style={{ color: '#34d399' }}>Correct Answer: </strong>
+                        {q.questionType === 'direct' ? q.directAnswer : (q.options && q.options[q.correctAnswerIndex])}
                       </div>
                     )}
                   </div>
 
-                  {/* 2-line AI explanation */}
-                  <div className="ai-explanation-box">
-                    <span className="ai-explanation-title">💡 Explanation:</span>
-                    <p className="ai-explanation-text">{item.explanation}</p>
-                  </div>
+                  {/* 2-Line AI Explanation */}
+                  {q.aiExplanation && (
+                    <div className="ai-explanation-box" style={{ marginTop: '0.6rem' }}>
+                      <span className="ai-explanation-title">💡 2-Line AI Conceptual Explanation:</span>
+                      <p className="ai-explanation-text">{q.aiExplanation}</p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
 
-            {/* Bottom Re-attempt button */}
-            <div className="ai-review-actions-bar" style={{ marginTop: '1.5rem' }}>
-              <button
-                type="button"
-                className="btn btn-primary ai-reattempt-btn"
-                onClick={handleReattemptSameSet}
-              >
-                🔄 Re-Attempt Practice Set
-              </button>
+            {/* Action Buttons */}
+            <div className="ai-actions-row" style={{ marginTop: '1.25rem' }}>
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={onClose}
               >
-                ✕ Close &amp; Return Home
+                🏠 Return to Home
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleStartPracticeQuiz}
+                style={{ flex: 2 }}
+              >
+                🔄 Re-Attempt Practice Set
               </button>
             </div>
           </div>

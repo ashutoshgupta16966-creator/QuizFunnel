@@ -133,11 +133,24 @@ function ResultsContent() {
       : 0) ??
     0
   );
-  const total = Number(lastResult?.total || levelConfig?.questions || 20);
+  const studentLevelQs = Array.isArray(student?.levels) && student.levels.length > 0
+    ? (student.levels[student.levels.length - 1]?.answers?.length || student.levels[student.levels.length - 1]?.score)
+    : null;
+  const total = Number(lastResult?.total || studentLevelQs || levelConfig?.questions || 10);
   const totalScore = Number(lastResult?.totalScore ?? student?.totalScore ?? score ?? 0);
   const totalTimeTaken = Number(lastResult?.totalTimeTaken ?? student?.totalTimeTaken ?? 0);
 
-  const maxPossible = CUMULATIVE_MAX[clearedLevel] || 50;
+  const attemptedQuestionsCount = Array.isArray(student?.levels) && student.levels.length > 0
+    ? student.levels.reduce((acc, l) => acc + (l.answers?.length || l.score || 0), 0)
+    : null;
+  const maxPossible = Number(
+    lastResult?.quizTotalQuestions ||
+    lastResult?.maxPossible ||
+    student?.maxPossible ||
+    (isCompleted ? (lastResult?.quizTotalQuestions || attemptedQuestionsCount || 50) : attemptedQuestionsCount) ||
+    CUMULATIVE_MAX[clearedLevel] ||
+    50
+  );
   const accuracyPct = maxPossible > 0
     ? Math.min(100, Math.max(0, Math.round(((totalScore || 0) / maxPossible) * 100)))
     : 0;
@@ -307,7 +320,7 @@ function ResultsContent() {
           </div>
           <div className="score-row">
             <span className="score-label">Grand Total Score</span>
-            <span className="score-value">{totalScore} / 50</span>
+            <span className="score-value">{totalScore} / {maxPossible}</span>
           </div>
           <div className="score-row">
             <span className="score-label">Accuracy Rate</span>
