@@ -58,6 +58,7 @@ router.post('/create', async (req, res, next) => {
       roomPassword: roomPassword.trim(),
       maxCapacity: 60,
       status: 'active',
+      progressionMode: req.body.progressionMode === 'open_attempt' ? 'open_attempt' : 'level_gated',
       participants: [],
     });
 
@@ -68,6 +69,7 @@ router.post('/create', async (req, res, next) => {
         quizTitle: room.quizTitle,
         adminName: room.adminName,
         maxCapacity: room.maxCapacity,
+        progressionMode: room.progressionMode,
         createdAt: room.createdAt,
       },
     });
@@ -248,6 +250,7 @@ router.post('/create-ai', async (req, res, next) => {
       isAiGenerated: true,
       subject: subject?.trim() || '',
       unit: unit?.trim() || '',
+      progressionMode: req.body.progressionMode === 'open_attempt' ? 'open_attempt' : 'level_gated',
       questions: inserted,
       participants: [],
     });
@@ -262,6 +265,7 @@ router.post('/create-ai', async (req, res, next) => {
         adminName: room.adminName,
         maxCapacity: room.maxCapacity,
         isAiGenerated: room.isAiGenerated,
+        progressionMode: room.progressionMode,
         questionCount: inserted.length,
         createdAt: room.createdAt,
       },
@@ -526,6 +530,7 @@ router.post('/join', async (req, res, next) => {
           isAiGenerated: Boolean(room.isAiGenerated),
           subject: room.subject || '',
           unit: room.unit || '',
+          progressionMode: room.progressionMode || 'level_gated',
         },
       },
     });

@@ -41,9 +41,13 @@ const AttemptHistorySchema = new mongoose.Schema({
   totalTimeTaken: { type: Number, default: 0 }, // seconds
   status:         { type: String, enum: ['completed', 'eliminated', 'in-progress', 'disqualified'], default: 'in-progress' },
   isDisqualified: { type: Boolean, default: false },
-  quizType:       { type: String, enum: ['normal', 'room'], default: 'normal' },
+  quizType:       { type: String, enum: ['normal', 'room', 'practice'], default: 'normal' },
   isRoom:         { type: Boolean, default: false },
   roomCode:       { type: String, default: null },
+  isPractice:     { type: Boolean, default: false },
+  subject:        { type: String, default: '' },
+  unit:           { type: String, default: '' },
+  practiceData:   { type: mongoose.Schema.Types.Mixed, default: null },
   levelsSummary:  [LevelAttemptSchema],
 }, { timestamps: true });
 

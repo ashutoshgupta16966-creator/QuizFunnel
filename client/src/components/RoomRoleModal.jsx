@@ -63,6 +63,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     roomCode: '',
     roomPassword: '',
     quizTitle: '',
+    progressionMode: 'level_gated',
   });
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
@@ -138,6 +139,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     quizTitle: '',
     roomCode: '',
     roomPassword: '',
+    progressionMode: 'level_gated',
   });
   const [aiFiles, setAiFiles] = useState([]); // [{ file, name, size, type, previewUrl }]
   const [aiParsing, setAiParsing] = useState(false);
@@ -148,6 +150,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [aiReviewError, setAiReviewError] = useState('');
   const [generatingOptionsIdx, setGeneratingOptionsIdx] = useState(null);
   const [optGenErrors, setOptGenErrors] = useState({});
+  const [aiBulkFormatMode, setAiBulkFormatMode] = useState('manual'); // 'manual' | 'all_mcq' | 'all_direct'
 
   // ── Scroll lock while modal is open ─────────────────────────────────────────
   useEffect(() => {
@@ -500,6 +503,54 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     }));
   };
 
+  // ── Bulk Format Toggle Handlers ───────────────────────────────────────────
+  const handleApplyAllMcq = () => {
+    setAiBulkFormatMode('all_mcq');
+    setAiResult((prev) => ({
+      ...prev,
+      questions: prev.questions.map((q) => {
+        let opts = Array.isArray(q.options) && q.options.length === 4 ? [...q.options] : ['', '', '', ''];
+        let cIdx = typeof q.correctAnswerIndex === 'number' && q.correctAnswerIndex >= 0 && q.correctAnswerIndex <= 3
+          ? q.correctAnswerIndex
+          : 0;
+        if (q.directAnswer && opts.every((o) => !o.trim())) {
+          opts[0] = q.directAnswer;
+          cIdx = 0;
+        }
+        return {
+          ...q,
+          questionType: 'mcq',
+          options: opts,
+          correctAnswerIndex: cIdx,
+        };
+      }),
+    }));
+  };
+
+  const handleApplyAllDirect = () => {
+    setAiBulkFormatMode('all_direct');
+    setAiResult((prev) => ({
+      ...prev,
+      questions: prev.questions.map((q) => {
+        let directAns = q.directAnswer || '';
+        if (!directAns && Array.isArray(q.options) && q.options[q.correctAnswerIndex]) {
+          directAns = q.options[q.correctAnswerIndex];
+        }
+        return {
+          ...q,
+          questionType: 'direct',
+          directAnswer: directAns,
+          options: [],
+          correctAnswerIndex: -1,
+        };
+      }),
+    }));
+  };
+
+  const handleSetManualEdit = () => {
+    setAiBulkFormatMode('manual');
+  };
+
   const handleGenerateOptions = async (qIdx) => {
     const q = aiResult.questions[qIdx];
     if (!q?.questionText?.trim()) {
@@ -579,6 +630,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         quizTitle: aiForm.quizTitle.trim() || (aiResult.subject ? `${aiResult.subject} Quiz` : 'AI Generated Quiz'),
         subject: aiResult.subject.trim(),
         unit: aiResult.unit.trim(),
+        progressionMode: aiForm.progressionMode || 'level_gated',
         questions: aiResult.questions,
       });
 
@@ -637,6 +689,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         roomCode: code,
         roomPassword: pwd,
         quizTitle: adminForm.quizTitle.trim(),
+        progressionMode: adminForm.progressionMode || 'level_gated',
       });
 
       // Save admin credentials to sessionStorage for live dashboard authentication
@@ -1424,6 +1477,60 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
               </div>
             </div>
 
+            {/* AI Room Progression Mode Setting */}
+            <div className="form-group progression-mode-group" style={{ marginBottom: '1.25rem' }}>
+              <label className="form-label">Progression Mode</label>
+              <div className="progression-toggle-group">
+                <button
+                  type="button"
+                  className={`progression-pill ${aiForm.progressionMode === 'level_gated' ? 'is-active' : ''}`}
+                  onClick={() => setAiForm({ ...aiForm, progressionMode: 'level_gated' })}
+                >
+                  <span className="progression-pill-title">🔒 Level-Gated (Sequential Pass)</span>
+                  <span className="progression-pill-desc">Must clear passing cutoff on Level 1 to unlock Level 2</span>
+                </button>
+                <button
+                  type="button"
+                  className={`progression-pill ${aiForm.progressionMode === 'open_attempt' ? 'is-active' : ''}`}
+                  onClick={() => setAiForm({ ...aiForm, progressionMode: 'open_attempt' })}
+                >
+                  <span className="progression-pill-title">🔓 Open Attempt (Attempt All Questions)</span>
+                  <span className="progression-pill-desc">Unlocks all levels unconditionally across all scores</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Global Bulk Format Selector Toolbar */}
+            <div className="ai-bulk-format-bar">
+              <span className="ai-bulk-format-label">⚡ Bulk Format Selector:</span>
+              <div className="ai-bulk-btn-group">
+                <button
+                  type="button"
+                  className={`ai-bulk-pill ${aiBulkFormatMode === 'all_mcq' ? 'is-active' : ''}`}
+                  onClick={handleApplyAllMcq}
+                  title="Instantly converts all parsed questions to MCQ format"
+                >
+                  🔘 Apply All as MCQ
+                </button>
+                <button
+                  type="button"
+                  className={`ai-bulk-pill ${aiBulkFormatMode === 'all_direct' ? 'is-active' : ''}`}
+                  onClick={handleApplyAllDirect}
+                  title="Instantly converts all parsed questions to Direct text input format"
+                >
+                  ✏️ Apply All as Direct/Numerical
+                </button>
+                <button
+                  type="button"
+                  className={`ai-bulk-pill ${aiBulkFormatMode === 'manual' ? 'is-active' : ''}`}
+                  onClick={handleSetManualEdit}
+                  title="Retains per-question individual controls"
+                >
+                  🛠️ Manual Edit
+                </button>
+              </div>
+            </div>
+
             {/* Questions List Header */}
             <div className="ai-questions-toolbar">
               <span className="ai-questions-count">
@@ -1758,6 +1865,29 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                   value={adminForm.roomPassword}
                   onChange={(e) => setAdminForm({ ...adminForm, roomPassword: e.target.value })}
                 />
+              </div>
+
+              {/* Quiz Progression Mode Setting */}
+              <div className="form-group progression-mode-group">
+                <label className="form-label">Progression Mode</label>
+                <div className="progression-toggle-group">
+                  <button
+                    type="button"
+                    className={`progression-pill ${adminForm.progressionMode === 'level_gated' ? 'is-active' : ''}`}
+                    onClick={() => setAdminForm({ ...adminForm, progressionMode: 'level_gated' })}
+                  >
+                    <span className="progression-pill-title">🔒 Level-Gated (Sequential Pass)</span>
+                    <span className="progression-pill-desc">Must clear passing threshold on Level 1 to unlock Level 2</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`progression-pill ${adminForm.progressionMode === 'open_attempt' ? 'is-active' : ''}`}
+                    onClick={() => setAdminForm({ ...adminForm, progressionMode: 'open_attempt' })}
+                  >
+                    <span className="progression-pill-title">🔓 Open Attempt (Attempt All Questions)</span>
+                    <span className="progression-pill-desc">Unlocks all levels unconditionally across all scores</span>
+                  </button>
+                </div>
               </div>
 
               <button

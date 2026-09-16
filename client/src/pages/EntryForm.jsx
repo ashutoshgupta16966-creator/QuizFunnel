@@ -16,6 +16,7 @@ import DuplicateConfirmModal from '../components/DuplicateConfirmModal';
 import AttemptDetailView from '../components/AttemptDetailView';
 import ExitConfirmModal from '../components/ExitConfirmModal';
 import RoomRoleModal from '../components/RoomRoleModal';
+import StudentAiPracticeModal from '../components/StudentAiPracticeModal';
 
 function formatTimeMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -34,6 +35,9 @@ export default function EntryForm() {
 
   // QR Modal state
   const [showQrModal, setShowQrModal] = useState(false);
+  // AI Self-Practice Modal state
+  const [showAiPracticeModal, setShowAiPracticeModal] = useState(false);
+  const [practiceReattemptData, setPracticeReattemptData] = useState(null);
   // Soft Duplicate Attempt Warning Modal state
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   // Home screen back-button / swipe-back exit guard
@@ -484,7 +488,7 @@ export default function EntryForm() {
 
   return (
     <div className="entry-page">
-      {/* Top Left Stack: Dark/Light Mode Toggle + QR Code Button (Below) */}
+      {/* Top Left Stack: Dark/Light Mode Toggle + QR Code Button + AI Self-Practice */}
       <div className="entry-top-left">
         <ThemeToggle />
         <button
@@ -494,6 +498,17 @@ export default function EntryForm() {
           title="Show Quiz Direct Access QR Code"
         >
           📱 <span className="btn-text">QR Code</span>
+        </button>
+        <button
+          type="button"
+          className="ai-practice-btn nav-pill-btn"
+          onClick={() => {
+            setPracticeReattemptData(null);
+            setShowAiPracticeModal(true);
+          }}
+          title="AI Self-Practice Quiz from Document or Notes"
+        >
+          🤖 <span className="btn-text">AI Self-Practice</span>
         </button>
       </div>
 
@@ -534,6 +549,15 @@ export default function EntryForm() {
       </div>
 
       <QrModal isOpen={showQrModal} onClose={() => setShowQrModal(false)} />
+      <StudentAiPracticeModal
+        isOpen={showAiPracticeModal}
+        onClose={() => {
+          setShowAiPracticeModal(false);
+          setPracticeReattemptData(null);
+        }}
+        homeFormData={form}
+        reattemptData={practiceReattemptData}
+      />
       <DuplicateConfirmModal
         isOpen={showDuplicateModal}
         onConfirm={handleConfirmDuplicateAttempt}
@@ -894,6 +918,11 @@ export default function EntryForm() {
                       attemptDetail={selectedAttemptDetail}
                       studentData={authedStudentData}
                       onBack={() => setSelectedAttemptDetail(null)}
+                      onReattemptPractice={(pData) => {
+                        setShowHistoryModal(false);
+                        setPracticeReattemptData(pData);
+                        setShowAiPracticeModal(true);
+                      }}
                     />
                   ) : (
                     /* Attempt Cards History List */
@@ -937,10 +966,13 @@ export default function EntryForm() {
                             const timeSecs = attempt.totalTimeTaken ?? 0;
                             const accuracy = attempt.accuracyPct ?? (maxPoss > 0 ? Math.round((score / maxPoss) * 100) : 0);
 
+                            const isPracticeAttempt = Boolean(attempt.isPractice || attempt.quizType === 'practice');
+
                             const cardDetailData = {
                               ...attempt,
                               isDisqualified: isDisqualifiedAttempt,
                               isRoom: isRoomAttempt,
+                              isPractice: isPracticeAttempt,
                               roomCode,
                               attemptNum,
                               clearedLvl,
@@ -953,7 +985,7 @@ export default function EntryForm() {
                             return (
                               <div
                                 key={attemptId}
-                                className={`attempt-history-card ${isDisqualifiedAttempt ? 'disqualified-card' : ''}`}
+                                className={`attempt-history-card ${isDisqualifiedAttempt ? 'disqualified-card' : ''} ${isPracticeAttempt ? 'practice-card' : ''}`}
                                 onClick={() => setSelectedAttemptDetail(cardDetailData)}
                                 title="Click to view full detailed performance summary"
                               >
@@ -972,6 +1004,11 @@ export default function EntryForm() {
                                     </div>
 
                                     <div className="attempt-actions-row">
+                                      {isPracticeAttempt && (
+                                        <span className="status-badge practice-badge">
+                                          🤖 AI Practice {attempt.subject ? `· ${attempt.subject}` : ''}
+                                        </span>
+                                      )}
                                       {isRoomAttempt && (
                                         <span className="status-badge room-badge">
                                           Room Quiz 🏫 {roomCode ? `(${roomCode})` : ''}

@@ -8,9 +8,10 @@ function formatTimeMMSS(seconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-export default function AttemptDetailView({ attemptDetail, studentData, onBack }) {
+export default function AttemptDetailView({ attemptDetail, studentData, onBack, onReattemptPractice }) {
   const mobile = attemptDetail?.mobile || studentData?.mobile;
   const attemptId = attemptDetail?._id || attemptDetail?.id || attemptDetail?.attemptId || `attempt_${mobile}_${attemptDetail?.clearedLvl}`;
+  const isPractice = Boolean(attemptDetail?.isPractice || attemptDetail?.quizType === 'practice');
 
   // ── Level Accordion State ────────────────────────────────────────────────
   const [expandedLevels, setExpandedLevels] = useState(() => {
@@ -163,23 +164,33 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
       </div>
 
       {/* Hero Summary Card */}
-      <div className={`detail-hero-card ${isDisqualified ? 'is-disqualified-hero' : ''}`}>
+      <div className={`detail-hero-card ${isDisqualified ? 'is-disqualified-hero' : ''} ${isPractice ? 'is-practice-hero' : ''}`}>
         <div className="detail-hero-icon">
-          {isDisqualified ? '🚨' : isCompleted ? '🏆' : '⚡'}
+          {isPractice ? '🤖' : isDisqualified ? '🚨' : isCompleted ? '🏆' : '⚡'}
         </div>
         <h3 className="detail-hero-title">
-          {isDisqualified
+          {isPractice
+            ? (attemptDetail.subject ? `${attemptDetail.subject} (AI Practice)` : 'AI Self-Practice Session')
+            : isDisqualified
             ? 'Assessment Terminated & Disqualified'
             : isCompleted
             ? 'Quiz Completed Successfully!'
             : `Attempt Ended at Level ${attemptDetail.clearedLvl}`}
         </h3>
+        {isPractice && attemptDetail.unit && (
+          <p style={{ color: '#6366f1', fontWeight: 600, fontSize: '0.875rem', marginTop: '0.25rem' }}>
+            📖 Unit/Topic: {attemptDetail.unit}
+          </p>
+        )}
         {isDisqualified && (
           <p style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.875rem', marginTop: '0.35rem' }}>
             ⚠️ Terminated due to exceeding the maximum allowed limit of 4 tab switches.
           </p>
         )}
         <p className="detail-hero-meta">
+          {isPractice && (
+            <span style={{ color: '#8b5cf6', fontWeight: 700 }}>[AI Self-Practice] · </span>
+          )}
           {isRoomAttempt && (
             <span style={{ color: '#a78bfa', fontWeight: 700 }}>[Room: {roomCode}] · </span>
           )}
@@ -196,11 +207,11 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
       {/* Performance Metrics Grid */}
       <div className="detail-metrics-grid">
         <div className="detail-metric-card">
-          <span className="detail-metric-label">Level Reached</span>
-          <span className="detail-metric-val">Level {attemptDetail.clearedLvl} of 4</span>
+          <span className="detail-metric-label">{isPractice ? 'Type' : 'Level Reached'}</span>
+          <span className="detail-metric-val">{isPractice ? 'Self-Practice' : `Level ${attemptDetail.clearedLvl} of 4`}</span>
         </div>
         <div className="detail-metric-card">
-          <span className="detail-metric-label">Total Score (All Levels)</span>
+          <span className="detail-metric-label">Total Score</span>
           <span className="detail-metric-val">{attemptDetail.score} / {attemptDetail.maxPoss}</span>
         </div>
         <div className="detail-metric-card">
@@ -212,6 +223,28 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack }
           <span className="detail-metric-val">{formatTimeMMSS(attemptDetail.timeSecs)}</span>
         </div>
       </div>
+
+      {/* ── Prominent Re-Attempt Practice Action Banner ── */}
+      {isPractice && onReattemptPractice && (
+        <div className="practice-reattempt-banner">
+          <div className="practice-reattempt-left">
+            <span className="practice-reattempt-icon">⚡</span>
+            <div>
+              <strong className="practice-reattempt-heading">Master this topic with another attempt!</strong>
+              <p className="practice-reattempt-desc">
+                Retake this exact question set right now with zero setup or re-upload needed.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary reattempt-practice-btn"
+            onClick={() => onReattemptPractice(attemptDetail)}
+          >
+            🔄 Re-Attempt Practice Set
+          </button>
+        </div>
+      )}
 
       {/* ── Interactive Level-by-Level Breakdown ── */}
       <div className="detail-breakdown-card">

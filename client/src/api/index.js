@@ -69,6 +69,9 @@ export const resetPasswordWithOtp = (data) =>
 export const deleteStudentAttempt = (data) =>
   api.post('/api/students/delete-attempt', data);
 
+export const savePracticeAttempt = (data) =>
+  api.post('/api/students/save-practice-attempt', data);
+
 // ── Quiz endpoints ───────────────────────────────────────────────────────────
 export const getQuestions = (level, mobile, roomCode) =>
   api.get(`/api/quiz/questions/${level}`, {

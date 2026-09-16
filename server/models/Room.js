@@ -61,6 +61,7 @@ const RoomSchema = new mongoose.Schema({
   isAiGenerated: { type: Boolean, default: false },
   subject:      { type: String, trim: true, default: '' },
   unit:         { type: String, trim: true, default: '' },
+  progressionMode: { type: String, enum: ['level_gated', 'open_attempt'], default: 'level_gated' },
   questions:    [RoomQuestionSchema],
   participants: [ParticipantSchema],
   reattemptRequests: [ReattemptRequestSchema],

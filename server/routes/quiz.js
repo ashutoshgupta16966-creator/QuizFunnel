@@ -403,7 +403,20 @@ router.post('/submit', async (req, res, next) => {
       ? Math.max(1, Math.ceil(sessionCount * 0.7))
       : levelConfig.cutoff;
     // Level 4 has no cutoff — everyone who reaches it gets ranked
-    const passed = isDisqualified ? false : (isLastLevel ? true : score >= dynamicCutoff);
+    let passed = isDisqualified ? false : (isLastLevel ? true : score >= dynamicCutoff);
+
+    // Open Attempt Mode: Unconditionally allow progression across all levels regardless of score
+    if (isRoom && roomCode && !isDisqualified && !isLastLevel) {
+      try {
+        const normalizedRoomCode = roomCode.trim().toUpperCase();
+        const roomDoc = await Room.findOne({ roomCode: normalizedRoomCode }).select('progressionMode').lean();
+        if (roomDoc?.progressionMode === 'open_attempt') {
+          passed = true;
+        }
+      } catch (err) {
+        console.warn('[Open Attempt Mode Check Error]:', err.message);
+      }
+    }
 
     let newStatus, newCurrentLevel;
     let completedAt;

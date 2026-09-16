@@ -331,4 +331,81 @@ router.get('/:mobile/status', async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/students/save-practice-attempt
+ * Saves an AI Self-Practice session into student attemptHistory for permanent viewing in My Results.
+ */
+router.post('/save-practice-attempt', async (req, res, next) => {
+  try {
+    const {
+      mobile,
+      name,
+      branch,
+      totalScore = 0,
+      maxPossible = 10,
+      accuracyPct = 0,
+      totalTimeTaken = 0,
+      subject = 'AI Self-Practice',
+      unit = '',
+      practiceData = null,
+      levelsSummary = [],
+    } = req.body;
+
+    if (!mobile || !/^\d{10}$/.test(mobile)) {
+      return res.status(400).json({ success: false, error: 'Valid 10-digit mobile number is required.' });
+    }
+
+    let student = await Student.findOne({ mobile: mobile.trim() });
+    if (!student) {
+      student = await Student.create({
+        name: (name || 'Practice Student').trim(),
+        mobile: mobile.trim(),
+        branch: branch || 'CSE',
+        password: 'practice_user',
+      });
+    }
+
+    const attemptId = `practice_${mobile}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const historyRecord = {
+      attemptId,
+      attemptNumber: (student.attemptHistory?.length || 0) + 1,
+      attemptDate: new Date(),
+      levelReached: 1,
+      totalScore,
+      maxPossible,
+      accuracyPct,
+      totalTimeTaken,
+      status: 'completed',
+      isDisqualified: false,
+      quizType: 'practice',
+      isPractice: true,
+      isRoom: false,
+      roomCode: null,
+      subject: subject || 'AI Self-Practice',
+      unit: unit || '',
+      practiceData,
+      levelsSummary: levelsSummary.length > 0 ? levelsSummary : [
+        {
+          level: 1,
+          score: totalScore,
+          timeTaken: totalTimeTaken,
+          submittedAt: new Date(),
+          answers: [],
+        },
+      ],
+    };
+
+    student.attemptHistory.push(historyRecord);
+    await student.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Practice attempt saved successfully to My Results.',
+      data: historyRecord,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
