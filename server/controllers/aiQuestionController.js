@@ -1,4 +1,5 @@
 const Question = require('../models/Question');
+const { sanitizeMcqOptions } = require('./aiVisionController');
 
 let GoogleGenAI;
 try {
@@ -44,8 +45,8 @@ Return ONLY a raw, valid JSON array of objects. Do NOT use markdown styling, bac
 JSON Structure:
 [
   {
-    "questionText": "Question text string?",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "questionText": "What is the time complexity of searching an element in a balanced binary search tree?",
+    "options": ["O(log n)", "O(n)", "O(n log n)", "O(1)"],
     "correctAnswerIndex": 0,
     "section": "Technical",
     "difficulty": "medium"
@@ -53,7 +54,7 @@ JSON Structure:
 ]
 
 RULES:
-1. "options" MUST be an array of exactly 4 non-empty strings.
+1. "options" MUST be an array of exactly 4 meaningful, non-empty contextual strings. NEVER output generic placeholders like "Option A", "Option B", "Option C", "Option D".
 2. "correctAnswerIndex" MUST be an integer between 0 and 3 (index of correct option).
 3. "section" MUST be one of: ["GK", "Technical", "Reasoning", "Aptitude", "Mixed"].
 4. "difficulty" MUST be "easy", "medium", or "hard".
@@ -99,19 +100,19 @@ RULES:
           if (
             item.questionText &&
             Array.isArray(item.options) &&
-            item.options.length === 4 &&
-            Number.isInteger(item.correctAnswerIndex) &&
-            item.correctAnswerIndex >= 0 &&
-            item.correctAnswerIndex <= 3
+            Number.isInteger(item.correctAnswerIndex)
           ) {
+            const sec = ['GK', 'Technical', 'Reasoning', 'Aptitude', 'Mixed'].includes(item.section)
+              ? item.section
+              : 'Technical';
+            const sanitized = sanitizeMcqOptions(item.questionText, item.options, '', item.correctAnswerIndex, sec);
+
             validDocs.push({
               level: levelNum,
-              section: ['GK', 'Technical', 'Reasoning', 'Aptitude', 'Mixed'].includes(item.section)
-                ? item.section
-                : 'Technical',
+              section: sec,
               questionText: item.questionText.trim(),
-              options: item.options.map((o) => String(o).trim()),
-              correctAnswerIndex: item.correctAnswerIndex,
+              options: sanitized.options,
+              correctAnswerIndex: sanitized.correctAnswerIndex,
               difficulty: ['easy', 'medium', 'hard'].includes(item.difficulty)
                 ? item.difficulty
                 : 'medium',

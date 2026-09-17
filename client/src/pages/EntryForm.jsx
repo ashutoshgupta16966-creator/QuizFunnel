@@ -491,21 +491,40 @@ export default function EntryForm() {
 
   return (
     <div className="entry-page">
-      {/* Top Left Stack: Dark/Light Mode Toggle + QR Code Button + Self Practice */}
-      <div className="entry-top-left">
-        <ThemeToggle />
-        <div className="entry-top-left-actions-grid">
+      {/* Universal Top Navigation: Clean 2-Row Action Pills */}
+      <header className="entry-header-nav" role="navigation" aria-label="Main Navigation">
+        <div className="entry-nav-row entry-nav-row-1">
+          <ThemeToggle />
           <button
             type="button"
-            className="qr-trigger-btn nav-pill-btn uniform-top-pill"
+            className="my-results-btn nav-pill-btn"
+            onClick={handleOpenResultsModal}
+            title="Access your private quiz attempts history"
+          >
+            🏆 <span className="btn-text">My Results</span>
+          </button>
+          <button
+            type="button"
+            className="qr-trigger-btn nav-pill-btn"
             onClick={() => setShowQrModal(true)}
             title="Show Quiz Direct Access QR Code"
           >
             📱 <span className="btn-text">QR Code</span>
           </button>
+        </div>
+
+        <div className="entry-nav-row entry-nav-row-2">
           <button
             type="button"
-            className="self-practice-btn nav-pill-btn uniform-top-pill"
+            className="quiz-rooms-btn nav-pill-btn"
+            onClick={() => setShowRoomRoleModal(true)}
+            title="Create or Join a Live Quiz Room"
+          >
+            🏫 <span className="btn-text">Quiz Rooms</span>
+          </button>
+          <button
+            type="button"
+            className="self-practice-btn nav-pill-btn"
             onClick={() => {
               setPracticeReattemptData(null);
               setShowAiPracticeModal(true);
@@ -514,44 +533,25 @@ export default function EntryForm() {
           >
             🤖 <span className="btn-text">Self Practice</span>
           </button>
+          {!isAppInstalled && (
+            <button
+              type="button"
+              className="pwa-install-pill-btn nav-pill-btn"
+              onClick={handleInstallApp}
+              title="Install Quiz Funnel as an App"
+              aria-label="Install App"
+            >
+              📲 <span className="btn-text">Install App</span>
+            </button>
+          )}
         </div>
-      </div>
 
-      {/* Top Right Stack: My Results (Top) + Quiz Rooms + PWA Install Icon */}
-      <div className="entry-top-right">
-        <button
-          type="button"
-          className="my-results-btn nav-pill-btn"
-          onClick={handleOpenResultsModal}
-          title="Access your private quiz attempts history"
-        >
-          🏆 <span className="btn-text">My Results</span>
-        </button>
-        <button
-          type="button"
-          className="quiz-rooms-btn nav-pill-btn"
-          onClick={() => setShowRoomRoleModal(true)}
-          title="Create or Join a Live Quiz Room"
-        >
-          🏫 <span className="btn-text">Quiz Rooms</span>
-        </button>
-        {!isAppInstalled && (
-          <button
-            type="button"
-            className="pwa-float-icon-btn"
-            onClick={handleInstallApp}
-            title="Install Quiz Funnel as an App"
-            aria-label="Install App"
-          >
-            <span className="pwa-float-phone" aria-hidden>📲</span>
-          </button>
-        )}
         {pwaSuccessMsg && (
           <div className="pwa-float-toast" role="status">
             {pwaSuccessMsg}
           </div>
         )}
-      </div>
+      </header>
 
       <QrModal isOpen={showQrModal} onClose={() => setShowQrModal(false)} />
       <StudentAiPracticeModal

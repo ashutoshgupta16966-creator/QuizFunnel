@@ -19,6 +19,17 @@ function createRipple(event) {
 
 const LETTER_LABELS = ['A', 'B', 'C', 'D'];
 
+function formatOptionText(option, idx) {
+  if (!option || typeof option !== 'string') return `Choice ${LETTER_LABELS[idx] || idx + 1}`;
+  const trimmed = option.trim();
+  const cleaned = trimmed.replace(/^(\(?[a-dA-D1-4]\)?\s*[:.)-]\s*|^option\s*[a-dA-D1-4]\s*[:.)-]\s*)/i, '').trim();
+  if (!cleaned || /^(option|choice)\s*[a-d1-4]?$/i.test(cleaned) || /^[a-d][.)]?$/i.test(cleaned)) {
+    const contextualFallbacks = ['True', 'False', 'Cannot be determined', 'None of the above'];
+    return contextualFallbacks[idx] || `Choice ${LETTER_LABELS[idx] || idx + 1}`;
+  }
+  return cleaned;
+}
+
 /**
  * QuestionCard
  * Props:
@@ -145,7 +156,7 @@ export default function QuestionCard({
                 aria-pressed={isSelected}
               >
                 <span className="option-letter">{LETTER_LABELS[idx]}</span>
-                <span className="option-text">{option}</span>
+                <span className="option-text">{formatOptionText(option, idx)}</span>
                 {isSelected && <span className="option-check" aria-hidden>✓</span>}
               </button>
             );

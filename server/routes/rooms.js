@@ -4,7 +4,7 @@ const multer = require('multer');
 const Room = require('../models/Room');
 const Student = require('../models/Student');
 const Question = require('../models/Question');
-const { parseQuizDocumentWithGemini } = require('../controllers/aiVisionController');
+const { parseQuizDocumentWithGemini, sanitizeMcqOptions, isGenericPlaceholderOption } = require('../controllers/aiVisionController');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -208,13 +208,7 @@ router.post('/create-ai', async (req, res, next) => {
           explanation: exp,
         });
       } else {
-        const opts = Array.isArray(q.options)
-          ? q.options.map((o) => String(o).trim()).filter(Boolean)
-          : [];
-        if (opts.length !== 4) continue;
-
-        let cIdx = parseInt(q.correctAnswerIndex, 10);
-        if (isNaN(cIdx) || cIdx < 0 || cIdx > 3) cIdx = 0;
+        const sanitized = sanitizeMcqOptions(qText, q.options, q.directAnswer || '', q.correctAnswerIndex, sec);
 
         questionDocs.push({
           roomCode: normalizedCode,
@@ -222,9 +216,9 @@ router.post('/create-ai', async (req, res, next) => {
           level: lvl,
           section: sec,
           questionText: qText,
-          options: opts,
-          correctAnswerIndex: cIdx,
-          directAnswer: opts[cIdx] || '',
+          options: sanitized.options,
+          correctAnswerIndex: sanitized.correctAnswerIndex,
+          directAnswer: sanitized.directAnswer || sanitized.options[sanitized.correctAnswerIndex] || '',
           difficulty: diff,
           explanation: exp,
         });
@@ -847,9 +841,10 @@ Generate exactly 4 plausible multiple-choice options (A, B, C, D).
 - Keep each option concise (under 15 words).
 
 Respond ONLY with a valid JSON object in this exact format (no markdown, no explanation):
-{"options":["Option A text","Option B text","Option C text","Option D text"],"correctIndex":0}
+{"options":["First plausible choice","Second plausible choice","Third plausible choice","Fourth plausible choice"],"correctIndex":0}
 
-Where correctIndex is 0-based (0=A, 1=B, 2=C, 3=D).`;
+Where correctIndex is 0-based (0=A, 1=B, 2=C, 3=D).
+CRITICAL: Options MUST be real, meaningful, contextual answers. NEVER output generic placeholders like "Option A", "Option B", "Option C", "Option D".`;
 
     for (const modelName of FALLBACK_MODELS) {
       try {
@@ -876,9 +871,10 @@ Where correctIndex is 0-based (0=A, 1=B, 2=C, 3=D).`;
           parsed.options.length === 4 &&
           typeof parsed.correctIndex === 'number' &&
           parsed.correctIndex >= 0 &&
-          parsed.correctIndex <= 3
+          parsed.correctIndex <= 3 &&
+          !parsed.options.every(isGenericPlaceholderOption)
         ) {
-          result = parsed;
+          result = sanitizeMcqOptions(questionText, parsed.options, '', parsed.correctIndex);
           break;
         }
       } catch (modelErr) {

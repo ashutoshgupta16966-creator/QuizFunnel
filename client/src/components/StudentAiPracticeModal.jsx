@@ -13,6 +13,50 @@ function formatMMSS(seconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+function isPlaceholderChoice(text) {
+  if (!text || typeof text !== 'string') return true;
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  return /^(option|choice)\s*[a-d1-4]?$/i.test(trimmed) || /^[a-d][.)]?$/i.test(trimmed);
+}
+
+function ensureValidMcqOptions(q) {
+  const existing = Array.isArray(q?.options)
+    ? q.options.map((o) => String(o || '').trim()).filter((o) => !isPlaceholderChoice(o))
+    : [];
+
+  if (existing.length === 4) return existing;
+
+  const direct = String(q?.directAnswer || '').trim();
+  const options = [...existing];
+
+  if (direct && !isPlaceholderChoice(direct) && !options.includes(direct)) {
+    options.unshift(direct);
+  }
+
+  const standardFallbacks = [
+    'True',
+    'False',
+    'Cannot be determined',
+    'None of the above',
+    'All of the above',
+    'Both of the above',
+  ];
+
+  for (const f of standardFallbacks) {
+    if (options.length >= 4) break;
+    if (!options.includes(f)) {
+      options.push(f);
+    }
+  }
+
+  while (options.length < 4) {
+    options.push(`Alternative ${options.length + 1}`);
+  }
+
+  return options.slice(0, 4);
+}
+
 export default function StudentAiPracticeModal({
   isOpen,
   onClose,
@@ -199,7 +243,7 @@ export default function StudentAiPracticeModal({
           id: `q_${idx}_${Date.now()}`,
           questionText: q.questionText || `Question ${idx + 1}`,
           questionType: q.questionType === 'direct' ? 'direct' : 'mcq',
-          options: Array.isArray(q.options) && q.options.length === 4 ? q.options : ['Option A', 'Option B', 'Option C', 'Option D'],
+          options: q.questionType === 'direct' ? [] : ensureValidMcqOptions(q),
           correctAnswerIndex: typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : 0,
           directAnswer: q.directAnswer || '',
           level: [1, 2, 3, 4].includes(q.level) ? q.level : ((idx % 3) + 1),
@@ -235,7 +279,7 @@ export default function StudentAiPracticeModal({
       prev.map((q) => ({
         ...q,
         questionType: 'mcq',
-        options: Array.isArray(q.options) && q.options.length === 4 ? q.options : ['Option A', 'Option B', 'Option C', 'Option D'],
+        options: ensureValidMcqOptions(q),
         correctAnswerIndex: typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : 0,
       }))
     );
@@ -267,7 +311,7 @@ export default function StudentAiPracticeModal({
         ...cur,
         questionType: newType,
         directAnswer: newType === 'direct' ? (cur.directAnswer || (cur.options && cur.options[cur.correctAnswerIndex]) || '') : cur.directAnswer,
-        options: newType === 'mcq' ? (cur.options && cur.options.length === 4 ? cur.options : ['Option A', 'Option B', 'Option C', 'Option D']) : cur.options,
+        options: newType === 'mcq' ? ensureValidMcqOptions(cur) : [],
       };
       return next;
     });

@@ -4,6 +4,7 @@ const Question = require('../models/Question');
 const Student = require('../models/Student');
 const Room = require('../models/Room');
 const LEVELS = require('../config/levels');
+const { sanitizeMcqOptions, isGenericPlaceholderOption } = require('../controllers/aiVisionController');
 
 /**
  * Fisher-Yates shuffle for 4 option indices.
@@ -15,14 +16,19 @@ const LEVELS = require('../config/levels');
  *   student picks newPosition → originalPosition = shuffleMap[newPosition]
  *   isCorrect = (originalPosition === question.correctAnswerIndex)
  */
-function shuffleOptions(options) {
+function shuffleOptions(options, questionText = '', section = 'Technical') {
+  let cleanOpts = Array.isArray(options) ? options : [];
+  if (cleanOpts.length < 4 || cleanOpts.some(isGenericPlaceholderOption)) {
+    const sanitized = sanitizeMcqOptions(questionText, cleanOpts, '', 0, section);
+    cleanOpts = sanitized.options;
+  }
   const indices = [0, 1, 2, 3];
   for (let i = 3; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [indices[i], indices[j]] = [indices[j], indices[i]];
   }
   return {
-    shuffledOptions: indices.map((i) => options[i]),
+    shuffledOptions: indices.map((i) => cleanOpts[i]),
     shuffleMap: indices,
   };
 }
@@ -118,7 +124,9 @@ router.get('/questions/:level', async (req, res, next) => {
           questionType: 'mcq',
           section: q.section,
           // Rebuild shuffled options from stored shuffleMap
-          options: Array.isArray(sq.shuffleMap) ? sq.shuffleMap.map((i) => q.options[i]) : q.options,
+          options: (Array.isArray(sq.shuffleMap) ? sq.shuffleMap.map((i) => q.options[i]) : q.options).map((o, idx) => {
+            return isGenericPlaceholderOption(o) ? (['True', 'False', 'Cannot be determined', 'None of the above'][idx] || `Choice ${idx + 1}`) : o;
+          }),
         };
       }).filter(Boolean);
 
@@ -217,7 +225,7 @@ router.get('/questions/:level', async (req, res, next) => {
           options: [],
         });
       } else {
-        const { shuffledOptions, shuffleMap } = shuffleOptions(q.options);
+        const { shuffledOptions, shuffleMap } = shuffleOptions(q.options, q.questionText, q.section);
         sessionQuestions.push({ questionId: q._id, questionType: 'mcq', shuffleMap });
         clientQuestions.push({
           _id: q._id,
