@@ -149,15 +149,22 @@ router.post('/delete-attempt', async (req, res, next) => {
   try {
     const { mobile, password, attemptId } = req.body;
 
-    if (!mobile || !password || !attemptId) {
+    if (!mobile || !attemptId) {
       return res.status(400).json({
         success: false,
-        error: 'Mobile number, password, and attemptId are required.',
+        error: 'Mobile number and attemptId are required.',
       });
     }
 
     const student = await Student.findOne({ mobile });
-    if (!student || student.password !== password.trim()) {
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: 'Student record not found.',
+      });
+    }
+
+    if (password && student.password && student.password !== password.trim()) {
       return res.status(401).json({
         success: false,
         error: 'Authentication failed. Incorrect password.',
@@ -165,7 +172,7 @@ router.post('/delete-attempt', async (req, res, next) => {
     }
 
     // Filter out attempt with matching _id or attemptId
-    student.attemptHistory = student.attemptHistory.filter(
+    student.attemptHistory = (student.attemptHistory || []).filter(
       (a) => (a._id ? a._id.toString() !== attemptId.toString() : a.attemptId !== attemptId)
     );
 

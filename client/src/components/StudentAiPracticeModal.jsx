@@ -20,6 +20,40 @@ function isPlaceholderChoice(text) {
   return /^(option|choice)\s*[a-d1-4]?$/i.test(trimmed) || /^[a-d][.)]?$/i.test(trimmed);
 }
 
+function isNumericalOrMathQuestion(q) {
+  const text = (q?.questionText || '').toLowerCase();
+  const direct = String(q?.directAnswer || '').trim();
+  const opts = Array.isArray(q?.options) ? q.options : [];
+
+  // 1. Direct answer is a number or contains numbers with optional units (e.g. "42", "-3.5", "10 m/s", "50%", "0.05")
+  if (direct && (/^-?\d+(?:\.\d+)?(?:\s*[%°a-zA-Z/]+)?$/.test(direct) || /^\d+$/.test(direct.replace(/[^0-9]/g, '')))) {
+    return true;
+  }
+
+  // 2. Any option contains purely numbers
+  if (opts.some((o) => /^-?\d+(?:\.\d+)?(?:\s*[%°a-zA-Z/]+)?$/.test(String(o || '').trim()))) {
+    return true;
+  }
+
+  // 3. Question contains calculation keywords
+  const mathKeywords = [
+    'calculate', 'compute', 'evaluate', 'solve for', 'value of', 'sum of', 'product of',
+    'difference between', 'ratio of', 'remainder', 'percentage', 'how many', 'how much',
+    'equals', 'mod', 'area of', 'perimeter', 'volume', 'probability', 'average', 'mean',
+    'speed', 'velocity', 'acceleration', 'frequency', 'resistance', 'voltage', 'current',
+  ];
+  if (mathKeywords.some((kw) => text.includes(kw))) {
+    return true;
+  }
+
+  // 4. Mathematical operators
+  if (/[-+*/^%=]\s*\d+/.test(text) || /\d+\s*[-+*/^%=]/.test(text)) {
+    return true;
+  }
+
+  return false;
+}
+
 function ensureValidMcqOptions(q) {
   const existing = Array.isArray(q?.options)
     ? q.options.map((o) => String(o || '').trim()).filter((o) => !isPlaceholderChoice(o))
@@ -34,16 +68,91 @@ function ensureValidMcqOptions(q) {
     options.unshift(direct);
   }
 
-  const standardFallbacks = [
-    'True',
-    'False',
-    'Cannot be determined',
-    'None of the above',
-    'All of the above',
-    'Both of the above',
+  const isMath = isNumericalOrMathQuestion(q);
+
+  if (isMath) {
+    // Mathematical / Numerical question: synthesize distinct realistic math variations
+    let baseNum = null;
+    let unit = '';
+
+    const directMatch = direct.match(/^(-?\d+(?:\.\d+)?)\s*(.*)$/);
+    if (directMatch) {
+      baseNum = parseFloat(directMatch[1]);
+      unit = directMatch[2] ? ` ${directMatch[2].trim()}` : '';
+    } else {
+      const qNumMatch =
+        (q?.questionText || '').match(/equals?\s*(-?\d+(?:\.\d+)?)/i) ||
+        (q?.questionText || '').match(/(-?\d+(?:\.\d+)?)\s*(?:m\/s|km\/h|hz|v|a|w|%|ohms?|deg|°c)/i) ||
+        (q?.questionText || '').match(/\b(-?\d+(?:\.\d+)?)\b/);
+      if (qNumMatch) {
+        baseNum = parseFloat(qNumMatch[1]);
+      } else {
+        baseNum = 10;
+      }
+    }
+
+    const isInt = Number.isInteger(baseNum);
+    const formatVal = (n) => `${isInt ? Math.round(n) : Number(n).toFixed(1)}${unit}`;
+
+    const mathVariations = isInt
+      ? [
+          baseNum + 1,
+          baseNum - 1,
+          baseNum * 2,
+          baseNum + 2,
+          baseNum > 1 ? Math.floor(baseNum / 2) : baseNum + 3,
+          baseNum + 5,
+          Math.max(0, baseNum - 2),
+        ]
+      : [
+          baseNum + 0.5,
+          Math.max(0, baseNum - 0.5),
+          baseNum * 1.5,
+          baseNum * 0.5,
+          baseNum + 1.0,
+        ];
+
+    for (const v of mathVariations) {
+      if (options.length >= 4) break;
+      const formatted = formatVal(v);
+      if (!options.includes(formatted)) {
+        options.push(formatted);
+      }
+    }
+
+    while (options.length < 4) {
+      options.push(formatVal(baseNum + options.length * 2));
+    }
+
+    return options.slice(0, 4);
+  }
+
+  // Non-mathematical: Check if strictly boolean
+  const qText = (q?.questionText || '').toLowerCase();
+  const isBool =
+    direct.toLowerCase() === 'true' ||
+    direct.toLowerCase() === 'false' ||
+    qText.includes('true or false') ||
+    qText.includes('true/false');
+
+  if (isBool) {
+    const boolFallbacks = ['True', 'False', 'Partially true', 'Cannot be determined'];
+    for (const f of boolFallbacks) {
+      if (options.length >= 4) break;
+      if (!options.includes(f)) options.push(f);
+    }
+    return options.slice(0, 4);
+  }
+
+  // Conceptual non-boolean question: Use contextual conceptual distractors (strictly NO True/False)
+  const conceptualFallbacks = [
+    'Standard operational specification',
+    'Alternative architectural structure',
+    'Primary operational characteristic',
+    'Specialized interface protocol',
   ];
 
-  for (const f of standardFallbacks) {
+  for (const f of conceptualFallbacks) {
     if (options.length >= 4) break;
     if (!options.includes(f)) {
       options.push(f);

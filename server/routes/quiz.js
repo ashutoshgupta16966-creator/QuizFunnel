@@ -118,15 +118,16 @@ router.get('/questions/:level', async (req, res, next) => {
             options: [],
           };
         }
-        return {
-          _id: q._id,
-          questionText: q.questionText,
-          questionType: 'mcq',
-          section: q.section,
-          // Rebuild shuffled options from stored shuffleMap
-          options: (Array.isArray(sq.shuffleMap) ? sq.shuffleMap.map((i) => q.options[i]) : q.options).map((o, idx) => {
-            return isGenericPlaceholderOption(o) ? (['True', 'False', 'Cannot be determined', 'None of the above'][idx] || `Choice ${idx + 1}`) : o;
-          }),
+          // Rebuild shuffled options from stored shuffleMap using active context-aware sanitizer
+          const rawRebuilt = Array.isArray(sq.shuffleMap) ? sq.shuffleMap.map((i) => q.options[i]) : q.options;
+          const sanitized = sanitizeMcqOptions(q.questionText, rawRebuilt, q.directAnswer || '', q.correctAnswerIndex, q.section);
+          return {
+            _id: q._id,
+            questionText: q.questionText,
+            questionType: 'mcq',
+            section: q.section,
+            options: sanitized.options,
+          };
         };
       }).filter(Boolean);
 

@@ -40,20 +40,169 @@ function cleanOptionPrefix(text) {
 }
 
 /**
+ * Detects whether a question or answer is mathematical, numerical, or calculation-oriented.
+ */
+function isNumericalOrMathQuery(questionText = '', directAnswer = '', rawOptions = []) {
+  const q = (questionText || '').toLowerCase();
+  const d = (directAnswer || '').trim();
+
+  // 1. Direct answer is a number or contains numbers with optional units (e.g. "42", "-3.5", "10 m/s", "50%", "0.05")
+  if (d && (/^-?\d+(?:\.\d+)?(?:\s*[%°a-zA-Z/]+)?$/.test(d) || /^\d+$/.test(d.replace(/[^0-9]/g, '')))) {
+    return true;
+  }
+
+  // 2. Any option contains purely numbers or numbers with units
+  if (Array.isArray(rawOptions) && rawOptions.some((o) => /^-?\d+(?:\.\d+)?(?:\s*[%°a-zA-Z/]+)?$/.test(String(o || '').trim()))) {
+    return true;
+  }
+
+  // 3. Question contains calculation keywords or arithmetic operations
+  const mathKeywords = [
+    'calculate', 'compute', 'evaluate', 'solve for', 'value of', 'sum of', 'product of',
+    'difference between', 'ratio of', 'remainder', 'percentage', 'how many', 'how much',
+    'equals', 'mod', 'area of', 'perimeter', 'volume', 'probability', 'average', 'mean',
+    'median', 'mode', 'standard deviation', 'speed', 'velocity', 'acceleration',
+    'frequency', 'resistance', 'voltage', 'current', 'capacitance', 'inductance',
+    'binary to decimal', 'decimal to binary', 'hexadecimal', 'simplify', 'solve'
+  ];
+  if (mathKeywords.some((kw) => q.includes(kw))) {
+    return true;
+  }
+
+  // 4. Mathematical operators with numbers (e.g., "15 + 4", "10 * 2", "5 / 2", "x = 4")
+  if (/[-+*/^%=]\s*\d+/.test(q) || /\d+\s*[-+*/^%=]/.test(q)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Detects whether a question is genuinely a True/False or Boolean query.
+ */
+function isBooleanQuery(questionText = '', directAnswer = '') {
+  const q = (questionText || '').toLowerCase();
+  const d = (directAnswer || '').toLowerCase().trim();
+
+  // If question is a math calculation, it is NEVER a boolean question
+  if (isNumericalOrMathQuery(questionText, directAnswer)) {
+    return false;
+  }
+
+  // If directAnswer is explicitly true/false/yes/no
+  if (d === 'true' || d === 'false' || d === 'yes' || d === 'no') {
+    return true;
+  }
+
+  // If question explicitly specifies True/False
+  if (q.includes('true or false') || q.includes('true/false') || q.includes('whether the statement is true')) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Synthesizes 4 realistic, distinct mathematical variations for numerical problem-solving.
+ * Strictly avoids generic fillers like "True", "False", "Cannot be determined".
+ */
+function generateMathematicalOptions(questionText = '', directAnswer = '', existingOptions = []) {
+  const directClean = (directAnswer || '').trim();
+  let baseNum = null;
+  let unit = '';
+
+  // Extract base number and unit from directAnswer if available
+  const directMatch = directClean.match(/^(-?\d+(?:\.\d+)?)\s*(.*)$/);
+  if (directMatch) {
+    baseNum = parseFloat(directMatch[1]);
+    unit = directMatch[2] ? ` ${directMatch[2].trim()}` : '';
+  }
+
+  // Otherwise, extract number from question text
+  if (baseNum === null || isNaN(baseNum)) {
+    const qNumMatch =
+      questionText.match(/equals?\s*(-?\d+(?:\.\d+)?)/i) ||
+      questionText.match(/(-?\d+(?:\.\d+)?)\s*(?:m\/s|km\/h|hz|v|a|w|%|ohms?|deg|°c)/i) ||
+      questionText.match(/\b(-?\d+(?:\.\d+)?)\b/);
+    if (qNumMatch) {
+      baseNum = parseFloat(qNumMatch[1]);
+    } else {
+      baseNum = 10;
+    }
+  }
+
+  const isInt = Number.isInteger(baseNum);
+  const formatVal = (n) => `${isInt ? Math.round(n) : Number(n).toFixed(1)}${unit}`;
+
+  const generated = [formatVal(baseNum)];
+
+  // Candidates for realistic calculation variations / distractors
+  const variations = isInt
+    ? [
+        baseNum + 1,
+        baseNum - 1,
+        baseNum * 2,
+        baseNum + 2,
+        baseNum > 1 ? Math.floor(baseNum / 2) : baseNum + 3,
+        baseNum + 5,
+        baseNum + 10,
+        Math.max(0, baseNum - 2),
+      ]
+    : [
+        baseNum + 0.5,
+        Math.max(0, baseNum - 0.5),
+        baseNum * 1.5,
+        baseNum * 0.5,
+        baseNum + 1.0,
+        baseNum * 2,
+      ];
+
+  // Include any valid pre-existing options that aren't generic placeholders
+  if (Array.isArray(existingOptions)) {
+    for (const opt of existingOptions) {
+      const cleanOpt = cleanOptionPrefix(String(opt || ''));
+      if (cleanOpt && !isGenericPlaceholderOption(cleanOpt) && !generated.includes(cleanOpt)) {
+        generated.push(cleanOpt);
+        if (generated.length >= 4) break;
+      }
+    }
+  }
+
+  for (const v of variations) {
+    if (generated.length >= 4) break;
+    const formatted = formatVal(v);
+    if (!generated.includes(formatted)) {
+      generated.push(formatted);
+    }
+  }
+
+  while (generated.length < 4) {
+    generated.push(formatVal(baseNum + generated.length * 2));
+  }
+
+  return {
+    options: generated.slice(0, 4),
+    correctIndex: 0,
+  };
+}
+
+/**
  * Intelligent context-aware option synthesizer.
  * If options are generic placeholders, missing, or corrupt, synthesizes plausible,
  * readable choices based on question text, direct answer, and subject/section context.
  */
-function synthesizeContextualOptions(questionText = '', directAnswer = '', section = 'Technical') {
+function synthesizeContextualOptions(questionText = '', directAnswer = '', section = 'Technical', existingOptions = []) {
   const qLower = (questionText || '').toLowerCase();
   const directClean = (directAnswer || '').trim();
 
-  // Case 1: True / False or Boolean style questions
-  if (
-    qLower.includes('true or false') ||
-    qLower.includes('whether') ||
-    /\b(is it true|can a|does a|are all)\b/.test(qLower)
-  ) {
+  // Case 1: Mathematical / Numerical / Calculation question
+  // STRICT RULE: BANS generic fillers ('True', 'False', 'Cannot be determined')
+  if (isNumericalOrMathQuery(questionText, directAnswer, existingOptions)) {
+    return generateMathematicalOptions(questionText, directAnswer, existingOptions);
+  }
+
+  // Case 2: Strictly Boolean / True-False questions
+  if (isBooleanQuery(questionText, directAnswer)) {
     const isTrue = directClean.toLowerCase().includes('true') || !directClean.toLowerCase().includes('false');
     return {
       options: ['True', 'False', 'Partially true', 'Cannot be determined'],
@@ -61,36 +210,7 @@ function synthesizeContextualOptions(questionText = '', directAnswer = '', secti
     };
   }
 
-  // Case 2: Numerical or calculation style questions
-  const numMatch = directClean.match(/^-?\d+(?:\.\d+)?$/) || qLower.match(/equals?\s*(-?\d+)/);
-  if (numMatch) {
-    const baseNum = parseFloat(numMatch[1] || numMatch[0]);
-    if (!isNaN(baseNum)) {
-      const isInt = Number.isInteger(baseNum);
-      const d1 = isInt ? String(baseNum + 1) : (baseNum + 1).toFixed(1);
-      const d2 = isInt ? String(Math.max(0, baseNum - 1)) : Math.max(0, baseNum - 1).toFixed(1);
-      const d3 = isInt ? String(baseNum * 2 || baseNum + 5) : (baseNum * 2).toFixed(1);
-      return {
-        options: [String(baseNum), d1, d2, d3],
-        correctIndex: 0,
-      };
-    }
-  }
-
-  // Case 3: Direct answer exists and is non-generic
-  if (directClean && !isGenericPlaceholderOption(directClean)) {
-    return {
-      options: [
-        directClean,
-        'None of the above',
-        'Both of the above',
-        'Cannot be determined from given information',
-      ],
-      correctIndex: 0,
-    };
-  }
-
-  // Case 4: Complexity / Big-O questions
+  // Case 3: Complexity / Big-O questions
   if (qLower.includes('time complexity') || qLower.includes('space complexity') || qLower.includes('big o')) {
     return {
       options: ['O(1)', 'O(log n)', 'O(n)', 'O(n log n)'],
@@ -98,7 +218,7 @@ function synthesizeContextualOptions(questionText = '', directAnswer = '', secti
     };
   }
 
-  // Case 5: Data structure questions
+  // Case 4: Data structure questions
   if (qLower.includes('data structure') || qLower.includes('fifo') || qLower.includes('lifo')) {
     return {
       options: ['Stack', 'Queue', 'Array', 'Linked List'],
@@ -106,7 +226,7 @@ function synthesizeContextualOptions(questionText = '', directAnswer = '', secti
     };
   }
 
-  // Case 6: Memory / Architecture / Hardware
+  // Case 5: Memory / Architecture / Hardware
   if (qLower.includes('memory') || qLower.includes('cache') || qLower.includes('cpu')) {
     return {
       options: ['Primary Memory', 'Secondary Storage', 'Cache Memory', 'Virtual Memory'],
@@ -114,7 +234,7 @@ function synthesizeContextualOptions(questionText = '', directAnswer = '', secti
     };
   }
 
-  // Case 7: Network / Web / Protocols
+  // Case 6: Network / Web / Protocols
   if (qLower.includes('protocol') || qLower.includes('network') || qLower.includes('ip') || qLower.includes('osi')) {
     return {
       options: ['Application Layer', 'Transport Layer', 'Network Layer', 'Data Link Layer'],
@@ -122,13 +242,26 @@ function synthesizeContextualOptions(questionText = '', directAnswer = '', secti
     };
   }
 
-  // Case 8: General Technical / Conceptual fallback
+  // Case 7: Direct answer exists and is non-generic
+  if (directClean && !isGenericPlaceholderOption(directClean)) {
+    return {
+      options: [
+        directClean,
+        'Standard operational configuration',
+        'Alternative execution parameter',
+        'Specialized system interface',
+      ],
+      correctIndex: 0,
+    };
+  }
+
+  // Case 8: General Conceptual fallback
   return {
     options: [
       'Standard definition according to core principles',
       'Alternative configuration under specific constraints',
-      'Both of the above statements are correct',
-      'Neither of the above statements is correct',
+      'Specialized theoretical implementation model',
+      'Integrated procedural framework',
     ],
     correctIndex: 0,
   };
@@ -150,7 +283,7 @@ function sanitizeMcqOptions(questionText, rawOptions, directAnswer, rawCorrectIn
 
   // If all 4 options (or all provided options) were generic placeholders
   if (opts.length === 0 || genericCount >= opts.length) {
-    const synth = synthesizeContextualOptions(questionText, directAnswer, section);
+    const synth = synthesizeContextualOptions(questionText, directAnswer, section, rawOptions);
     return {
       options: synth.options,
       correctAnswerIndex: synth.correctIndex,
@@ -158,12 +291,26 @@ function sanitizeMcqOptions(questionText, rawOptions, directAnswer, rawCorrectIn
     };
   }
 
+  const isMath = isNumericalOrMathQuery(questionText, directAnswer, opts);
+
+  if (isMath) {
+    // Fill any missing slots with realistic mathematical variations, never boolean fillers
+    const synth = generateMathematicalOptions(questionText, directAnswer, opts);
+    let cIdx = parseInt(rawCorrectIndex, 10);
+    if (isNaN(cIdx) || cIdx < 0 || cIdx > 3) cIdx = 0;
+    return {
+      options: synth.options,
+      correctAnswerIndex: cIdx,
+      directAnswer: synth.options[cIdx] || synth.options[0],
+    };
+  }
+
   // If some options are valid and some are empty/generic placeholders
   const standardFillers = [
-    'None of the above',
-    'All of the above',
-    'Cannot be determined',
-    'Both A and B',
+    'Standard operational specification',
+    'Alternative framework structure',
+    'Primary behavioral characteristic',
+    'Secondary interface property',
   ];
 
   const finalOpts = [];
@@ -316,7 +463,10 @@ CRITICAL RULES:
 1. If "questionType" is "mcq":
    - "options" MUST contain 4 distinct, meaningful, contextual option strings transcribed directly from the document.
    - NEVER output generic placeholder strings like "Option A", "Option B", "Option C", "Option D".
-   - If only 2 or 3 choices exist in the document (e.g. True/False), add realistic plausible distractors (e.g. "Cannot be determined", "Partially true") to make 4 options.
+   - CRITICAL FOR MATHEMATICAL / NUMERICAL / CALCULATION QUESTIONS:
+     * Options MUST be 4 realistic, distinct mathematical numbers, variations, or formulas.
+     * STRICTLY BAN generic filler options ('True', 'False', 'Cannot be determined', 'None of the above') on non-boolean mathematical queries!
+   - ONLY for explicit boolean/truth questions (e.g. True/False questions) may True/False choices be used.
    - "correctAnswerIndex" MUST be an integer between 0 and 3 (0 for first option, 1 for second, 2 for third, 3 for fourth).
 2. If "questionType" is "direct":
    - "options" should be empty [].
@@ -474,4 +624,7 @@ module.exports = {
   parseQuizDocumentWithGemini,
   isGenericPlaceholderOption,
   sanitizeMcqOptions,
+  isNumericalOrMathQuery,
+  isBooleanQuery,
+  generateMathematicalOptions,
 };

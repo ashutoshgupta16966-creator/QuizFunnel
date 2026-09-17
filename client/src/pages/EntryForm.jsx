@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   registerStudent,
@@ -43,17 +43,6 @@ export default function EntryForm() {
   // Home screen back-button / swipe-back exit guard
   const [showHomeExitModal, setShowHomeExitModal] = useState(false);
 
-  // Intercept browser back button & mobile swipe-back on home screen
-  useEffect(() => {
-    window.history.pushState(null, '', window.location.href);
-    const handlePopState = () => {
-      window.history.pushState(null, '', window.location.href);
-      setShowHomeExitModal(true);
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
   // Registration Form state
   const [form, setForm] = useState({ name: '', mobile: '', branch: '', password: '' });
   const [errors, setErrors] = useState({});
@@ -93,6 +82,105 @@ export default function EntryForm() {
   const [showRoomRoleModal, setShowRoomRoleModal] = useState(false);
   const [roomModalStep, setRoomModalStep] = useState('select_role');
   const [roomModalPhone, setRoomModalPhone] = useState('');
+
+  // Navigation state ref for hardware & gesture back button handling
+  const navigationStateRef = useRef({
+    deleteConfirmAttempt,
+    selectedAttemptDetail,
+    showHistoryModal,
+    modalMode,
+    showAiPracticeModal,
+    showRoomRoleModal,
+    roomModalStep,
+    showQrModal,
+    showDuplicateModal,
+  });
+
+  useEffect(() => {
+    navigationStateRef.current = {
+      deleteConfirmAttempt,
+      selectedAttemptDetail,
+      showHistoryModal,
+      modalMode,
+      showAiPracticeModal,
+      showRoomRoleModal,
+      roomModalStep,
+      showQrModal,
+      showDuplicateModal,
+    };
+  });
+
+  // ── Hardware / Gesture Back Button Navigation Engine ───────────────────────
+  // Nested View Rule: If student is inside any active sub-view/modal,
+  // pressing back immediately redirects/closes it safely to parent / Home Screen.
+  // Home Screen Rule: ONLY on the root Home Screen does back trigger the exit confirmation modal.
+  useEffect(() => {
+    window.history.pushState(null, '', window.location.href);
+
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+      const state = navigationStateRef.current;
+
+      // 1. Delete confirmation modal open -> close it
+      if (state.deleteConfirmAttempt) {
+        setDeleteConfirmAttempt(null);
+        return;
+      }
+
+      // 2. Viewing detailed attempt report -> back to attempt history dashboard
+      if (state.selectedAttemptDetail) {
+        setSelectedAttemptDetail(null);
+        return;
+      }
+
+      // 3. Inside Results / Attempt History Modal
+      if (state.showHistoryModal) {
+        if (state.modalMode && state.modalMode.startsWith('reset') && state.modalMode !== 'reset_mobile') {
+          setModalMode('auth');
+        } else {
+          setShowHistoryModal(false);
+          setModalMode('auth');
+        }
+        return;
+      }
+
+      // 4. Inside AI Self-Practice Modal -> close safely to Home Screen
+      if (state.showAiPracticeModal) {
+        setShowAiPracticeModal(false);
+        setPracticeReattemptData(null);
+        return;
+      }
+
+      // 5. Inside Quiz Rooms Modal
+      if (state.showRoomRoleModal) {
+        if (state.roomModalStep && state.roomModalStep !== 'select_role') {
+          setRoomModalStep('select_role');
+        } else {
+          setShowRoomRoleModal(false);
+        }
+        return;
+      }
+
+      // 6. Inside QR Code Modal -> close safely to Home Screen
+      if (state.showQrModal) {
+        setShowQrModal(false);
+        return;
+      }
+
+      // 7. Inside Soft Duplicate Attempt Warning Modal -> close safely
+      if (state.showDuplicateModal) {
+        setShowDuplicateModal(false);
+        return;
+      }
+
+      // 8. ROOT HOME SCREEN: Only when no sub-views or modals are active
+      setShowHomeExitModal(true);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
 
   // ── Animated PWA Install State & Handlers ─────────────────────────────────
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
@@ -439,6 +527,10 @@ export default function EntryForm() {
       const studentData = res.data.data;
       setAuthedStudentData(studentData);
       setAttemptsList(studentData.attemptHistory || []);
+      setAuthForm({
+        mobile: resetMobile.trim(),
+        password: newPassword.trim(),
+      });
       setModalMode('dashboard');
     } catch (err) {
       setResetError(err.response?.data?.error || 'Password update failed. Please try again.');
@@ -447,7 +539,7 @@ export default function EntryForm() {
     }
   };
 
-  // Delete Attempt Handler
+  // Delete Attempt Handler with Instant Real-Time UI Re-render
   const handleDeleteAttemptConfirm = async () => {
     if (!deleteConfirmAttempt || !authedStudentData) return;
     const targetId = deleteConfirmAttempt._id || deleteConfirmAttempt.id || deleteConfirmAttempt.attemptId;
@@ -455,12 +547,17 @@ export default function EntryForm() {
     setDeleteLoading(true);
     try {
       try {
-        await deleteStudentAttempt({
+        const res = await deleteStudentAttempt({
           mobile: authedStudentData.mobile,
-          password: authForm.password.trim(),
+          password: authForm.password?.trim() || '',
           attemptId: targetId,
         });
-      } catch { /* noop fallback */ }
+        if (res.data?.attemptHistory) {
+          setAttemptsList(res.data.attemptHistory);
+        }
+      } catch (apiErr) {
+        console.warn('[Delete Attempt] Backend API call fallback:', apiErr.message);
+      }
 
       try {
         const localSaved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
@@ -471,6 +568,7 @@ export default function EntryForm() {
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedLocal));
       } catch { /* noop */ }
 
+      // Real-time state update for instant UI feedback
       setAttemptsList((prev) => prev.filter((a) => {
         const id = a._id || a.id || a.attemptId;
         return id !== targetId && a.attemptDate !== deleteConfirmAttempt.attemptDate;

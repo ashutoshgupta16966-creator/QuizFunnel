@@ -844,7 +844,9 @@ Respond ONLY with a valid JSON object in this exact format (no markdown, no expl
 {"options":["First plausible choice","Second plausible choice","Third plausible choice","Fourth plausible choice"],"correctIndex":0}
 
 Where correctIndex is 0-based (0=A, 1=B, 2=C, 3=D).
-CRITICAL: Options MUST be real, meaningful, contextual answers. NEVER output generic placeholders like "Option A", "Option B", "Option C", "Option D".`;
+CRITICAL RULES:
+- Options MUST be real, meaningful, contextual answers. NEVER output generic placeholders like "Option A", "Option B", "Option C", "Option D".
+- For mathematical, numerical, or calculation questions: generate 4 realistic, distinct mathematical variations, numbers, or formulas. Strictly DO NOT output generic boolean fillers like "True", "False", "Cannot be determined", or "None of the above" for calculation questions.`;
 
     for (const modelName of FALLBACK_MODELS) {
       try {

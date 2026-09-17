@@ -19,13 +19,22 @@ function createRipple(event) {
 
 const LETTER_LABELS = ['A', 'B', 'C', 'D'];
 
-function formatOptionText(option, idx) {
+function formatOptionText(option, idx, questionText = '') {
   if (!option || typeof option !== 'string') return `Choice ${LETTER_LABELS[idx] || idx + 1}`;
   const trimmed = option.trim();
   const cleaned = trimmed.replace(/^(\(?[a-dA-D1-4]\)?\s*[:.)-]\s*|^option\s*[a-dA-D1-4]\s*[:.)-]\s*)/i, '').trim();
   if (!cleaned || /^(option|choice)\s*[a-d1-4]?$/i.test(cleaned) || /^[a-d][.)]?$/i.test(cleaned)) {
-    const contextualFallbacks = ['True', 'False', 'Cannot be determined', 'None of the above'];
-    return contextualFallbacks[idx] || `Choice ${LETTER_LABELS[idx] || idx + 1}`;
+    const qLower = (questionText || '').toLowerCase();
+    const isMath = /[-+*/^%=]\s*\d+/.test(qLower) || /\d+\s*[-+*/^%=]/.test(qLower) || /calculate|compute|solve|value of|equals|mod/i.test(qLower);
+    if (isMath) {
+      return `${(idx + 1) * 10}`;
+    }
+    const isBool = qLower.includes('true or false') || qLower.includes('true/false');
+    if (isBool) {
+      const boolFallbacks = ['True', 'False', 'Partially true', 'Cannot be determined'];
+      return boolFallbacks[idx] || `Choice ${LETTER_LABELS[idx] || idx + 1}`;
+    }
+    return `Choice ${LETTER_LABELS[idx] || idx + 1}`;
   }
   return cleaned;
 }
@@ -156,7 +165,7 @@ export default function QuestionCard({
                 aria-pressed={isSelected}
               >
                 <span className="option-letter">{LETTER_LABELS[idx]}</span>
-                <span className="option-text">{formatOptionText(option, idx)}</span>
+                <span className="option-text">{formatOptionText(option, idx, question?.questionText)}</span>
                 {isSelected && <span className="option-check" aria-hidden>✓</span>}
               </button>
             );
