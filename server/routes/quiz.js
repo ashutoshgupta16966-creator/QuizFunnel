@@ -118,16 +118,15 @@ router.get('/questions/:level', async (req, res, next) => {
             options: [],
           };
         }
-          // Rebuild shuffled options from stored shuffleMap using active context-aware sanitizer
-          const rawRebuilt = Array.isArray(sq.shuffleMap) ? sq.shuffleMap.map((i) => q.options[i]) : q.options;
-          const sanitized = sanitizeMcqOptions(q.questionText, rawRebuilt, q.directAnswer || '', q.correctAnswerIndex, q.section);
-          return {
-            _id: q._id,
-            questionText: q.questionText,
-            questionType: 'mcq',
-            section: q.section,
-            options: sanitized.options,
-          };
+        // Rebuild shuffled options from stored shuffleMap using active context-aware sanitizer
+        const rawRebuilt = Array.isArray(sq.shuffleMap) ? sq.shuffleMap.map((i) => q.options[i]) : q.options;
+        const sanitized = sanitizeMcqOptions(q.questionText, rawRebuilt, q.directAnswer || '', q.correctAnswerIndex, q.section);
+        return {
+          _id: q._id,
+          questionText: q.questionText,
+          questionType: 'mcq',
+          section: q.section,
+          options: sanitized.options,
         };
       }).filter(Boolean);
 
@@ -397,7 +396,7 @@ router.post('/submit', async (req, res, next) => {
           ? sessionQ.shuffleMap[answer.selectedIndex]
           : answer.selectedIndex;
         const isCorrect = Number.isInteger(originalIndex) &&
-                          originalIndex === dbQ.correctAnswerIndex;
+          originalIndex === dbQ.correctAnswerIndex;
 
         if (isCorrect) score++;
 
@@ -491,9 +490,9 @@ router.post('/submit', async (req, res, next) => {
 
     // Atomic update: push attempt, clear session, accumulate totals
     const updateDoc = {
-      $push:  { levels: levelAttempt },
-      $set:   { status: newStatus, currentLevel: newCurrentLevel, quizSession: null },
-      $inc:   { totalScore: score, totalTimeTaken: elapsed },
+      $push: { levels: levelAttempt },
+      $set: { status: newStatus, currentLevel: newCurrentLevel, quizSession: null },
+      $inc: { totalScore: score, totalTimeTaken: elapsed },
     };
     if (completedAt) updateDoc.$set.completedAt = completedAt;
 
@@ -581,7 +580,7 @@ router.post('/submit', async (req, res, next) => {
       try {
         const nextLvlNum = passed && !isLastLevel ? level + 1 : level;
         const finalScore = updatedStudent ? updatedStudent.totalScore : score;
-        const finalTime  = updatedStudent ? updatedStudent.totalTimeTaken : elapsed;
+        const finalTime = updatedStudent ? updatedStudent.totalTimeTaken : elapsed;
         const currentLevels = (updatedStudent?.levels || []).map((lvl) => ({
           level: lvl.level,
           score: lvl.score || 0,
@@ -709,8 +708,8 @@ router.get('/review/:mobile', async (req, res, next) => {
     let levelsToReview = student.levels && student.levels.length > 0
       ? student.levels
       : (student.attemptHistory && student.attemptHistory.length > 0
-          ? student.attemptHistory[student.attemptHistory.length - 1].levelsSummary
-          : []);
+        ? student.attemptHistory[student.attemptHistory.length - 1].levelsSummary
+        : []);
 
     if (!levelsToReview || levelsToReview.length === 0) {
       return res.json({ success: true, data: [] });
