@@ -206,14 +206,15 @@ export default function StudentAiPracticeModal({
   const [saveStatus, setSaveStatus] = useState('');
   const [showGuide, setShowGuide] = useState(false);
 
-  // Lock scroll when modal is open
+  // Lock scroll when modal is open and safely release when closed
   useEffect(() => {
     if (isOpen) {
-      const prev = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       return () => {
-        document.body.style.overflow = prev;
+        document.body.style.overflow = '';
       };
+    } else {
+      document.body.style.overflow = '';
     }
   }, [isOpen]);
 

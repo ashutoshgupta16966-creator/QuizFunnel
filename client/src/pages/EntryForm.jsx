@@ -231,6 +231,28 @@ export default function EntryForm() {
     };
   }, []);
 
+  // Guarantee body and html scroll unlock on Home Screen
+  useEffect(() => {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+    return () => {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  // Manage body scroll lock specifically for History Modal
+  useEffect(() => {
+    if (showHistoryModal) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    } else {
+      document.body.style.overflow = '';
+    }
+  }, [showHistoryModal]);
+
   const handleInstallApp = async () => {
     if (deferredInstallPrompt) {
       deferredInstallPrompt.prompt();
@@ -625,17 +647,6 @@ export default function EntryForm() {
           >
             📱 <span className="btn-text">QR Code</span>
           </button>
-          {!isAppInstalled && (
-            <button
-              type="button"
-              className="pwa-install-pill-btn nav-pill-btn"
-              onClick={handleInstallApp}
-              title="Install Quiz Funnel as an App"
-              aria-label="Install App"
-            >
-              📲 <span className="btn-text">Install App</span>
-            </button>
-          )}
         </div>
 
         <div className="entry-nav-group entry-nav-group-right">
@@ -667,12 +678,6 @@ export default function EntryForm() {
             🏆 <span className="btn-text">My Results</span>
           </button>
         </div>
-
-        {pwaSuccessMsg && (
-          <div className="pwa-float-toast" role="status">
-            {pwaSuccessMsg}
-          </div>
-        )}
       </header>
 
       <QrModal isOpen={showQrModal} onClose={() => setShowQrModal(false)} />
@@ -1249,6 +1254,27 @@ export default function EntryForm() {
           </div>
         </div>
       )}
+      {/* ── Floating Pill Install Button (Bottom-Right, Home Screen Only) ── */}
+      {!isAppInstalled && (
+        <button
+          type="button"
+          id="pwa-floating-install-btn"
+          className="pwa-floating-install-btn"
+          onClick={handleInstallApp}
+          title="Install Quiz Funnel"
+          aria-label="Install Quiz Funnel App"
+        >
+          <span className="pwa-floating-icon" aria-hidden="true">📲</span>
+          <span className="pwa-floating-text">Install</span>
+        </button>
+      )}
+
+      {pwaSuccessMsg && (
+        <div className="pwa-float-toast" role="status">
+          {pwaSuccessMsg}
+        </div>
+      )}
+
       {/* ── Guidance Drawer (ℹ️ Guide pill) ── */}
       <GuidanceDrawer
         isOpen={showGuide}

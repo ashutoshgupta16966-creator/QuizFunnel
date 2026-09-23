@@ -157,14 +157,15 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [optGenErrors, setOptGenErrors] = useState({});
   const [aiBulkFormatMode, setAiBulkFormatMode] = useState('manual'); // 'manual' | 'all_mcq' | 'all_direct'
 
-  // ── Scroll lock while modal is open ─────────────────────────────────────────
+  // ── Scroll lock while modal is open and safely release when closed ──────────
   useEffect(() => {
     if (isOpen) {
-      const prevOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       return () => {
-        document.body.style.overflow = prevOverflow;
+        document.body.style.overflow = '';
       };
+    } else {
+      document.body.style.overflow = '';
     }
   }, [isOpen]);
 
