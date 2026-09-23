@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { parseAiQuizDocument, savePracticeAttempt } from '../api';
 import ThemeToggle from './ThemeToggle';
+import GuidanceDrawer, { GUIDES } from './GuidanceDrawer';
 
 const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_IMAGES = 10;
@@ -203,6 +204,7 @@ export default function StudentAiPracticeModal({
   // Results State
   const [quizResults, setQuizResults] = useState(null);
   const [saveStatus, setSaveStatus] = useState('');
+  const [showGuide, setShowGuide] = useState(false);
 
   // Lock scroll when modal is open
   useEffect(() => {
@@ -603,6 +605,14 @@ export default function StudentAiPracticeModal({
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <button
+              type="button"
+              className="guidance-pill"
+              onClick={() => setShowGuide(true)}
+              title="View Self Practice Guide & Instructions"
+            >
+              ℹ️ Guide
+            </button>
             <ThemeToggle />
             <button
               type="button"
@@ -1178,6 +1188,12 @@ export default function StudentAiPracticeModal({
           </div>
         )}
       </div>
+      {/* ── Guidance Drawer (ℹ️ Guide pill) ── */}
+      <GuidanceDrawer
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        guide={GUIDES.practice}
+      />
     </div>
   );
 }

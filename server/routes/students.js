@@ -172,9 +172,12 @@ router.post('/delete-attempt', async (req, res, next) => {
     }
 
     // Filter out attempt with matching _id or attemptId
-    student.attemptHistory = (student.attemptHistory || []).filter(
-      (a) => (a._id ? a._id.toString() !== attemptId.toString() : a.attemptId !== attemptId)
-    );
+    const target = String(attemptId).trim();
+    student.attemptHistory = (student.attemptHistory || []).filter((a) => {
+      const idMatches = a._id && a._id.toString() === target;
+      const attemptIdMatches = a.attemptId && String(a.attemptId).trim() === target;
+      return !idMatches && !attemptIdMatches;
+    });
 
     await student.save();
 

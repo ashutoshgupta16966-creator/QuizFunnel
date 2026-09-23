@@ -670,29 +670,33 @@ export default function RoomAdminDashboard() {
                             const hasReattempt = Boolean(
                               p.isReattempt ||
                               p.previousAttempt ||
+                              (Array.isArray(p.attempts) && p.attempts.length > 1) ||
                               (pendingRequests || []).some((r) => r.mobile === p.mobile)
                             );
                             const activeTab = attemptTabMap[p.mobile] || 'current';
                             const isPreviousView = hasReattempt && activeTab === 'previous';
 
+                            // Attempt 1: from previousAttempt or first attempt in attempts array
+                            const attempt1Data = p.previousAttempt || (Array.isArray(p.attempts) && p.attempts.length > 0 ? p.attempts[0] : null);
+
                             const studentLevels = isPreviousView
-                              ? (Array.isArray(p.previousAttempt?.levels) ? p.previousAttempt.levels : [])
+                              ? (Array.isArray(attempt1Data?.levels) ? attempt1Data.levels : [])
                               : (Array.isArray(p.levels) ? p.levels : []);
 
                             const totalScoreVal = isPreviousView
-                              ? (p.previousAttempt?.score ?? 0)
+                              ? (attempt1Data?.score ?? 0)
                               : (p.computedTotalScore ?? (studentLevels.length > 0
                                   ? studentLevels.reduce((acc, curr) => acc + (curr.score || 0), 0)
                                   : (p.score ?? 0)));
 
                             const totalTimeVal = isPreviousView
-                              ? (p.previousAttempt?.timeTaken ?? 0)
+                              ? (attempt1Data?.timeTaken ?? 0)
                               : (p.computedTotalTime ?? (studentLevels.length > 0
                                   ? studentLevels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0)
                                   : (p.timeTaken ?? 0)));
 
                             const finalStatusVal = isPreviousView
-                              ? (p.previousAttempt?.status || (p.previousAttempt?.isDisqualified ? 'Disqualified' : 'Eliminated'))
+                              ? (attempt1Data?.status || (attempt1Data?.isDisqualified ? 'Disqualified' : 'Eliminated'))
                               : (p.isDisqualified ? 'Disqualified' : (
                                   p.status === 'completed' ? 'Completed' :
                                   p.status === 'eliminated' ? 'Eliminated' :
@@ -714,7 +718,7 @@ export default function RoomAdminDashboard() {
                                       <span className="breakdown-mobile-meta">📱 {p.mobile}</span>
                                     </div>
 
-                                    {/* ── Multi-Attempt Toggle Switch ── */}
+                                    {/* ── Multi-Attempt Toggle Switch: [Attempt 1 Score & Details] vs [Attempt 2 (Latest) Score & Details] ── */}
                                     {hasReattempt && (
                                       <div className="attempt-toggle-tabs-bar">
                                         <div className="attempt-toggle-tabs" role="tablist">
@@ -725,7 +729,7 @@ export default function RoomAdminDashboard() {
                                             className={`attempt-tab-btn ${activeTab === 'previous' ? 'active' : ''}`}
                                             onClick={() => setAttemptTabMap((prev) => ({ ...prev, [p.mobile]: 'previous' }))}
                                           >
-                                            📜 Previous Attempt
+                                            📜 Attempt 1 Score &amp; Details
                                           </button>
                                           <button
                                             type="button"
@@ -734,11 +738,11 @@ export default function RoomAdminDashboard() {
                                             className={`attempt-tab-btn ${activeTab === 'current' ? 'active' : ''}`}
                                             onClick={() => setAttemptTabMap((prev) => ({ ...prev, [p.mobile]: 'current' }))}
                                           >
-                                            ⚡ Re-attempt Data
+                                            ⚡ Attempt 2 (Latest) Score &amp; Details
                                           </button>
                                         </div>
                                         <span className="attempt-tab-mode-tag">
-                                          {isPreviousView ? 'Initial Attempt Score & History' : 'Current Re-attempt Performance'}
+                                          {isPreviousView ? 'Attempt 1 Score & Details' : 'Attempt 2 (Latest) Score & Details'}
                                         </span>
                                       </div>
                                     )}
@@ -802,7 +806,7 @@ export default function RoomAdminDashboard() {
                                     <div className="breakdown-total-container">
                                       <div className="total-container-header">
                                         <span className="total-heading">
-                                          {isPreviousView ? 'Initial Attempt Performance Summary' : 'Total (Sum Across All Levels)'}
+                                          {isPreviousView ? 'Attempt 1 Performance Summary' : 'Attempt 2 (Latest) Performance Summary'}
                                         </span>
                                       </div>
                                       <div className="total-metric-items">

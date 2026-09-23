@@ -473,6 +473,7 @@ router.post('/join', async (req, res, next) => {
 
     if (existingParticipant) {
       const prevAttemptData = existingParticipant.previousAttempt || {
+        attemptNumber: 1,
         score: existingParticipant.score || 0,
         timeTaken: existingParticipant.timeTaken || 0,
         level: existingParticipant.level || 1,
@@ -481,6 +482,10 @@ router.post('/join', async (req, res, next) => {
         levels: existingParticipant.levels || [],
         joinedAt: existingParticipant.joinedAt,
       };
+
+      const existingAttempts = Array.isArray(existingParticipant.attempts) && existingParticipant.attempts.length > 0
+        ? existingParticipant.attempts
+        : [prevAttemptData];
 
       await Room.updateOne(
         { roomCode: normalizedCode, 'participants.mobile': cleanMobile },
@@ -494,6 +499,7 @@ router.post('/join', async (req, res, next) => {
             'participants.$.isDisqualified': false,
             'participants.$.isReattempt': isReattemptStudent,
             'participants.$.previousAttempt': prevAttemptData,
+            'participants.$.attempts': existingAttempts,
             'participants.$.lastActive': new Date(),
           },
         }
@@ -1145,6 +1151,8 @@ router.post('/:roomCode/approve-reattempt', async (req, res, next) => {
       };
       io.to(`room:${normalizedCode}`).emit('reattempt:approved', payload);
       io.to(`room:${normalizedCode}`).emit('reattempt_approved', payload);
+      io.to(`room:${normalizedCode}`).emit('REATTEMPT_GRANTED', payload);
+      io.to(`room:${normalizedCode}`).emit('reattempt:granted', payload);
     }
 
     res.json({ success: true, message: 'Re-attempt approved. Student will be redirected to re-join.' });

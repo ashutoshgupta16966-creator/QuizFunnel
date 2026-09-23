@@ -104,6 +104,8 @@ export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReatt
     };
     s.on('reattempt:approved', handler);
     s.on('reattempt_approved', handler);
+    s.on('REATTEMPT_GRANTED', handler);
+    s.on('reattempt:granted', handler);
   }
 
   if (onReattemptDenied) {
@@ -124,6 +126,8 @@ export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReatt
     if (onReattemptApproved) {
       s.off('reattempt:approved');
       s.off('reattempt_approved');
+      s.off('REATTEMPT_GRANTED');
+      s.off('reattempt:granted');
     }
     if (onReattemptDenied) {
       s.off('reattempt:denied');

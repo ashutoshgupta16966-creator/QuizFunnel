@@ -5,6 +5,7 @@ import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, ch
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
 import ThemeToggle from './ThemeToggle';
+import GuidanceDrawer, { GUIDES } from './GuidanceDrawer';
 
 /**
  * Generate a random, readable 6-character room code.
@@ -56,6 +57,9 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [approvalDenied, setApprovalDenied] = useState(false);
   const [approvalSuccess, setApprovalSuccess] = useState(false);
   const [approvedPayload, setApprovedPayload] = useState(null);
+
+  // ── Guidance Drawer state ─────────────────────────────────────────────────────
+  const [showGuide, setShowGuide] = useState(false);
 
   // ── Admin Create form state ──────────────────────────────────────────────────
   const [adminForm, setAdminForm] = useState({
@@ -225,26 +229,16 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
 
     const handleApproved = (data) => {
       if (!isSubscribed) return;
+      // Only record that approval happened + stash payload for "Start Quiz" button.
+      // Do NOT call saveStudent / setRoomSession / joinSocket here —
+      // the actual reset happens when the student clicks "Start Quiz Now",
+      // which calls POST /join to let the server mark the reattempt consumed
+      // and reset the student stats to Level 1.
       setApprovalSuccess(true);
-      const studentObj = data?.student || {
-        name: pendingData.name,
-        mobile: pendingData.mobile,
-        branch: pendingData.branch,
-        status: 'in-progress',
-        currentLevel: 1,
-      };
-      const roomObj = data?.room || {
-        roomCode: pendingData.roomCode,
-      };
-
-      setApprovedPayload({ studentObj, roomObj });
-      saveStudent(studentObj);
-      setRoomSession({
-        isRoomQuiz: true,
-        roomCode: roomObj.roomCode,
-        adminName: roomObj.adminName || '',
+      setApprovedPayload({
+        studentObj: data?.student || null,
+        roomObj: data?.room || { roomCode: pendingData.roomCode },
       });
-      joinStudentRoomSocket(roomObj.roomCode, studentObj);
     };
 
     const handleDenied = () => {
@@ -282,29 +276,93 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       cleanupSocket();
       clearInterval(pollInterval);
     };
-  }, [step, pendingData, onClose, navigate, saveStudent, setRoomSession]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, pendingData]);
 
   // ── Launch Quiz On Approval ──────────────────────────────────────────────────
-  const handleStartQuizNow = () => {
-    const studentObj = approvedPayload?.studentObj || {
-      name: pendingData?.name,
-      mobile: pendingData?.mobile,
-      branch: pendingData?.branch,
-      status: 'in-progress',
-      currentLevel: 1,
-    };
-    const roomCode = approvedPayload?.roomObj?.roomCode || pendingData?.roomCode;
+  // Calls POST /join so the server can:
+  //   (a) detect the reattempt request is 'approved' → mark it 'consumed'
+  //   (b) reset the student's stats to Level 1 in the DB
+  //   (c) return a fresh student object with currentLevel = 1
+  const [startingQuiz, setStartingQuiz] = useState(false);
+  const [startQuizError, setStartQuizError] = useState('');
 
-    saveStudent(studentObj);
-    setRoomSession({
-      isRoomQuiz: true,
-      roomCode,
-      adminName: approvedPayload?.roomObj?.adminName || '',
-    });
-    joinStudentRoomSocket(roomCode, studentObj);
+  const handleStartQuizNow = async () => {
+    if (!pendingData) return;
+    setStartingQuiz(true);
+    setStartQuizError('');
+    try {
+      const code = pendingData.roomCode.trim().toUpperCase();
+      const res = await joinRoom({
+        roomCode: code,
+        roomPassword: pendingData.roomPassword || '',
+        name: pendingData.name,
+        mobile: pendingData.mobile,
+        branch: pendingData.branch,
+        password: pendingData.password || '',
+      });
 
-    onClose();
-    navigate('/quiz/play');
+      // Server returns fresh { student, room } after resetting stats
+      const freshStudent = res.data?.data?.student || approvedPayload?.studentObj || {
+        name: pendingData.name,
+        mobile: pendingData.mobile,
+        branch: pendingData.branch,
+        status: 'in-progress',
+        currentLevel: 1,
+      };
+      const freshRoom = res.data?.data?.room || approvedPayload?.roomObj || { roomCode: code };
+
+      // Clear stale progress, bookmarks, and attempt IDs for this student so new attempt is 100% fresh
+      if (pendingData.mobile) {
+        try {
+          for (let l = 1; l <= 4; l++) {
+            localStorage.removeItem(`quiz_progress_${pendingData.mobile}_${l}`);
+            localStorage.removeItem(`quiz_bookmarks_${pendingData.mobile}_${l}`);
+            sessionStorage.removeItem(`quiz_active_attempt_${pendingData.mobile}_lvl${l}`);
+          }
+          localStorage.removeItem(`quiz_tab_switches_${pendingData.mobile}`);
+          localStorage.removeItem(`quiz_anti_cheated_${pendingData.mobile}`);
+        } catch { /* noop */ }
+      }
+
+      saveStudent(freshStudent);
+      setRoomSession({
+        isRoomQuiz: true,
+        roomCode: freshRoom.roomCode || code,
+        adminName: freshRoom.adminName || '',
+      });
+      joinStudentRoomSocket(freshRoom.roomCode || code, freshStudent);
+
+      onClose();
+      navigate('/quiz/1');
+    } catch (err) {
+      const errData = err.response?.data;
+      if (errData?.status === 'PENDING_HOST_APPROVAL' || errData?.pendingApproval) {
+        setStartQuizError('Re-attempt not fully processed yet. Please wait a moment and try again.');
+      } else {
+        // Graceful fallback: use cached approval payload and still start the quiz
+        console.warn('joinRoom API failed on reattempt start — using cached payload:', err.message);
+        const fallbackStudent = approvedPayload?.studentObj || {
+          name: pendingData.name,
+          mobile: pendingData.mobile,
+          branch: pendingData.branch,
+          status: 'in-progress',
+          currentLevel: 1,
+        };
+        const fallbackCode = approvedPayload?.roomObj?.roomCode || pendingData.roomCode;
+        saveStudent(fallbackStudent);
+        setRoomSession({
+          isRoomQuiz: true,
+          roomCode: fallbackCode,
+          adminName: approvedPayload?.roomObj?.adminName || '',
+        });
+        joinStudentRoomSocket(fallbackCode, fallbackStudent);
+        onClose();
+        navigate('/quiz/1');
+      }
+    } finally {
+      setStartingQuiz(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -1007,6 +1065,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       if (res.data?.status === 'PENDING_HOST_APPROVAL' || res.data?.pendingApproval) {
         setPendingData({
           roomCode: code,
+          roomPassword: studentForm.roomPassword.trim(),
           mobile: studentForm.mobile.trim(),
           name: studentForm.name.trim(),
           branch: studentForm.branch.trim(),
@@ -1115,7 +1174,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
+    <>
+      <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
       <div
         className="modal-content room-modal-card max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -1140,6 +1200,14 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
             <div className="nav-placeholder" />
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <button
+              type="button"
+              className="guidance-pill"
+              onClick={() => setShowGuide(true)}
+              title="View Live Quiz Room Guide"
+            >
+              ℹ️ Guide
+            </button>
             <ThemeToggle />
             <button
               type="button"
@@ -2279,6 +2347,15 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
               <p className="room-modal-subtitle">
                 Enter Room Code &amp; Password provided by your host
               </p>
+              <button
+                type="button"
+                className="guidance-pill"
+                onClick={() => setShowGuide(true)}
+                title="View Live Quiz Room Guide"
+                style={{ marginTop: '0.5rem' }}
+              >
+                ℹ️ Guide
+              </button>
             </div>
 
             {studentError && (
@@ -2548,14 +2625,26 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
             </div>
 
             {approvalSuccess && (
-              <button
-                type="button"
-                className="btn btn-primary room-submit-btn start-quiz-now-btn"
-                onClick={handleStartQuizNow}
-                style={{ marginTop: '1rem', marginBottom: '0.75rem', fontWeight: 700, fontSize: '1.05rem' }}
-              >
-                🚀 Start Quiz Now
-              </button>
+              <>
+                {startQuizError && (
+                  <div className="server-error" role="alert" style={{ marginTop: '0.75rem' }}>
+                    ⚠️ {startQuizError}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-primary room-submit-btn start-quiz-now-btn"
+                  onClick={handleStartQuizNow}
+                  disabled={startingQuiz}
+                  style={{ marginTop: '1rem', marginBottom: '0.75rem', fontWeight: 700, fontSize: '1.05rem' }}
+                >
+                  {startingQuiz ? (
+                    <><span className="btn-spinner" /> Joining Room…</>
+                  ) : (
+                    '🚀 Start Quiz Now'
+                  )}
+                </button>
+              </>
             )}
 
             <button
@@ -2576,5 +2665,12 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         )}
       </div>
     </div>
+      {/* ── Guidance Drawer (ℹ️ Guide pill on student join step) ── */}
+      <GuidanceDrawer
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        guide={GUIDES.room}
+      />
+    </>
   );
 }

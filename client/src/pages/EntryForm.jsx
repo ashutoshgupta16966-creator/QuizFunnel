@@ -17,6 +17,7 @@ import AttemptDetailView from '../components/AttemptDetailView';
 import ExitConfirmModal from '../components/ExitConfirmModal';
 import RoomRoleModal from '../components/RoomRoleModal';
 import StudentAiPracticeModal from '../components/StudentAiPracticeModal';
+import GuidanceDrawer, { GUIDES } from '../components/GuidanceDrawer';
 
 function formatTimeMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -83,6 +84,10 @@ export default function EntryForm() {
   const [roomModalStep, setRoomModalStep] = useState('select_role');
   const [roomModalPhone, setRoomModalPhone] = useState('');
 
+  // Guidance Drawer state (ℹ️ Guide pill — screen-specific help)
+  const [showGuide, setShowGuide] = useState(false);
+  const [activeGuide, setActiveGuide] = useState(GUIDES.home);
+
   // Navigation state ref for hardware & gesture back button handling
   const navigationStateRef = useRef({
     deleteConfirmAttempt,
@@ -94,6 +99,7 @@ export default function EntryForm() {
     roomModalStep,
     showQrModal,
     showDuplicateModal,
+    showGuide,
   });
 
   useEffect(() => {
@@ -107,6 +113,7 @@ export default function EntryForm() {
       roomModalStep,
       showQrModal,
       showDuplicateModal,
+      showGuide,
     };
   });
 
@@ -120,6 +127,12 @@ export default function EntryForm() {
     const handlePopState = () => {
       window.history.pushState(null, '', window.location.href);
       const state = navigationStateRef.current;
+
+      // 0. Guidance Drawer open -> close it safely
+      if (state.showGuide) {
+        setShowGuide(false);
+        return;
+      }
 
       // 1. Delete confirmation modal open -> close it
       if (state.deleteConfirmAttempt) {
@@ -631,6 +644,17 @@ export default function EntryForm() {
           >
             🤖 <span className="btn-text">Self Practice</span>
           </button>
+          <button
+            type="button"
+            className="guidance-pill"
+            onClick={() => {
+              setActiveGuide(GUIDES.home);
+              setShowGuide(true);
+            }}
+            title="View Home Screen Guide & Instructions"
+          >
+            ℹ️ Guide
+          </button>
           {!isAppInstalled && (
             <button
               type="button"
@@ -813,20 +837,36 @@ export default function EntryForm() {
                  modalMode.startsWith('reset') ? '📱 SMS OTP Password Reset' :
                  '🔒 Private Results Authentication'}
               </h2>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => {
-                  if (selectedAttemptDetail) {
-                    setSelectedAttemptDetail(null);
-                  } else {
-                    setShowHistoryModal(false);
-                  }
-                }}
-                aria-label="Close modal"
-              >
-                ✕
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                {(modalMode === 'dashboard' || selectedAttemptDetail) && (
+                  <button
+                    type="button"
+                    className="guidance-pill"
+                    onClick={() => {
+                      setActiveGuide(GUIDES.history);
+                      setShowGuide(true);
+                    }}
+                    title="View Attempt History Guide"
+                    style={{ fontSize: '0.72rem', padding: '0.25rem 0.6rem' }}
+                  >
+                    ℹ️ Guide
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => {
+                    if (selectedAttemptDetail) {
+                      setSelectedAttemptDetail(null);
+                    } else {
+                      setShowHistoryModal(false);
+                    }
+                  }}
+                  aria-label="Close modal"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             <div className="modal-body">
@@ -1208,6 +1248,12 @@ export default function EntryForm() {
           </div>
         </div>
       )}
+      {/* ── Guidance Drawer (ℹ️ Guide pill) ── */}
+      <GuidanceDrawer
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        guide={activeGuide}
+      />
     </div>
   );
 }

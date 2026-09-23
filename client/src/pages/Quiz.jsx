@@ -13,6 +13,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import AntiCheatModal from '../components/AntiCheatModal';
 import QuestionPalette from '../components/QuestionPalette';
 import UnattemptedWarningModal from '../components/UnattemptedWarningModal';
+import GuidanceDrawer, { GUIDES } from '../components/GuidanceDrawer';
 
 const MAX_TAB_SWITCH_ALLOWED = 4;
 
@@ -37,6 +38,7 @@ export default function Quiz() {
   const [isRoomClosed, setIsRoomClosed] = useState(false);
   const [quizSubject, setQuizSubject]   = useState('');
   const [quizUnit, setQuizUnit]         = useState('');
+  const [showGuide, setShowGuide]       = useState(false);
 
   const displaySubject = quizSubject || roomSession?.subject || '';
   const displayUnit    = quizUnit || roomSession?.unit || '';
@@ -565,6 +567,14 @@ export default function Quiz() {
           )}
           <span className="quiz-student-name">{student.name}</span>
           <ThemeToggle />
+          <button
+            type="button"
+            className="guidance-pill"
+            onClick={() => setShowGuide(true)}
+            title="View Quiz Solving Guide & Instructions"
+          >
+            ℹ️ Guide
+          </button>
         </div>
         {startedAt && (
           <TimerBar
@@ -575,6 +585,12 @@ export default function Quiz() {
           />
         )}
       </header>
+
+      <GuidanceDrawer
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        guide={GUIDES.quiz}
+      />
 
       {/* ── Progress bar ── */}
       <ProgressBar

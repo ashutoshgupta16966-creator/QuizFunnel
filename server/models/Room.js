@@ -21,6 +21,7 @@ const ParticipantSchema = new mongoose.Schema({
   isDisqualified: { type: Boolean, default: false },
   isReattempt:    { type: Boolean, default: false },
   previousAttempt: { type: mongoose.Schema.Types.Mixed, default: null },
+  attempts:       { type: [mongoose.Schema.Types.Mixed], default: [] },
   levels:         [ParticipantLevelSchema],
   joinedAt:       { type: Date, default: Date.now },
   lastActive:     { type: Date, default: Date.now },
@@ -125,25 +126,52 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
 
       // Extract prior attempt data if reattempt or history exists
       let previousAttempt = p.previousAttempt || null;
+      let allAttempts = Array.isArray(p.attempts) && p.attempts.length > 0 ? [...p.attempts] : [];
       const studentObj = studentMap.get(p.mobile);
-      if (!previousAttempt && studentObj && Array.isArray(studentObj.attemptHistory) && studentObj.attemptHistory.length > 0) {
+
+      if (studentObj && Array.isArray(studentObj.attemptHistory) && studentObj.attemptHistory.length > 0) {
         const roomAttempts = studentObj.attemptHistory.filter((a) => !roomCode || a.roomCode === roomCode);
-        const prior = roomAttempts.length > 0 ? roomAttempts[roomAttempts.length - 1] : studentObj.attemptHistory[studentObj.attemptHistory.length - 1];
-        if (prior && (p.isReattempt || roomAttempts.length > 0)) {
-          previousAttempt = {
-            score: prior.totalScore ?? 0,
-            timeTaken: prior.totalTimeTaken ?? 0,
-            level: prior.levelReached ?? 1,
-            status: prior.status ?? 'completed',
-            isDisqualified: Boolean(prior.isDisqualified),
-            levels: Array.isArray(prior.levelsSummary) ? prior.levelsSummary.map((lvl) => ({
-              level: lvl.level,
-              score: lvl.score || 0,
-              timeTaken: lvl.timeTaken || 0,
-            })) : [],
-            attemptDate: prior.attemptDate,
-          };
+        const mappedRoomAttempts = roomAttempts.map((att, idx) => ({
+          attemptNumber: att.attemptNumber || idx + 1,
+          score: att.totalScore ?? 0,
+          timeTaken: att.totalTimeTaken ?? 0,
+          level: att.levelReached ?? 1,
+          status: att.status ?? 'completed',
+          isDisqualified: Boolean(att.isDisqualified),
+          levels: Array.isArray(att.levelsSummary) ? att.levelsSummary.map((lvl) => ({
+            level: lvl.level,
+            score: lvl.score || 0,
+            timeTaken: lvl.timeTaken || 0,
+          })) : [],
+          attemptDate: att.attemptDate,
+        }));
+
+        if (allAttempts.length === 0 && mappedRoomAttempts.length > 0) {
+          allAttempts = mappedRoomAttempts;
         }
+
+        if (!previousAttempt) {
+          const prior = roomAttempts.length > 0 ? roomAttempts[0] : studentObj.attemptHistory[0];
+          if (prior && (p.isReattempt || roomAttempts.length > 1 || allAttempts.length > 0)) {
+            previousAttempt = {
+              score: prior.totalScore ?? 0,
+              timeTaken: prior.totalTimeTaken ?? 0,
+              level: prior.levelReached ?? 1,
+              status: prior.status ?? 'completed',
+              isDisqualified: Boolean(prior.isDisqualified),
+              levels: Array.isArray(prior.levelsSummary) ? prior.levelsSummary.map((lvl) => ({
+                level: lvl.level,
+                score: lvl.score || 0,
+                timeTaken: lvl.timeTaken || 0,
+              })) : [],
+              attemptDate: prior.attemptDate,
+            };
+          }
+        }
+      }
+
+      if (previousAttempt && allAttempts.length === 0) {
+        allAttempts = [previousAttempt];
       }
 
       return {
@@ -152,6 +180,7 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
         computedTotalScore,
         computedTotalTime,
         previousAttempt,
+        attempts: allAttempts,
       };
     });
   } catch (err) {
