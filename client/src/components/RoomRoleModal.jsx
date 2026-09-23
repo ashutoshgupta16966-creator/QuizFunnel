@@ -1204,9 +1204,9 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
               type="button"
               className="guidance-pill"
               onClick={() => setShowGuide(true)}
-              title="View Live Quiz Room Guide"
+              title="View Live Quiz Room Instructions"
             >
-              ℹ️ Guide
+              ℹ️ Instructions
             </button>
             <ThemeToggle />
             <button
@@ -2351,10 +2351,10 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                 type="button"
                 className="guidance-pill"
                 onClick={() => setShowGuide(true)}
-                title="View Live Quiz Room Guide"
+                title="View Live Quiz Room Instructions"
                 style={{ marginTop: '0.5rem' }}
               >
-                ℹ️ Guide
+                ℹ️ Instructions
               </button>
             </div>
 

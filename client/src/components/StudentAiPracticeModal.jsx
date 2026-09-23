@@ -609,9 +609,9 @@ export default function StudentAiPracticeModal({
               type="button"
               className="guidance-pill"
               onClick={() => setShowGuide(true)}
-              title="View Self Practice Guide & Instructions"
+              title="View Self Practice Instructions"
             >
-              ℹ️ Guide
+              ℹ️ Instructions
             </button>
             <ThemeToggle />
             <button

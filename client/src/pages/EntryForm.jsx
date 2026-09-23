@@ -602,17 +602,20 @@ export default function EntryForm() {
 
   return (
     <div className="entry-page">
-      {/* Universal Top Navigation: Clean 2-Row Action Pills */}
+      {/* Universal Top Navigation: 2 Aligned Groups (Left & Right) */}
       <header className="entry-header-nav" role="navigation" aria-label="Main Navigation">
-        <div className="entry-nav-row entry-nav-row-1">
+        <div className="entry-nav-group entry-nav-group-left">
           <ThemeToggle />
           <button
             type="button"
-            className="my-results-btn nav-pill-btn"
-            onClick={handleOpenResultsModal}
-            title="Access your private quiz attempts history"
+            className="guidance-pill nav-pill-btn"
+            onClick={() => {
+              setActiveGuide(GUIDES.home);
+              setShowGuide(true);
+            }}
+            title="View Home Screen Instructions"
           >
-            🏆 <span className="btn-text">My Results</span>
+            ℹ️ <span className="btn-text">Instructions</span>
           </button>
           <button
             type="button"
@@ -622,17 +625,20 @@ export default function EntryForm() {
           >
             📱 <span className="btn-text">QR Code</span>
           </button>
+          {!isAppInstalled && (
+            <button
+              type="button"
+              className="pwa-install-pill-btn nav-pill-btn"
+              onClick={handleInstallApp}
+              title="Install Quiz Funnel as an App"
+              aria-label="Install App"
+            >
+              📲 <span className="btn-text">Install App</span>
+            </button>
+          )}
         </div>
 
-        <div className="entry-nav-row entry-nav-row-2">
-          <button
-            type="button"
-            className="quiz-rooms-btn nav-pill-btn"
-            onClick={() => setShowRoomRoleModal(true)}
-            title="Create or Join a Live Quiz Room"
-          >
-            🏫 <span className="btn-text">Quiz Rooms</span>
-          </button>
+        <div className="entry-nav-group entry-nav-group-right">
           <button
             type="button"
             className="self-practice-btn nav-pill-btn"
@@ -646,26 +652,20 @@ export default function EntryForm() {
           </button>
           <button
             type="button"
-            className="guidance-pill"
-            onClick={() => {
-              setActiveGuide(GUIDES.home);
-              setShowGuide(true);
-            }}
-            title="View Home Screen Guide & Instructions"
+            className="quiz-rooms-btn nav-pill-btn"
+            onClick={() => setShowRoomRoleModal(true)}
+            title="Create or Join a Live Quiz Room"
           >
-            ℹ️ Guide
+            🏫 <span className="btn-text">Quiz Rooms</span>
           </button>
-          {!isAppInstalled && (
-            <button
-              type="button"
-              className="pwa-install-pill-btn nav-pill-btn"
-              onClick={handleInstallApp}
-              title="Install Quiz Funnel as an App"
-              aria-label="Install App"
-            >
-              📲 <span className="btn-text">Install App</span>
-            </button>
-          )}
+          <button
+            type="button"
+            className="my-results-btn nav-pill-btn"
+            onClick={handleOpenResultsModal}
+            title="Access your private quiz attempts history"
+          >
+            🏆 <span className="btn-text">My Results</span>
+          </button>
         </div>
 
         {pwaSuccessMsg && (
@@ -846,10 +846,10 @@ export default function EntryForm() {
                       setActiveGuide(GUIDES.history);
                       setShowGuide(true);
                     }}
-                    title="View Attempt History Guide"
+                    title="View Attempt History Instructions"
                     style={{ fontSize: '0.72rem', padding: '0.25rem 0.6rem' }}
                   >
-                    ℹ️ Guide
+                    ℹ️ Instructions
                   </button>
                 )}
                 <button
@@ -1139,6 +1139,19 @@ export default function EntryForm() {
                                   <div className="attempt-card-header">
                                     <div className="attempt-badge-title">
                                       <span className="attempt-number-badge">Attempt #{attemptNum}</span>
+                                      {/* Dustbin delete icon restored next to Attempt #X label */}
+                                      <button
+                                        type="button"
+                                        className="delete-attempt-btn"
+                                        onClick={(e) => {
+                                          e.stopPropagation(); // Prevents card click / detail modal trigger
+                                          setDeleteConfirmAttempt({ ...attempt, attemptNum });
+                                        }}
+                                        title="Delete this attempt record"
+                                        aria-label={`Delete attempt #${attemptNum}`}
+                                      >
+                                        🗑️
+                                      </button>
                                       <span className="attempt-timestamp">
                                         {attempt.attemptDate || attempt.createdAt
                                           ? new Date(attempt.attemptDate || attempt.createdAt).toLocaleString(undefined, {
@@ -1163,18 +1176,6 @@ export default function EntryForm() {
                                       <span className={`status-badge ${isDisqualifiedAttempt ? 'disqualified' : isCompletedAttempt ? 'completed' : 'eliminated'}`}>
                                         {isDisqualifiedAttempt ? 'Disqualified 🚫' : isCompletedAttempt ? 'Completed' : 'Eliminated'}
                                       </span>
-                                      {/* Delete Attempt Button — stops event propagation */}
-                                      <button
-                                        type="button"
-                                        className="delete-attempt-btn"
-                                        onClick={(e) => {
-                                          e.stopPropagation(); // Prevents card click / detail modal trigger
-                                          setDeleteConfirmAttempt({ ...attempt, attemptNum });
-                                        }}
-                                        title="Delete this attempt record"
-                                      >
-                                        🗑️
-                                      </button>
                                     </div>
                                   </div>
 

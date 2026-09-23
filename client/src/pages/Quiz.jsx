@@ -558,7 +558,7 @@ export default function Quiz() {
 
   return (
     <div className="quiz-page">
-      {/* ── Sticky header with overall level timer ── */}
+      {/* ── Sticky header: Level Badge, Room Tag, Student Name, Theme Toggle ── */}
       <header className="quiz-header">
         <div className="quiz-header-left">
           <span className="quiz-level-badge">{levelConfig.label}</span>
@@ -566,16 +566,22 @@ export default function Quiz() {
             <span className="quiz-room-tag">🏫 Room: {roomSession.roomCode}</span>
           )}
           <span className="quiz-student-name">{student.name}</span>
-          <ThemeToggle />
-          <button
-            type="button"
-            className="guidance-pill"
-            onClick={() => setShowGuide(true)}
-            title="View Quiz Solving Guide & Instructions"
-          >
-            ℹ️ Guide
-          </button>
         </div>
+        <div className="quiz-header-right">
+          <ThemeToggle />
+        </div>
+      </header>
+
+      {/* ── Centered Action Strip: Instructions button & Timer between Header and Progress Bar ── */}
+      <div className="quiz-action-strip">
+        <button
+          type="button"
+          className="guidance-pill quiz-instructions-pill"
+          onClick={() => setShowGuide(true)}
+          title="View Quiz Solving Instructions"
+        >
+          ℹ️ Instructions
+        </button>
         {startedAt && (
           <TimerBar
             totalSeconds={levelConfig.timeSeconds}
@@ -584,7 +590,7 @@ export default function Quiz() {
             isPaused={isAntiCheatTerminal || submitting || hasSubmitted.current}
           />
         )}
-      </header>
+      </div>
 
       <GuidanceDrawer
         isOpen={showGuide}

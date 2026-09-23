@@ -47,7 +47,7 @@ export default function GuidanceDrawer({ isOpen, onClose, guide }) {
         className={`guidance-drawer ${isOpen ? 'open' : ''}`}
         role="dialog"
         aria-modal="true"
-        aria-label={`${guide.title} Guide`}
+        aria-label={guide.title}
       >
         {/* Header */}
         <div className="guidance-drawer-header">
@@ -59,8 +59,8 @@ export default function GuidanceDrawer({ isOpen, onClose, guide }) {
             type="button"
             className="guidance-drawer-close"
             onClick={onClose}
-            aria-label="Close guide"
-            title="Close guide"
+            aria-label="Close instructions"
+            title="Close instructions"
           >
             ✕
           </button>
@@ -130,7 +130,7 @@ export default function GuidanceDrawer({ isOpen, onClose, guide }) {
 
 export const GUIDES = {
   home: {
-    title: 'Home Screen Guide',
+    title: 'Home Screen Instructions',
     icon: '🏠',
     sections: [
       {
@@ -173,7 +173,7 @@ export const GUIDES = {
   },
 
   quiz: {
-    title: 'Quiz Solving Guide',
+    title: 'Quiz Solving Instructions',
     icon: '🧩',
     sections: [
       {
@@ -226,7 +226,7 @@ export const GUIDES = {
   },
 
   room: {
-    title: 'Live Quiz Room Guide',
+    title: 'Live Quiz Room Instructions',
     icon: '🏫',
     sections: [
       {
@@ -267,7 +267,7 @@ export const GUIDES = {
   },
 
   practice: {
-    title: 'Self Practice Setup Guide',
+    title: 'Self Practice Instructions',
     icon: '⚡',
     sections: [
       {
@@ -308,7 +308,7 @@ export const GUIDES = {
   },
 
   history: {
-    title: 'Attempt History Guide',
+    title: 'Attempt History Instructions',
     icon: '📋',
     sections: [
       {
