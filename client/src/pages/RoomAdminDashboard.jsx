@@ -317,31 +317,33 @@ export default function RoomAdminDashboard() {
       {/* Top Navbar */}
       <header className="room-dashboard-header">
         <div className="header-left">
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => {
-              const adminPhone = room?.adminPhone || sessionStorage.getItem('room_admin_phone') || '';
-              navigate('/', {
-                state: {
-                  openRoomModal: true,
-                  initialStep: adminPhone ? 'admin_my_rooms_list' : 'select_role',
-                  initialPhone: adminPhone,
-                },
-              });
-            }}
-            title="Return to Host History Hub"
-          >
-            ← Back
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => navigate('/')}
-            title="Return to Home Page"
-          >
-            🏠 Home
-          </button>
+          <div className="header-nav-btn-stack">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm header-nav-btn"
+              onClick={() => {
+                const adminPhone = room?.adminPhone || sessionStorage.getItem('room_admin_phone') || '';
+                navigate('/', {
+                  state: {
+                    openRoomModal: true,
+                    initialStep: adminPhone ? 'admin_my_rooms_list' : 'select_role',
+                    initialPhone: adminPhone,
+                  },
+                });
+              }}
+              title="Return to Host History Hub"
+            >
+              ← Back
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm header-nav-btn"
+              onClick={() => navigate('/')}
+              title="Return to Home Page"
+            >
+              🏠 Home
+            </button>
+          </div>
           <div className="room-title-block">
             <span className="room-icon">👑</span>
             <h1 className="room-dashboard-title">Live Room Dashboard</h1>

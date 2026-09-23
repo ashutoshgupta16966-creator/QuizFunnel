@@ -192,6 +192,8 @@ export default function StudentAiPracticeModal({
   const [unit, setUnit] = useState('');
   const [questions, setQuestions] = useState([]);
   const [bulkFormatMode, setBulkFormatMode] = useState('manual'); // 'manual' | 'all_mcq' | 'all_direct'
+  const [isMcqDropdownOpen, setIsMcqDropdownOpen] = useState(false);
+  const [mcqOptionMode, setMcqOptionMode] = useState('auto'); // 'auto' | 'manual'
 
   // Practice Quiz Engine State
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -385,20 +387,67 @@ export default function StudentAiPracticeModal({
   };
 
   // ── Bulk Format Toggle Handlers ───────────────────────────────────────────
-  const handleApplyAllMcq = () => {
+  const handleToggleMcqDropdown = () => {
+    setIsMcqDropdownOpen((prev) => !prev);
+    if (bulkFormatMode !== 'all_mcq') {
+      handleApplyMcqSubOption(mcqOptionMode || 'auto');
+    }
+  };
+
+  const handleApplyMcqSubOption = (mode) => {
     setBulkFormatMode('all_mcq');
+    setMcqOptionMode(mode);
     setQuestions((prev) =>
-      prev.map((q) => ({
-        ...q,
-        questionType: 'mcq',
-        options: ensureValidMcqOptions(q),
-        correctAnswerIndex: typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : 0,
-      }))
+      prev.map((q) => {
+        let opts = q.options;
+        if (mode === 'auto') {
+          opts = ensureValidMcqOptions(q);
+        } else {
+          // Manual mode: ensure 4 options exist
+          if (!Array.isArray(opts) || opts.length !== 4) {
+            const seed = q.directAnswer || (q.options && q.options[q.correctAnswerIndex]) || '';
+            opts = seed ? [seed, '', '', ''] : ['', '', '', ''];
+          }
+        }
+        return {
+          ...q,
+          questionType: 'mcq',
+          optionMode: mode,
+          options: opts,
+          correctAnswerIndex: typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : 0,
+        };
+      })
     );
+  };
+
+  const handlePracticeOptionChange = (qIdx, optIdx, val) => {
+    setQuestions((prev) => {
+      const next = [...prev];
+      const cur = next[qIdx];
+      const nextOptions = [...(cur.options || ['', '', '', ''])];
+      nextOptions[optIdx] = val;
+      next[qIdx] = {
+        ...cur,
+        options: nextOptions,
+      };
+      return next;
+    });
+  };
+
+  const handlePracticeCorrectAnswerChange = (qIdx, correctIdx) => {
+    setQuestions((prev) => {
+      const next = [...prev];
+      next[qIdx] = {
+        ...next[qIdx],
+        correctAnswerIndex: correctIdx,
+      };
+      return next;
+    });
   };
 
   const handleApplyAllDirect = () => {
     setBulkFormatMode('all_direct');
+    setIsMcqDropdownOpen(false);
     setQuestions((prev) =>
       prev.map((q) => {
         let direct = q.directAnswer;
@@ -811,23 +860,51 @@ export default function StudentAiPracticeModal({
 
             {/* Bulk Format Selector Toolbar */}
             <div className="ai-bulk-format-bar">
-              <span className="ai-bulk-format-label">Batch Format:</span>
-              <div className="ai-bulk-btn-group">
-                <button
-                  type="button"
-                  className={`ai-bulk-pill ${bulkFormatMode === 'all_mcq' ? 'is-active' : ''}`}
-                  onClick={handleApplyAllMcq}
-                >
-                  🔘 Apply All MCQ
-                </button>
-                <button
-                  type="button"
-                  className={`ai-bulk-pill ${bulkFormatMode === 'all_direct' ? 'is-active' : ''}`}
-                  onClick={handleApplyAllDirect}
-                >
-                  🔢 Apply All Direct/Numerical
-                </button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <span className="ai-bulk-format-label">Batch Format:</span>
+                <div className="ai-bulk-btn-group">
+                  <button
+                    type="button"
+                    className={`ai-bulk-pill ai-bulk-expandable-btn ${isMcqDropdownOpen ? 'is-expanded' : ''} ${bulkFormatMode === 'all_mcq' ? 'is-active' : ''}`}
+                    onClick={handleToggleMcqDropdown}
+                    title="Choose AI Auto-Generate or Manual Options for MCQs"
+                    aria-expanded={isMcqDropdownOpen}
+                  >
+                    <span>🔘 Apply All MCQ</span>
+                    <span className={`ai-dropdown-chevron ${isMcqDropdownOpen ? 'open' : ''}`} aria-hidden="true">▼</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`ai-bulk-pill ${bulkFormatMode === 'all_direct' ? 'is-active' : ''}`}
+                    onClick={handleApplyAllDirect}
+                  >
+                    🔢 Apply All Direct/Numerical
+                  </button>
+                </div>
               </div>
+
+              {/* Expandable sub-options row */}
+              {isMcqDropdownOpen && (
+                <div className="ai-bulk-suboptions-container">
+                  <span className="ai-suboptions-label">⚡ MCQ Option Setup:</span>
+                  <div className="ai-optmode-pill-group">
+                    <button
+                      type="button"
+                      className={`ai-optmode-pill ${mcqOptionMode === 'auto' ? 'is-active' : ''}`}
+                      onClick={() => handleApplyMcqSubOption('auto')}
+                    >
+                      🪄 AI Auto-Generate
+                    </button>
+                    <button
+                      type="button"
+                      className={`ai-optmode-pill ${mcqOptionMode === 'manual' ? 'is-active' : ''}`}
+                      onClick={() => handleApplyMcqSubOption('manual')}
+                    >
+                      ✏️ Manual
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Questions count badge */}
@@ -873,21 +950,50 @@ export default function StudentAiPracticeModal({
                     {q.questionText}
                   </p>
 
-                  {/* Strictly Masked Answer Preview (Anti-Spoil) */}
-                  <div className="masked-anti-spoil-box">
-                    {q.questionType === 'direct' ? (
+                  {/* Answer Preview or Manual Options Setup */}
+                  {q.questionType === 'direct' ? (
+                    <div className="masked-anti-spoil-box">
                       <div className="masked-hint">
                         🔒 <strong>Direct / Numerical Entry:</strong> Type your exact answer during the test. Correct key is hidden.
                       </div>
-                    ) : (
+                    </div>
+                  ) : q.optionMode === 'manual' ? (
+                    <div className="ai-manual-options-container" style={{ marginTop: '0.65rem' }}>
+                      <span className="ai-options-label" style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem' }}>
+                        ✏️ Custom Options (click radio to select designated correct answer):
+                      </span>
+                      {['A', 'B', 'C', 'D'].map((letter, optIdx) => (
+                        <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`} style={{ marginBottom: '0.35rem' }}>
+                          <label className="ai-correct-radio-label" title={`Mark Option ${letter} as correct`}>
+                            <input
+                              type="radio"
+                              name={`practice_correct_${qIdx}`}
+                              checked={q.correctAnswerIndex === optIdx}
+                              onChange={() => handlePracticeCorrectAnswerChange(qIdx, optIdx)}
+                            />
+                            <span className="ai-opt-letter">{letter}</span>
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input ai-opt-input"
+                            value={(q.options && q.options[optIdx]) || ''}
+                            onChange={(e) => handlePracticeOptionChange(qIdx, optIdx, e.target.value)}
+                            placeholder={`Option ${letter}`}
+                            style={{ fontSize: '0.82rem', padding: '4px 6px' }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="masked-anti-spoil-box">
                       <div className="masked-options-grid">
                         <div className="masked-option-pill">Option A: 🔒 Hidden (Choices revealed during test)</div>
                         <div className="masked-option-pill">Option B: 🔒 Hidden</div>
                         <div className="masked-option-pill">Option C: 🔒 Hidden</div>
                         <div className="masked-option-pill">Option D: 🔒 Hidden</div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -906,7 +1012,6 @@ export default function StudentAiPracticeModal({
                 className="btn btn-primary"
                 onClick={handleStartPracticeQuiz}
                 disabled={questions.length === 0}
-                style={{ flex: 2 }}
               >
                 🚀 Start Practice Test ({questions.length} Qs)
               </button>
@@ -1181,7 +1286,6 @@ export default function StudentAiPracticeModal({
                 type="button"
                 className="btn btn-primary"
                 onClick={handleStartPracticeQuiz}
-                style={{ flex: 2 }}
               >
                 🔄 Re-Attempt Practice Set
               </button>
