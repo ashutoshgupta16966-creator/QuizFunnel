@@ -32,7 +32,7 @@ const corsOptions = {
           callback(new Error('Not allowed by CORS'));
         }
       },
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type',
     'Authorization',
@@ -78,7 +78,9 @@ app.post('/api/generate-questions', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-// Permanent Attempt Deletion API route
+});
+
+// Permanent Attempt Deletion REST route
 app.delete('/api/attempts/:id', async (req, res, next) => {
   try {
     const { performDeleteAttempt } = studentsRouter;
