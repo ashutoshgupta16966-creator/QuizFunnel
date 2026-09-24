@@ -2119,20 +2119,6 @@ a { color: inherit; }
   right: 1.25rem;
 }
 
-.win-banner-badge {
-  display: inline-block;
-  background: linear-gradient(135deg, #FBBF24, #F59E0B);
-  color: #0F172A;
-  font-size: 0.85rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  padding: 0.4rem 1.25rem;
-  border-radius: var(--r-full);
-  box-shadow: 0 4px 18px rgba(251, 191, 36, 0.45);
-  margin-bottom: 0.75rem;
-  animation: pulseGlow 2s infinite;
-}
-
 .win-trophy-pop {
   font-size: 4.5rem;
   animation: trophyPop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
@@ -4091,8 +4077,57 @@ a { color: inherit; }
 .admin-room-dashboard-page {
   min-height: 100svh;
   max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
   padding: 1.25rem 1rem 4rem;
+  box-sizing: border-box;
+}
+
+/* ── Live Room Responsive Viewport Wrapper & Scrolling ── */
+.live-room-responsive-viewport {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+  box-sizing: border-box;
+}
+
+.table-wrapper {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-xl);
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-card);
+}
+
+@media (max-width: 768px) {
+  .admin-room-dashboard-page {
+    padding: 0.85rem 0.65rem 3.5rem;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  .live-room-responsive-viewport {
+    touch-action: pan-x pan-y;
+    max-width: 100%;
+  }
+  .room-hero-card,
+  .dashboard-control-strip,
+  .analytics-accordion,
+  .table-wrapper,
+  .level-breakdown-card {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .dashboard-table {
+    min-width: 650px;
+  }
 }
 
 .room-dashboard-header {
@@ -6970,7 +7005,7 @@ a { color: inherit; }
   50%       { transform: translateY(-5px); }
 }
 
-/* ── Floating Pill Install Button (RajaChess-inspired FAB) ────── */
+/* ── Floating Square Install Button (Compact Icon-Only FAB) ────── */
 .pwa-floating-install-btn {
   position: fixed;
   bottom: 1.75rem;
@@ -6981,15 +7016,14 @@ a { color: inherit; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  padding: 0.65rem 1.25rem;
-  border-radius: var(--r-full, 9999px);
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: var(--r-lg, 12px);
   background: linear-gradient(135deg, #4361EE, #3B82F6);
   color: #FFFFFF;
-  font-family: inherit;
-  font-size: 0.88rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
   border: 1.5px solid rgba(255, 255, 255, 0.35);
   box-shadow: 0 4px 20px rgba(67, 97, 238, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
   cursor: pointer;
@@ -7003,25 +7037,21 @@ a { color: inherit; }
 }
 
 .pwa-floating-install-btn:hover {
-  transform: translateY(-2px) scale(1.04);
+  transform: translateY(-2px) scale(1.06);
   box-shadow: 0 6px 24px rgba(67, 97, 238, 0.65), 0 0 16px rgba(76, 201, 240, 0.45);
   border-color: rgba(255, 255, 255, 0.6);
 }
 
 .pwa-floating-install-btn:active {
-  transform: translateY(1px) scale(0.97);
+  transform: translateY(1px) scale(0.95);
 }
 
 .pwa-floating-install-btn .pwa-floating-icon {
-  font-size: 1.15rem;
+  font-size: 1.45rem;
   line-height: 1;
-}
-
-.pwa-floating-install-btn .pwa-floating-text {
-  font-size: 0.88rem;
-  font-weight: 700;
-  line-height: 1;
-  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @keyframes pwaPillFloatIn {
@@ -7053,11 +7083,15 @@ a { color: inherit; }
     right: 1.25rem;
     bottom: max(1.25rem, env(safe-area-inset-bottom, 1.25rem));
     right: max(1.25rem, env(safe-area-inset-right, 1.25rem));
-    padding: 0.55rem 1.05rem;
-    font-size: 0.82rem;
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    min-height: 46px;
+    padding: 0;
+    border-radius: var(--r-lg, 12px);
   }
   .pwa-floating-install-btn .pwa-floating-icon {
-    font-size: 1.05rem;
+    font-size: 1.35rem;
   }
 }
 

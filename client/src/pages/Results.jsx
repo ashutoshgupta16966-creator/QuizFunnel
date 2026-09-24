@@ -303,12 +303,8 @@ function ResultsContent() {
           <ThemeToggle />
         </div>
 
-        <div className="win-banner-badge">
-          🎉 VICTORY UNLOCKED 🎉
-        </div>
-
         <div className="results-icon win-trophy-pop" role="img" aria-label="Trophy">🏆</div>
-        <h1 className="results-title completed win-title-glow">Congratulations! You Won!</h1>
+        <h1 className="results-title completed win-title-glow">Congratulations! You completed the quiz</h1>
         <p className="results-message">
           Exceptional performance, <strong>{student.name || 'Champion'}</strong>! You cleared all {clearedLevel} level{clearedLevel > 1 ? 's' : ''} of the Quiz Funnel.
           Your score has been registered for the final leaderboard rankings.

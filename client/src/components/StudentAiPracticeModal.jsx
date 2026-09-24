@@ -237,9 +237,26 @@ export default function StudentAiPracticeModal({
         setStep('setup_preview');
       }
     } else if (isOpen && !reattemptData) {
-      setCandidateName(homeFormData.name || '');
-      setCandidateMobile(homeFormData.mobile || '');
-      setCandidateBranch(homeFormData.branch || 'CSE');
+      setCandidateName(homeFormData?.name || '');
+      setCandidateMobile(homeFormData?.mobile || '');
+      setCandidateBranch(homeFormData?.branch || 'CSE');
+      // Invalidate any past completed attempt or in-progress state: always land fresh on Step 1
+      setStep('upload');
+      setQuestions([]);
+      setAnswers({});
+      setBookmarks({});
+      setCurrentIndex(0);
+      setQuizSeconds(0);
+      setTimerRunning(false);
+      setQuizResults(null);
+      setSaveStatus('');
+      setFiles((prev) => {
+        prev.forEach((f) => {
+          if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+        });
+        return [];
+      });
+      setUploadError('');
     }
   }, [isOpen, reattemptData, homeFormData]);
 
@@ -319,6 +336,27 @@ export default function StudentAiPracticeModal({
       if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
       return prev.filter((_, i) => i !== idx);
     });
+  };
+
+  const resetToFreshPractice = () => {
+    setStep('upload');
+    setQuestions([]);
+    setAnswers({});
+    setBookmarks({});
+    setCurrentIndex(0);
+    setQuizSeconds(0);
+    setTimerRunning(false);
+    setQuizResults(null);
+    setSaveStatus('');
+    handleClearFiles();
+    setUploadError('');
+    setTopicInput('');
+    setDirectInputText('');
+  };
+
+  const handleCloseModal = () => {
+    resetToFreshPractice();
+    if (onClose) onClose();
   };
 
   // ── Digitize & Extract Questions with Gemini 3.x ─────────────────────────
@@ -631,7 +669,7 @@ export default function StudentAiPracticeModal({
   const currentQ = questions[currentIndex];
 
   return (
-    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
+    <div className="modal-backdrop" onClick={handleCloseModal} role="dialog" aria-modal="true">
       <div
         className="modal-content room-modal-card"
         onClick={(e) => e.stopPropagation()}
@@ -667,7 +705,7 @@ export default function StudentAiPracticeModal({
             <button
               type="button"
               className="room-close-btn"
-              onClick={onClose}
+              onClick={handleCloseModal}
               aria-label="Close modal"
               title="Close"
             >
@@ -806,7 +844,7 @@ export default function StudentAiPracticeModal({
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={onClose}
+                  onClick={handleCloseModal}
                 >
                   Cancel
                 </button>
@@ -1278,7 +1316,7 @@ export default function StudentAiPracticeModal({
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={onClose}
+                onClick={handleCloseModal}
               >
                 🏠 Return to Home
               </button>

@@ -78,6 +78,22 @@ app.post('/api/generate-questions', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+// Permanent Attempt Deletion API route
+app.delete('/api/attempts/:id', async (req, res, next) => {
+  try {
+    const { performDeleteAttempt } = studentsRouter;
+    const attemptId = req.params.id;
+    const mobile = req.body?.mobile || req.query?.mobile;
+    const password = req.body?.password || req.query?.password;
+
+    const result = await performDeleteAttempt({ mobile, attemptId, password });
+    if (result.error) {
+      return res.status(result.status).json({ success: false, error: result.error });
+    }
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Health check — useful for Render's uptime monitoring

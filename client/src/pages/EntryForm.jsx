@@ -574,13 +574,16 @@ export default function EntryForm() {
     }
   };
 
-  // Delete Attempt Handler with Instant Real-Time UI Re-render
+  // Delete Attempt Handler with Instant Real-Time UI Re-render & Invalidation
   const handleDeleteAttemptConfirm = async () => {
     if (!deleteConfirmAttempt || !authedStudentData) return;
     const targetId = deleteConfirmAttempt._id || deleteConfirmAttempt.id || deleteConfirmAttempt.attemptId;
+    const mobile = authedStudentData.mobile;
 
     setDeleteLoading(true);
     try {
+      let isUnlocked = false;
+      let newHistory = null;
       try {
         const res = await deleteStudentAttempt({
           mobile: authedStudentData.mobile,
@@ -588,12 +591,16 @@ export default function EntryForm() {
           attemptId: targetId,
         });
         if (res.data?.attemptHistory) {
-          setAttemptsList(res.data.attemptHistory);
+          newHistory = res.data.attemptHistory;
+        }
+        if (res.data?.unlocked) {
+          isUnlocked = true;
         }
       } catch (apiErr) {
         console.warn('[Delete Attempt] Backend API call fallback:', apiErr.message);
       }
 
+      // Filter and sync localStorage
       try {
         const localSaved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
         const updatedLocal = localSaved.filter((a) => {
@@ -603,11 +610,28 @@ export default function EntryForm() {
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedLocal));
       } catch { /* noop */ }
 
-      // Real-time state update for instant UI feedback
-      setAttemptsList((prev) => prev.filter((a) => {
+      // Compute remaining items
+      const remaining = newHistory !== null ? newHistory : attemptsList.filter((a) => {
         const id = a._id || a.id || a.attemptId;
         return id !== targetId && a.attemptDate !== deleteConfirmAttempt.attemptDate;
-      }));
+      });
+
+      setAttemptsList(remaining);
+
+      // If all attempts for this phone number are deleted, completely invalidate and reset user session
+      if (remaining.length === 0 || isUnlocked) {
+        setAuthedStudentData(null);
+        try {
+          localStorage.removeItem(`quiz_anti_cheated_${mobile}`);
+          localStorage.removeItem(`quiz_tab_switches_${mobile}`);
+          sessionStorage.removeItem('quiz_student');
+          sessionStorage.removeItem('room_session');
+          // Also clear from localStorage history any records matching this mobile
+          const localSaved = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
+          const clearedLocal = localSaved.filter((a) => String(a.mobile).trim() !== String(mobile).trim());
+          localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(clearedLocal));
+        } catch { /* noop */ }
+      }
 
       // Close detail view if currently open attempt was deleted
       if (selectedAttemptDetail && (selectedAttemptDetail._id || selectedAttemptDetail.attemptId) === targetId) {
@@ -1254,7 +1278,7 @@ export default function EntryForm() {
           </div>
         </div>
       )}
-      {/* ── Floating Pill Install Button (Bottom-Right, Home Screen Only) ── */}
+      {/* ── Floating Square Install Button (Bottom-Right, Home Screen Only) ── */}
       {!isAppInstalled && (
         <button
           type="button"
@@ -1265,7 +1289,6 @@ export default function EntryForm() {
           aria-label="Install Quiz Funnel App"
         >
           <span className="pwa-floating-icon" aria-hidden="true">📲</span>
-          <span className="pwa-floating-text">Install</span>
         </button>
       )}
 

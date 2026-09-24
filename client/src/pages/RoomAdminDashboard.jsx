@@ -372,7 +372,7 @@ export default function RoomAdminDashboard() {
         )}
 
         {!loading && !error && room && (
-          <>
+          <div className="live-room-responsive-viewport">
             {/* ── Room Hero Info Bar ── */}
             <div className="room-hero-card">
               <div className="hero-details">
@@ -1007,7 +1007,7 @@ export default function RoomAdminDashboard() {
                 )}
               </div>
             )}
-          </>
+          </div>
         )}
       </main>
     </div>

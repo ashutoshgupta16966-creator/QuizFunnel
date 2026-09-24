@@ -141,6 +141,83 @@ router.post('/verify-results-auth', async (req, res, next) => {
 });
 
 /**
+ * Helper to delete an attempt from student and unlock document if no attempts remain.
+ */
+async function performDeleteAttempt({ mobile, attemptId, password }) {
+  let student = null;
+  const cleanMobile = mobile ? String(mobile).trim() : '';
+  const target = attemptId ? String(attemptId).trim() : '';
+
+  if (cleanMobile) {
+    student = await Student.findOne({ mobile: cleanMobile });
+  }
+
+  if (!student && target) {
+    student = await Student.findOne({
+      $or: [
+        { 'attemptHistory._id': target },
+        { 'attemptHistory.attemptId': target },
+      ],
+    });
+  }
+
+  if (!student) {
+    return { status: 404, error: 'Student record not found.' };
+  }
+
+  if (password && student.password && student.password !== password.trim()) {
+    return { status: 401, error: 'Authentication failed. Incorrect password.' };
+  }
+
+  if (target) {
+    student.attemptHistory = (student.attemptHistory || []).filter((a) => {
+      const idMatches = a._id && a._id.toString() === target;
+      const attemptIdMatches = a.attemptId && String(a.attemptId).trim() === target;
+      return !idMatches && !attemptIdMatches;
+    });
+  }
+
+  let wasStudentDeleted = false;
+  // When all attempts for a phone number are deleted, unlock/unlink the student document
+  // so the user can rejoin/participate in quiz rooms from scratch as a new participant.
+  if (!student.attemptHistory || student.attemptHistory.length === 0) {
+    await Student.findByIdAndDelete(student._id);
+    wasStudentDeleted = true;
+
+    // Also unbind participant from any rooms they were previously in so they can participate from scratch
+    try {
+      const Room = require('../models/Room');
+      await Room.updateMany(
+        { 'participants.mobile': student.mobile },
+        {
+          $pull: {
+            participants: { mobile: student.mobile },
+            reattemptRequests: { mobile: student.mobile },
+          },
+        }
+      );
+    } catch (roomErr) {
+      console.warn('[Room Cleanup Warning]:', roomErr.message);
+    }
+  } else {
+    if (student.quizSession) {
+      student.quizSession = null;
+    }
+    await student.save();
+  }
+
+  return {
+    status: 200,
+    success: true,
+    message: wasStudentDeleted
+      ? 'All attempts deleted. Student session permanently removed and phone unlinked for fresh participation.'
+      : 'Attempt record deleted successfully from database.',
+    attemptHistory: wasStudentDeleted ? [] : student.attemptHistory,
+    unlocked: wasStudentDeleted,
+  };
+}
+
+/**
  * POST /api/students/delete-attempt
  * Deletes a specific attempt record from MongoDB.
  * Accepts { mobile, password, attemptId }.
@@ -156,36 +233,33 @@ router.post('/delete-attempt', async (req, res, next) => {
       });
     }
 
-    const student = await Student.findOne({ mobile });
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        error: 'Student record not found.',
-      });
+    const result = await performDeleteAttempt({ mobile, attemptId, password });
+    if (result.error) {
+      return res.status(result.status).json({ success: false, error: result.error });
     }
 
-    if (password && student.password && student.password !== password.trim()) {
-      return res.status(401).json({
-        success: false,
-        error: 'Authentication failed. Incorrect password.',
-      });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/students/attempts/:id
+ * Permanently removes the attempt record by id.
+ */
+router.delete('/attempts/:id', async (req, res, next) => {
+  try {
+    const attemptId = req.params.id;
+    const mobile = req.body?.mobile || req.query?.mobile;
+    const password = req.body?.password || req.query?.password;
+
+    const result = await performDeleteAttempt({ mobile, attemptId, password });
+    if (result.error) {
+      return res.status(result.status).json({ success: false, error: result.error });
     }
 
-    // Filter out attempt with matching _id or attemptId
-    const target = String(attemptId).trim();
-    student.attemptHistory = (student.attemptHistory || []).filter((a) => {
-      const idMatches = a._id && a._id.toString() === target;
-      const attemptIdMatches = a.attemptId && String(a.attemptId).trim() === target;
-      return !idMatches && !attemptIdMatches;
-    });
-
-    await student.save();
-
-    res.json({
-      success: true,
-      message: 'Attempt record deleted successfully from database.',
-      attemptHistory: student.attemptHistory,
-    });
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -418,4 +492,5 @@ router.post('/save-practice-attempt', async (req, res, next) => {
   }
 });
 
+router.performDeleteAttempt = performDeleteAttempt;
 module.exports = router;
