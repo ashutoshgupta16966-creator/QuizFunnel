@@ -339,24 +339,38 @@ export default function StudentAiPracticeModal({
   };
 
   const resetToFreshPractice = () => {
-    setStep('upload');
-    setQuestions([]);
-    setAnswers({});
-    setBookmarks({});
-    setCurrentIndex(0);
-    setQuizSeconds(0);
-    setTimerRunning(false);
-    setQuizResults(null);
-    setSaveStatus('');
-    handleClearFiles();
-    setUploadError('');
-    setTopicInput('');
-    setDirectInputText('');
+    try {
+      setStep('upload');
+      setQuestions([]);
+      setAnswers({});
+      setBookmarks({});
+      setCurrentIndex(0);
+      setQuizSeconds(0);
+      setTimerRunning(false);
+      setQuizResults(null);
+      setSaveStatus('');
+      setIsParsing(false);
+      setParseProgressMsg('');
+      setBulkFormatMode('manual');
+      setIsMcqDropdownOpen(false);
+      setMcqOptionMode('auto');
+      setSubject('Self Practice Quiz');
+      setUnit('');
+      handleClearFiles();
+      setUploadError('');
+    } catch (err) {
+      console.error('[StudentAiPracticeModal] resetToFreshPractice error:', err);
+    }
   };
 
-  const handleCloseModal = () => {
+  const handleCloseModal = (e) => {
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
     resetToFreshPractice();
-    if (onClose) onClose();
+    if (typeof onClose === 'function') {
+      onClose();
+    }
   };
 
   // ── Digitize & Extract Questions with Gemini 3.x ─────────────────────────
@@ -706,8 +720,8 @@ export default function StudentAiPracticeModal({
               type="button"
               className="room-close-btn"
               onClick={handleCloseModal}
-              aria-label="Close modal"
-              title="Close"
+              aria-label="Close Self Practice and return to home"
+              title="Close Self Practice"
             >
               ✕
             </button>

@@ -191,6 +191,14 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       setApprovedPayload(null);
       setEditingRoomCode(null);
       setDeleteConfirmRoom(null);
+      setAiFiles([]);
+      setAiParsing(false);
+      setAiParseError('');
+      setAiResult({ subject: '', unit: '', questions: [] });
+      setAiSaving(false);
+      setAiDetailsError('');
+      setAiReviewError('');
+      setAiBulkFormatMode('manual');
 
       if (targetPhone) {
         setMyRoomsPhone(targetPhone);
@@ -1213,8 +1221,11 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
             <button
               type="button"
               className="room-close-btn"
-              onClick={onClose}
-              aria-label="Close modal"
+              onClick={(e) => {
+                if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+                if (typeof onClose === 'function') onClose();
+              }}
+              aria-label="Close modal and return to home"
               title="Close modal"
             >
               ✕
