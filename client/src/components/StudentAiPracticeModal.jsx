@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { parseAiQuizDocument, savePracticeAttempt } from '../api';
+import { parseAiQuizDocument, savePracticeAttempt, generateMcqOptions } from '../api';
 import ThemeToggle from './ThemeToggle';
 import GuidanceDrawer, { GUIDES } from './GuidanceDrawer';
 
@@ -173,7 +173,7 @@ export default function StudentAiPracticeModal({
   homeFormData = {},
   reattemptData = null,
 }) {
-  // Steps: 'upload' | 'setup_preview' | 'quiz_running' | 'results_review'
+  // Steps: 'upload' | 'setup_preview' | 'timer_setup' | 'quiz_running' | 'results_review'
   const [step, setStep] = useState('upload');
 
   // Candidate details for persistent history sync
@@ -194,6 +194,15 @@ export default function StudentAiPracticeModal({
   const [bulkFormatMode, setBulkFormatMode] = useState('manual'); // 'manual' | 'all_mcq' | 'all_direct'
   const [isMcqDropdownOpen, setIsMcqDropdownOpen] = useState(false);
   const [mcqOptionMode, setMcqOptionMode] = useState('auto'); // 'auto' | 'manual'
+
+  // Bulk AI generation state
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  const [bulkGenIdx, setBulkGenIdx] = useState(null); // index currently being generated
+  const [bulkGenErrors, setBulkGenErrors] = useState({}); // { [qIdx]: errorString }
+
+  // Custom Timer Setup State (timer_setup step)
+  const [timerMins, setTimerMins] = useState(30);
+  const [timerSecs, setTimerSecs] = useState(0);
 
   // Practice Quiz Engine State
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -260,11 +269,31 @@ export default function StudentAiPracticeModal({
     }
   }, [isOpen, reattemptData, homeFormData]);
 
-  // Timer Tick
+  // Timer Tick — counts DOWN from the user-set time; auto-submits at 0:00
+  // When timerMins=0 && timerSecs=0, the user chose untimed so we count UP for reference
+  const isTimedSession = timerMins > 0 || timerSecs > 0;
   useEffect(() => {
     if (timerRunning) {
       timerRef.current = setInterval(() => {
-        setQuizSeconds((s) => s + 1);
+        setQuizSeconds((s) => {
+          if (isTimedSession) {
+            // Countdown mode
+            if (s <= 1) {
+              // Time's up — clear interval and auto-submit
+              clearInterval(timerRef.current);
+              setTimerRunning(false);
+              // Trigger submit asynchronously to avoid state update inside setState
+              setTimeout(() => {
+                document.getElementById('practice-auto-submit-btn')?.click();
+              }, 50);
+              return 0;
+            }
+            return s - 1;
+          } else {
+            // Untimed — count up for elapsed time display
+            return s + 1;
+          }
+        });
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -272,7 +301,7 @@ export default function StudentAiPracticeModal({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [timerRunning]);
+  }, [timerRunning, isTimedSession]);
 
   if (!isOpen) return null;
 
@@ -356,6 +385,11 @@ export default function StudentAiPracticeModal({
       setMcqOptionMode('auto');
       setSubject('Self Practice Quiz');
       setUnit('');
+      setIsBulkGenerating(false);
+      setBulkGenIdx(null);
+      setBulkGenErrors({});
+      setTimerMins(30);
+      setTimerSecs(0);
       handleClearFiles();
       setUploadError('');
     } catch (err) {
@@ -446,30 +480,70 @@ export default function StudentAiPracticeModal({
     }
   };
 
-  const handleApplyMcqSubOption = (mode) => {
+  const handleApplyMcqSubOption = async (mode) => {
     setBulkFormatMode('all_mcq');
     setMcqOptionMode(mode);
-    setQuestions((prev) =>
-      prev.map((q) => {
-        let opts = q.options;
-        if (mode === 'auto') {
-          opts = ensureValidMcqOptions(q);
-        } else {
-          // Manual mode: ensure 4 options exist
-          if (!Array.isArray(opts) || opts.length !== 4) {
-            const seed = q.directAnswer || (q.options && q.options[q.correctAnswerIndex]) || '';
-            opts = seed ? [seed, '', '', ''] : ['', '', '', ''];
-          }
+    setIsMcqDropdownOpen(false);
+
+    // First: convert all questions to MCQ format
+    const mcqQuestions = questions.map((q) => {
+      let opts = q.options;
+      if (mode === 'auto') {
+        opts = ensureValidMcqOptions(q);
+      } else {
+        if (!Array.isArray(opts) || opts.length !== 4) {
+          const seed = q.directAnswer || (q.options && q.options[q.correctAnswerIndex]) || '';
+          opts = seed ? [seed, '', '', ''] : ['', '', '', ''];
         }
-        return {
-          ...q,
-          questionType: 'mcq',
-          optionMode: mode,
-          options: opts,
-          correctAnswerIndex: typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : 0,
-        };
-      })
-    );
+      }
+      return {
+        ...q,
+        questionType: 'mcq',
+        optionMode: mode,
+        options: opts,
+        correctAnswerIndex: typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : 0,
+      };
+    });
+    setQuestions(mcqQuestions);
+
+    // Auto mode: trigger real Gemini API call for every question
+    if (mode === 'auto') {
+      setIsBulkGenerating(true);
+      setBulkGenErrors({});
+      for (let qIdx = 0; qIdx < mcqQuestions.length; qIdx++) {
+        const q = mcqQuestions[qIdx];
+        if (!q?.questionText?.trim()) continue;
+        setBulkGenIdx(qIdx);
+        try {
+          const res = await generateMcqOptions(q.questionText.trim());
+          if (res.data?.success && res.data?.data) {
+            const { options, correctAnswerIndex } = res.data.data;
+            setQuestions((prev) => {
+              const next = [...prev];
+              next[qIdx] = {
+                ...next[qIdx],
+                options: Array.isArray(options) && options.length === 4 ? options : next[qIdx].options,
+                correctAnswerIndex: typeof correctAnswerIndex === 'number' ? correctAnswerIndex : 0,
+                optionMode: 'auto',
+              };
+              return next;
+            });
+          } else {
+            setBulkGenErrors((prev) => ({
+              ...prev,
+              [qIdx]: res.data?.error || 'AI generation failed for this question.',
+            }));
+          }
+        } catch (err) {
+          setBulkGenErrors((prev) => ({
+            ...prev,
+            [qIdx]: err.response?.data?.error || err.message || 'AI generation failed. Edit manually.',
+          }));
+        }
+      }
+      setBulkGenIdx(null);
+      setIsBulkGenerating(false);
+    }
   };
 
   const handlePracticeOptionChange = (qIdx, optIdx, val) => {
@@ -538,12 +612,21 @@ export default function StudentAiPracticeModal({
     setQuestions((prev) => prev.filter((_, i) => i !== qIdx));
   };
 
+
   // ── Launch Practice Quiz ──────────────────────────────────────────────────
+  // Go to timer setup first so the user can set a custom countdown
   const handleStartPracticeQuiz = () => {
+    setStep('timer_setup');
+  };
+
+  // Called when user confirms the timer and starts the quiz
+  const handleConfirmTimer = () => {
+    const totalSecs = (parseInt(timerMins, 10) || 0) * 60 + (parseInt(timerSecs, 10) || 0);
     setAnswers({});
     setBookmarks({});
     setCurrentIndex(0);
-    setQuizSeconds(0);
+    // Set countdown timer: if user entered valid time, use it; otherwise use 0 (no limit displayed)
+    setQuizSeconds(totalSecs > 0 ? totalSecs : 0);
     setTimerRunning(true);
     setStep('quiz_running');
   };
@@ -566,6 +649,10 @@ export default function StudentAiPracticeModal({
   // ── Submit Practice Quiz & Compute Results ────────────────────────────────
   const handleSubmitPractice = async () => {
     setTimerRunning(false);
+
+    // For countdown mode: elapsed = totalSetTime - remaining; for untimed: elapsed = quizSeconds
+    const totalSetSecs = (timerMins * 60) + timerSecs;
+    const elapsedSecs = isTimedSession ? Math.max(0, totalSetSecs - quizSeconds) : quizSeconds;
 
     let score = 0;
     const detailedList = questions.map((q, idx) => {
@@ -608,8 +695,8 @@ export default function StudentAiPracticeModal({
       score,
       totalQuestions,
       accuracy,
-      timeSeconds: quizSeconds,
-      timeFormatted: formatMMSS(quizSeconds),
+      timeSeconds: elapsedSecs,
+      timeFormatted: formatMMSS(elapsedSecs),
       questions: detailedList,
     };
 
@@ -631,8 +718,8 @@ export default function StudentAiPracticeModal({
       totalScore: score,
       maxPossible: totalQuestions,
       accuracyPct: accuracy,
-      totalTimeTaken: quizSeconds,
-      timeFormatted: formatMMSS(quizSeconds),
+      totalTimeTaken: elapsedSecs,
+      timeFormatted: formatMMSS(elapsedSecs),
       status: 'completed',
       isDisqualified: false,
       isPractice: true,
@@ -668,7 +755,7 @@ export default function StudentAiPracticeModal({
           score,
           totalQuestions,
           accuracy,
-          totalTimeTaken: quizSeconds,
+          totalTimeTaken: elapsedSecs,
           practiceQuestions: questions,
         });
         setSaveStatus('Saved to My Results ✓');
@@ -699,8 +786,8 @@ export default function StudentAiPracticeModal({
               ← Back to Upload
             </button>
           ) : step === 'quiz_running' ? (
-            <div className="ai-practice-timer-pill">
-              ⏱️ {formatMMSS(quizSeconds)}
+            <div className="ai-practice-timer-pill" style={isTimedSession && quizSeconds <= 60 ? { background: 'rgba(239,68,68,0.2)', borderColor: 'rgba(239,68,68,0.5)', color: '#f87171' } : {}}>
+              {isTimedSession ? `⏱️ ${formatMMSS(quizSeconds)} left` : `⏱️ ${formatMMSS(quizSeconds)}`}
             </div>
           ) : (
             <div className="nav-placeholder" />
@@ -1050,6 +1137,30 @@ export default function StudentAiPracticeModal({
               ))}
             </div>
 
+            {/* Bulk AI generation progress banner */}
+            {isBulkGenerating && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.18), rgba(168,85,247,0.18))',
+                border: '1px solid rgba(139,92,246,0.35)',
+                borderRadius: '10px',
+                padding: '0.75rem 1rem',
+                marginTop: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.65rem',
+                fontSize: '0.85rem',
+                color: '#c4b5fd',
+              }}>
+                <span className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px' }} />
+                <span>
+                  🪄 AI generating options for Q{(bulkGenIdx ?? 0) + 1} of {questions.length}…
+                  <span style={{ color: '#94a3b8', marginLeft: '0.4rem', fontSize: '0.78rem' }}>
+                    Options will fill in automatically.
+                  </span>
+                </span>
+              </div>
+            )}
+
             {/* Launch Practice Test Button */}
             <div className="ai-actions-row" style={{ marginTop: '1.25rem' }}>
               <button
@@ -1071,9 +1182,125 @@ export default function StudentAiPracticeModal({
           </div>
         )}
 
+        {/* ── STEP 2.5: CUSTOM TIMER SETUP ── */}
+        {step === 'timer_setup' && (
+          <div className="room-form-view" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', paddingTop: '2rem' }}>
+            <div className="room-modal-header" style={{ textAlign: 'center' }}>
+              <span className="room-modal-icon">⏱️</span>
+              <h2 className="room-modal-title">Set Your Quiz Timer</h2>
+              <p className="room-modal-subtitle">
+                Choose how long you have for this {questions.length}-question practice set.
+                Leave at 0:00 for an untimed session.
+              </p>
+            </div>
+
+            <div style={{
+              background: 'rgba(99,102,241,0.1)',
+              border: '1px solid rgba(139,92,246,0.3)',
+              borderRadius: '14px',
+              padding: '2rem 2.5rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '1.25rem',
+              width: '100%',
+              maxWidth: '380px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600, marginBottom: '0.4rem', letterSpacing: '0.05em' }}>
+                    MINUTES
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="180"
+                    value={timerMins}
+                    onChange={(e) => setTimerMins(Math.max(0, Math.min(180, parseInt(e.target.value) || 0)))}
+                    style={{
+                      width: '90px', fontSize: '2.4rem', fontWeight: 800, textAlign: 'center',
+                      background: 'rgba(255,255,255,0.06)', border: '2px solid rgba(139,92,246,0.5)',
+                      borderRadius: '10px', color: '#f8fafc', padding: '0.4rem', outline: 'none',
+                    }}
+                  />
+                </div>
+                <span style={{ fontSize: '2.4rem', fontWeight: 800, color: '#6366f1', lineHeight: 1 }}>:</span>
+                <div style={{ textAlign: 'center' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600, marginBottom: '0.4rem', letterSpacing: '0.05em' }}>
+                    SECONDS
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="59"
+                    value={timerSecs}
+                    onChange={(e) => setTimerSecs(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
+                    style={{
+                      width: '90px', fontSize: '2.4rem', fontWeight: 800, textAlign: 'center',
+                      background: 'rgba(255,255,255,0.06)', border: '2px solid rgba(139,92,246,0.5)',
+                      borderRadius: '10px', color: '#f8fafc', padding: '0.4rem', outline: 'none',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Quick preset buttons */}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                {[{label:'15 min',m:15,s:0},{label:'30 min',m:30,s:0},{label:'45 min',m:45,s:0},{label:'1 hour',m:60,s:0},{label:'No limit',m:0,s:0}].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => { setTimerMins(preset.m); setTimerSecs(preset.s); }}
+                    style={{
+                      background: (timerMins === preset.m && timerSecs === preset.s)
+                        ? 'rgba(99,102,241,0.35)' : 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(139,92,246,0.4)', borderRadius: '20px',
+                      color: '#c4b5fd', fontSize: '0.78rem', fontWeight: 600,
+                      padding: '0.3rem 0.8rem', cursor: 'pointer',
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              <p style={{ fontSize: '0.8rem', color: '#64748b', textAlign: 'center', margin: 0 }}>
+                {timerMins === 0 && timerSecs === 0
+                  ? '⏸ Untimed — no countdown will run'
+                  : `⏱ ${timerMins}m ${timerSecs}s — quiz auto-submits when time runs out`}
+              </p>
+            </div>
+
+            <div className="ai-actions-row" style={{ width: '100%', maxWidth: '380px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setStep('setup_preview')}
+              >
+                ← Back to Review
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleConfirmTimer}
+              >
+                🚀 Start Quiz
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── STEP 3: INTERACTIVE PRACTICE QUIZ RUNNER ── */}
         {step === 'quiz_running' && currentQ && (
           <div className="room-form-view ai-quiz-running-view">
+            {/* Hidden button used as auto-submit target when timer expires */}
+            <button
+              id="practice-auto-submit-btn"
+              type="button"
+              onClick={handleSubmitPractice}
+              style={{ display: 'none' }}
+              aria-hidden="true"
+            />
             {/* Top Bar with Subject, Unit & Current Position */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
               <div>

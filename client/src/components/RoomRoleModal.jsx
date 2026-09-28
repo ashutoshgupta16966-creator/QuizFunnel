@@ -572,27 +572,61 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   };
 
   // ── Bulk Format Toggle Handlers ───────────────────────────────────────────
-  const handleApplyAllMcq = () => {
+  const handleApplyAllMcq = async () => {
     setAiBulkFormatMode('all_mcq');
-    setAiResult((prev) => ({
-      ...prev,
-      questions: prev.questions.map((q) => {
-        let opts = Array.isArray(q.options) && q.options.length === 4 ? [...q.options] : ['', '', '', ''];
-        let cIdx = typeof q.correctAnswerIndex === 'number' && q.correctAnswerIndex >= 0 && q.correctAnswerIndex <= 3
-          ? q.correctAnswerIndex
-          : 0;
-        if (q.directAnswer && opts.every((o) => !o.trim())) {
-          opts[0] = q.directAnswer;
-          cIdx = 0;
+    // Convert all questions to MCQ first
+    const updatedQuestions = aiResult.questions.map((q) => {
+      let opts = Array.isArray(q.options) && q.options.length === 4 ? [...q.options] : ['', '', '', ''];
+      let cIdx = typeof q.correctAnswerIndex === 'number' && q.correctAnswerIndex >= 0 && q.correctAnswerIndex <= 3
+        ? q.correctAnswerIndex
+        : 0;
+      if (q.directAnswer && opts.every((o) => !o.trim())) {
+        opts[0] = q.directAnswer;
+        cIdx = 0;
+      }
+      return {
+        ...q,
+        questionType: 'mcq',
+        options: opts,
+        correctAnswerIndex: cIdx,
+      };
+    });
+    setAiResult((prev) => ({ ...prev, questions: updatedQuestions }));
+
+    // Auto-trigger AI option generation for every question sequentially
+    for (let qIdx = 0; qIdx < updatedQuestions.length; qIdx++) {
+      const q = updatedQuestions[qIdx];
+      if (!q?.questionText?.trim()) continue;
+      setGeneratingOptionsIdx(qIdx);
+      setOptGenErrors((prev) => ({ ...prev, [qIdx]: '' }));
+      try {
+        const res = await generateMcqOptions(q.questionText.trim());
+        if (res.data?.success && res.data?.data) {
+          const { options, correctAnswerIndex } = res.data.data;
+          setAiResult((prev) => {
+            const nextQs = [...prev.questions];
+            nextQs[qIdx] = {
+              ...nextQs[qIdx],
+              options: Array.isArray(options) && options.length === 4 ? options : nextQs[qIdx].options,
+              correctAnswerIndex: typeof correctAnswerIndex === 'number' ? correctAnswerIndex : 0,
+              optionMode: 'auto',
+            };
+            return { ...prev, questions: nextQs };
+          });
+        } else {
+          setOptGenErrors((prev) => ({
+            ...prev,
+            [qIdx]: res.data?.error || 'AI generation failed for this question.',
+          }));
         }
-        return {
-          ...q,
-          questionType: 'mcq',
-          options: opts,
-          correctAnswerIndex: cIdx,
-        };
-      }),
-    }));
+      } catch (err) {
+        setOptGenErrors((prev) => ({
+          ...prev,
+          [qIdx]: err.response?.data?.error || err.message || 'AI generation failed. Enter options manually.',
+        }));
+      }
+    }
+    setGeneratingOptionsIdx(null);
   };
 
   const handleApplyAllDirect = () => {

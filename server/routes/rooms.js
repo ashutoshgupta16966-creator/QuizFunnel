@@ -836,23 +836,36 @@ router.post('/ai/generate-options', async (req, res, next) => {
     ];
     let result = null;
 
-    const prompt = `You are an expert quiz question generator.
+    const prompt = `You are a highly accurate academic quiz question expert and assessment designer.
 
-Given this quiz question:
+TASK: For the following question, generate exactly 4 multiple-choice options where ONE is verifiably correct and THREE are convincing but incorrect distractors.
+
+QUESTION:
 "${questionText.trim()}"
 
-Generate exactly 4 plausible multiple-choice options (A, B, C, D).
-- One option MUST be the correct answer.
-- The other 3 should be convincing distractors — plausible but wrong.
-- Keep each option concise (under 15 words).
+STEP 1 — SOLVE FIRST: Before generating options, carefully solve or reason through the question yourself to determine the factually/logically correct answer. Double-check your answer. Only then place it as one of the four options.
 
-Respond ONLY with a valid JSON object in this exact format (no markdown, no explanation):
-{"options":["First plausible choice","Second plausible choice","Third plausible choice","Fourth plausible choice"],"correctIndex":0}
+STEP 2 — GENERATE DISTRACTORS: Create 3 distractor options that:
+  - Are the same TYPE and FORMAT as the correct answer (numbers look like numbers, terms look like terms, formulas look like formulas)
+  - Are plausible enough that a student who has NOT studied carefully might pick them
+  - Are NOT obviously wrong at a glance — they must require actual knowledge/calculation to rule out
+  - Do NOT use generic non-answers like "None of the above", "All of the above", "Cannot be determined" UNLESS the original question is explicitly a True/False or Boolean type
+  - Do NOT reuse the correct answer or use near-duplicates
 
-Where correctIndex is 0-based (0=A, 1=B, 2=C, 3=D).
+STEP 3 — SHUFFLE: Randomly place the correct answer at index 0, 1, 2, or 3 (not always at index 0).
+
 CRITICAL RULES:
-- Options MUST be real, meaningful, contextual answers. NEVER output generic placeholders like "Option A", "Option B", "Option C", "Option D".
-- For mathematical, numerical, or calculation questions: generate 4 realistic, distinct mathematical variations, numbers, or formulas. Strictly DO NOT output generic boolean fillers like "True", "False", "Cannot be determined", or "None of the above" for calculation questions.`;
+- The "correctIndex" MUST point to the FACTUALLY CORRECT answer. Verify this before responding.
+- For NUMERICAL / MATHEMATICAL questions: All 4 options MUST be realistic numerical values (e.g. 12, 15, 18, 24 — not "True/False/None").
+- For CONCEPTUAL questions: All 4 options MUST be domain-relevant technical terms or short phrases.
+- For CODE / FORMULA questions: All 4 options MUST be syntactically valid variations.
+- NEVER output generic placeholder strings like "Option A", "Option 1", "Choice B", etc.
+- Each option MUST be concise (under 20 words).
+
+Respond ONLY with a valid raw JSON object — no markdown, no backticks, no explanation:
+{"options":["...", "...", "...", "..."], "correctIndex": 2}
+
+Where correctIndex is 0-based (0=first option, 1=second, 2=third, 3=fourth).`;
 
     for (const modelName of FALLBACK_MODELS) {
       try {
