@@ -2,10 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { parseAiQuizDocument, savePracticeAttempt, generateMcqOptions } from '../api';
 import ThemeToggle from './ThemeToggle';
 import GuidanceDrawer, { GUIDES } from './GuidanceDrawer';
+import AntiCheatModal from './AntiCheatModal';
 
 const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_IMAGES = 10;
 const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
+const MAX_TAB_SWITCH_ALLOWED = 4; // Mirror of Quiz.jsx anti-cheat limit
 
 function formatMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -217,6 +219,12 @@ export default function StudentAiPracticeModal({
   const [saveStatus, setSaveStatus] = useState('');
   const [showGuide, setShowGuide] = useState(false);
 
+  // ── Tab-Switch Anti-Cheat State (mirrors Quiz.jsx) ────────────────────────
+  const [tabSwitchCount, setTabSwitchCount] = useState(0);
+  const [showAntiCheatModal, setShowAntiCheatModal] = useState(false);
+  const [isAntiCheatTerminal, setIsAntiCheatTerminal] = useState(false);
+  const hasSubmittedPractice = useRef(false); // Guard against double-submit
+
   // Lock scroll when modal is open and safely release when closed
   useEffect(() => {
     if (isOpen) {
@@ -303,7 +311,61 @@ export default function StudentAiPracticeModal({
     };
   }, [timerRunning, isTimedSession]);
 
+  // ── Tab-Switch Detection (mirrors Quiz.jsx logic) ────────────────────────
+  // Active only while the quiz is running. Debounced to 800ms to avoid double-
+  // firing from the simultaneous visibilitychange + blur events.
+  useEffect(() => {
+    if (step !== 'quiz_running') return;
+
+    let lastSwitchTime = 0;
+
+    const handleSwitchViolation = () => {
+      if (hasSubmittedPractice.current || isAntiCheatTerminal) return;
+      const now = Date.now();
+      if (now - lastSwitchTime < 800) return; // Debounce
+      lastSwitchTime = now;
+
+      setTabSwitchCount((prev) => {
+        const nextCount = prev + 1;
+        const clampedCount = Math.min(nextCount, MAX_TAB_SWITCH_ALLOWED);
+
+        if (nextCount >= MAX_TAB_SWITCH_ALLOWED) {
+          // 4th switch → terminal disqualification, identical to Quiz.jsx
+          hasSubmittedPractice.current = true;
+          setTimerRunning(false);
+          setIsAntiCheatTerminal(true);
+          setShowAntiCheatModal(true);
+          // Auto-submit with isDisqualified=true after a short lag so the modal can render
+          setTimeout(() => {
+            document.getElementById('practice-disqualified-submit-btn')?.click();
+          }, 150);
+          return clampedCount;
+        }
+
+        // Warnings 1–3: show modal with remaining count
+        setShowAntiCheatModal(true);
+        return clampedCount;
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) handleSwitchViolation();
+    };
+
+    const handleWindowBlur = () => {
+      handleSwitchViolation();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [step, isAntiCheatTerminal]);
+
   if (!isOpen) return null;
+
 
   // ── File Selection Handlers (Camera & Picker) ──────────────────────────────
   const handleFileSelect = (e) => {
@@ -390,6 +452,11 @@ export default function StudentAiPracticeModal({
       setBulkGenErrors({});
       setTimerMins(30);
       setTimerSecs(0);
+      // Reset anti-cheat state
+      setTabSwitchCount(0);
+      setShowAntiCheatModal(false);
+      setIsAntiCheatTerminal(false);
+      hasSubmittedPractice.current = false;
       handleClearFiles();
       setUploadError('');
     } catch (err) {
@@ -651,8 +718,15 @@ export default function StudentAiPracticeModal({
   };
 
   // ── Submit Practice Quiz & Compute Results ────────────────────────────────
-  const handleSubmitPractice = async () => {
+  const handleSubmitPractice = async (isDisqualified = false) => {
+    // Guard: prevent double-submit (e.g., timer expiry + disqualification racing)
+    if (hasSubmittedPractice.current) return;
+    hasSubmittedPractice.current = true;
+
     setTimerRunning(false);
+
+    // Capture final tab-switch count at submit time
+    const finalTabSwitchCount = tabSwitchCount;
 
     // For countdown mode: elapsed = totalSetTime - remaining; for untimed: elapsed = quizSeconds
     const totalSetSecs = (timerMins * 60) + timerSecs;
@@ -702,6 +776,8 @@ export default function StudentAiPracticeModal({
       timeSeconds: elapsedSecs,
       timeFormatted: formatMMSS(elapsedSecs),
       questions: detailedList,
+      tabSwitchCount: finalTabSwitchCount,
+      isDisqualified,
     };
 
     setQuizResults(computedResults);
@@ -724,10 +800,11 @@ export default function StudentAiPracticeModal({
       accuracyPct: accuracy,
       totalTimeTaken: elapsedSecs,
       timeFormatted: formatMMSS(elapsedSecs),
-      status: 'completed',
-      isDisqualified: false,
+      status: isDisqualified ? 'disqualified' : 'completed',
+      isDisqualified,
       isPractice: true,
       quizType: 'practice',
+      tabSwitchCount: finalTabSwitchCount,
       subject,
       unit,
       practiceData: {
@@ -761,6 +838,8 @@ export default function StudentAiPracticeModal({
           accuracy,
           totalTimeTaken: elapsedSecs,
           practiceQuestions: questions,
+          tabSwitchCount: finalTabSwitchCount,
+          isDisqualified,
         });
         setSaveStatus('Saved to My Results ✓');
       } catch (err) {
@@ -1301,7 +1380,15 @@ export default function StudentAiPracticeModal({
             <button
               id="practice-auto-submit-btn"
               type="button"
-              onClick={handleSubmitPractice}
+              onClick={() => handleSubmitPractice(false)}
+              style={{ display: 'none' }}
+              aria-hidden="true"
+            />
+            {/* Hidden button used for disqualification auto-submit (4th tab switch) */}
+            <button
+              id="practice-disqualified-submit-btn"
+              type="button"
+              onClick={() => handleSubmitPractice(true)}
               style={{ display: 'none' }}
               aria-hidden="true"
             />
@@ -1493,6 +1580,15 @@ export default function StudentAiPracticeModal({
                 <span className="score-label">Total Time</span>
                 <span className="score-value">{quizResults.timeFormatted}</span>
               </div>
+              {quizResults.tabSwitchCount > 0 && (
+                <div className="score-row">
+                  <span className="score-label">⚠️ Tab Switches</span>
+                  <span className="score-value" style={{ color: quizResults.isDisqualified ? '#f87171' : '#fbbf24', fontWeight: 700 }}>
+                    {quizResults.tabSwitchCount} / {MAX_TAB_SWITCH_ALLOWED}
+                    {quizResults.isDisqualified && ' — Disqualified 🚫'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Detailed Question Review List */}
@@ -1581,6 +1677,15 @@ export default function StudentAiPracticeModal({
         isOpen={showGuide}
         onClose={() => setShowGuide(false)}
         guide={GUIDES.practice}
+      />
+      {/* ── Anti-Cheat Modal (Tab-Switch Detection) ── */}
+      <AntiCheatModal
+        isOpen={showAntiCheatModal}
+        count={Math.min(tabSwitchCount, MAX_TAB_SWITCH_ALLOWED)}
+        maxLimit={MAX_TAB_SWITCH_ALLOWED}
+        isLimitReached={isAntiCheatTerminal}
+        onAcknowledge={() => setShowAntiCheatModal(false)}
+        onTerminalProceed={() => setShowAntiCheatModal(false)}
       />
     </div>
   );

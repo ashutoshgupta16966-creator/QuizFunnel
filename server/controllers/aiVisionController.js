@@ -460,12 +460,16 @@ JSON Structure:
 }
 
 CRITICAL RULES:
-1. 100% ACCURACY & ANSWER VERIFICATION (MANDATORY):
-   - You MUST solve or rigorously verify the question yourself before marking the correct answer.
+1. PRIORITY ANSWER EXTRACTION DIRECTIVE (DOCUMENT ANSWERS OVERRIDE GENERATION):
+   - If the uploaded document already shows a correct answer for a question (e.g., marked, underlined, ticked, circled, bolded, written separately, or in an answer key/table), extract and use THAT exact answer as the correct answer.
+   - Do NOT generate or guess your own answer when one is already provided in the source material.
+   - Only generate or solve your own correct answer if NO answer is given or indicated in the document for that specific question.
+2. 100% ACCURACY & ANSWER VERIFICATION (MANDATORY):
+   - When no answer is provided in the document and you must solve the question yourself, you MUST solve or rigorously verify the question before marking the correct answer.
    - The marked correct answer ("correctAnswerIndex" for MCQ or "directAnswer" for direct) MUST be verified as factually and logically correct with 100% accuracy.
    - NEVER mark a wrong or approximate answer as correct under any circumstance.
    - MANDATORY DOUBLE-CHECK: Before finalizing your output, double-check your correct answer against the question text. If a calculation is involved, re-solve it to verify.
-2. If "questionType" is "mcq":
+3. If "questionType" is "mcq":
    - "options" MUST contain 4 distinct, meaningful, contextual option strings.
    - The 3 incorrect options (distractors) must NOT be random, nonsensical, or obviously wrong at a glance. They must look like plausible, realistic answers that require actually solving or reading the question to rule out — matching the exact format, structure, complexity, and units of the correct option (not one carefully-written option and three throwaways).
    - NEVER output generic placeholder strings like "Option A", "Option B", "Option C", "Option D", "Choice 1", or empty options.

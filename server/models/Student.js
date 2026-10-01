@@ -47,6 +47,7 @@ const AttemptHistorySchema = new mongoose.Schema({
   isPractice:     { type: Boolean, default: false },
   subject:        { type: String, default: '' },
   unit:           { type: String, default: '' },
+  tabSwitchCount: { type: Number, default: 0 },
   practiceData:   { type: mongoose.Schema.Types.Mixed, default: null },
   levelsSummary:  [LevelAttemptSchema],
 }, { timestamps: true });

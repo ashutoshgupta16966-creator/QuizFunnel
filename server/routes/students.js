@@ -111,8 +111,20 @@ router.post('/verify-results-auth', async (req, res, next) => {
       });
     }
 
-    const student = await Student.findOne({ mobile }).lean();
-    if (!student || student.password !== password.trim()) {
+    let student = await Student.findOne({ mobile });
+    if (!student) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid Mobile Number or Password/PIN.',
+      });
+    }
+
+    const cleanPwd = String(password || '').trim();
+    // If student was created via Self-Practice with temporary password, bind the entered PIN permanently
+    if (student.password === 'practice_user' && cleanPwd.length >= 4) {
+      student.password = cleanPwd;
+      await student.save();
+    } else if (student.password !== cleanPwd) {
       return res.status(401).json({
         success: false,
         error: 'Invalid Mobile Number or Password/PIN.',
@@ -421,32 +433,41 @@ router.get('/:mobile/status', async (req, res, next) => {
  */
 router.post('/save-practice-attempt', async (req, res, next) => {
   try {
-    const {
-      mobile,
-      name,
-      branch,
-      totalScore = 0,
-      maxPossible = 10,
-      accuracyPct = 0,
-      totalTimeTaken = 0,
-      subject = 'AI Self-Practice',
-      unit = '',
-      practiceData = null,
-      levelsSummary = [],
-    } = req.body;
+    const mobile = String(req.body.mobile || '').trim();
+    const name = String(req.body.name || req.body.studentName || 'Student').trim();
+    const branch = String(req.body.branch || 'CSE').trim();
+    const password = String(req.body.password || '').trim();
+
+    const totalScore = Number(req.body.totalScore ?? req.body.score ?? 0);
+    const maxPossible = Number(req.body.maxPossible ?? req.body.totalQuestions ?? 10);
+    const accuracyPct = Number(req.body.accuracyPct ?? req.body.accuracy ?? 0);
+    const totalTimeTaken = Number(req.body.totalTimeTaken ?? req.body.timeTaken ?? 0);
+    const subject = String(req.body.subject || 'AI Self-Practice').trim();
+    const unit = String(req.body.unit || '').trim();
+    const tabSwitchCount = Number(req.body.tabSwitchCount ?? 0);
+    const isDisqualified = Boolean(req.body.isDisqualified || req.body.status === 'disqualified');
+
+    const practiceQuestions = req.body.practiceQuestions || req.body.practiceData?.questions || [];
+    const practiceData = req.body.practiceData || {
+      subject,
+      unit,
+      questions: practiceQuestions,
+    };
 
     if (!mobile || !/^\d{10}$/.test(mobile)) {
       return res.status(400).json({ success: false, error: 'Valid 10-digit mobile number is required.' });
     }
 
-    let student = await Student.findOne({ mobile: mobile.trim() });
+    let student = await Student.findOne({ mobile });
     if (!student) {
       student = await Student.create({
-        name: (name || 'Practice Student').trim(),
-        mobile: mobile.trim(),
-        branch: branch || 'CSE',
-        password: 'practice_user',
+        name: name || 'Student',
+        mobile,
+        branch,
+        password: password.length >= 4 ? password : 'practice_user',
       });
+    } else if (password.length >= 4 && student.password === 'practice_user') {
+      student.password = password;
     }
 
     const attemptId = `practice_${mobile}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -459,16 +480,17 @@ router.post('/save-practice-attempt', async (req, res, next) => {
       maxPossible,
       accuracyPct,
       totalTimeTaken,
-      status: 'completed',
-      isDisqualified: false,
+      status: isDisqualified ? 'disqualified' : 'completed',
+      isDisqualified,
       quizType: 'practice',
       isPractice: true,
       isRoom: false,
       roomCode: null,
-      subject: subject || 'AI Self-Practice',
-      unit: unit || '',
+      subject,
+      unit,
+      tabSwitchCount,
       practiceData,
-      levelsSummary: levelsSummary.length > 0 ? levelsSummary : [
+      levelsSummary: [
         {
           level: 1,
           score: totalScore,

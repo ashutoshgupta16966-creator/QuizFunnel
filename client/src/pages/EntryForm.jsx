@@ -405,7 +405,10 @@ export default function EntryForm() {
         
         matchingLocal.forEach((locItem) => {
           // Check if this local item already matches a record in DB history
+          const locQType = locItem.quizType || (locItem.isPractice ? 'practice' : 'normal');
           const matchingDbItem = combined.find((dbItem) => {
+            const dbQType = dbItem.quizType || (dbItem.isPractice ? 'practice' : 'normal');
+            if (dbQType !== locQType) return false; // Never match practice to normal or vice-versa
             const sameLevel = (dbItem.levelReached || dbItem.clearedLvl) === (locItem.levelReached || locItem.clearedLvl);
             const sameScore = (dbItem.totalScore ?? dbItem.score) === (locItem.totalScore ?? locItem.score);
             const timeDiff = Math.abs((dbItem.totalTimeTaken ?? dbItem.timeSecs ?? 0) - (locItem.totalTimeTaken ?? locItem.timeSecs ?? 0));
@@ -465,7 +468,9 @@ export default function EntryForm() {
       combined.sort((a, b) => new Date(b.attemptDate || b.createdAt || 0) - new Date(a.attemptDate || a.createdAt || 0));
 
       combined.forEach((item) => {
-        const signature = `${item.levelReached || item.clearedLvl || 1}_${item.totalScore ?? item.score ?? 0}_${Math.round((item.totalTimeTaken ?? item.timeSecs ?? 0) / 3)}`;
+        // Include quizType in the signature so practice attempts never collide with normal quiz attempts
+        const qType = item.quizType || (item.isPractice ? 'practice' : 'normal');
+        const signature = `${qType}_${item.levelReached || item.clearedLvl || 1}_${item.totalScore ?? item.score ?? 0}_${Math.round((item.totalTimeTaken ?? item.timeSecs ?? 0) / 3)}`;
         if (!seenUnique.has(signature)) {
           seenUnique.add(signature);
           dedupedList.push(item);
@@ -1227,6 +1232,16 @@ export default function EntryForm() {
                                       <span className="metric-val">{formatTimeMMSS(timeSecs)}</span>
                                     </div>
                                   </div>
+
+                                  {/* Tab-Switch Count Badge (shown only when > 0) */}
+                                  {(attempt.tabSwitchCount > 0) && (
+                                    <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', fontWeight: 700,
+                                      color: isDisqualifiedAttempt ? '#f87171' : '#fbbf24',
+                                      display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                      ⚠️ {attempt.tabSwitchCount} tab switch{attempt.tabSwitchCount > 1 ? 'es' : ''} detected
+                                      {isDisqualifiedAttempt && ' — Disqualified'}
+                                    </div>
+                                  )}
 
                                   <div className="click-view-hint">
                                     <span>🔍 Click card for full detailed report →</span>

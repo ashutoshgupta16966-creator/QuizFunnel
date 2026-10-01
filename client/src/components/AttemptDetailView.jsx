@@ -119,6 +119,28 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack, 
     reviewMapByLevel[lvl.level] = attemptedQs;
   });
 
+  // For practice attempts: inject practice questions directly into level 1 of the review map
+  // (they come from attemptDetail, not from the getQuizReview API which serves room/normal quizzes)
+  if (isPractice && !reviewMapByLevel[1]) {
+    const practiceQs = attemptDetail.practiceData?.questions || attemptDetail.practiceQuestions || [];
+    if (practiceQs.length > 0) {
+      reviewMapByLevel[1] = practiceQs.map((q, idx) => ({
+        questionId: q._id || `pq_${idx}`,
+        questionText: q.questionText,
+        questionType: q.questionType || 'mcq',
+        options: q.options || [],
+        correctAnswerIndex: q.correctAnswerIndex ?? 0,
+        directAnswer: q.directAnswer || '',
+        selectedOptionIndex: typeof q.userAnswer === 'number' ? q.userAnswer : -1,
+        directUserAnswer: typeof q.userAnswer === 'string' ? q.userAnswer : '',
+        isCorrect: Boolean(q.isCorrect),
+        isUnattempted: q.userAnswer === undefined || q.userAnswer === null || q.userAnswer === '',
+        section: q.questionType === 'direct' ? 'Numerical/Direct' : 'Multiple Choice',
+        explanation: q.aiExplanation || q.explanation || '',
+      }));
+    }
+  }
+
   // Only show levels actually reached / attempted in this run
   const summaryMap = {};
   if (attemptDetail.levelsSummary && attemptDetail.levelsSummary.length > 0) {
@@ -222,6 +244,14 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack, 
           <span className="detail-metric-label">Total Time Taken</span>
           <span className="detail-metric-val">{formatTimeMMSS(attemptDetail.timeSecs)}</span>
         </div>
+        {(attemptDetail.tabSwitchCount > 0) && (
+          <div className="detail-metric-card" style={{ borderColor: isDisqualified ? 'rgba(239,68,68,0.4)' : 'rgba(251,191,36,0.4)' }}>
+            <span className="detail-metric-label">⚠️ Tab Switches</span>
+            <span className="detail-metric-val" style={{ color: isDisqualified ? '#f87171' : '#fbbf24' }}>
+              {attemptDetail.tabSwitchCount} / 4
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Prominent Re-Attempt Practice Action Banner ── */}
@@ -350,35 +380,62 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack, 
                               {/* Question Text */}
                               <p className="qcard-text">{q.questionText}</p>
 
-                              {/* 4 Options Grid */}
-                              <div className="qcard-options-grid">
-                                {q.options.map((optText, optIdx) => {
-                                  const isCorrectOpt = optIdx === q.correctAnswerIndex;
-                                  const isChosenOpt = optIdx === q.selectedOptionIndex;
-
-                                  let optClass = 'opt-neutral';
-                                  let tagText = null;
-
-                                  if (isCorrectOpt && isChosenOpt) {
-                                    optClass = 'opt-correct-chosen';
-                                    tagText = '✅ Your Choice (Correct)';
-                                  } else if (isCorrectOpt) {
-                                    optClass = 'opt-correct';
-                                    tagText = '✅ Correct Answer';
-                                  } else if (isChosenOpt) {
-                                    optClass = 'opt-wrong-chosen';
-                                    tagText = '❌ Your Choice (Incorrect)';
-                                  }
-
-                                  return (
-                                    <div key={optIdx} className={`qcard-option-item ${optClass}`}>
-                                      <span className="opt-prefix">{String.fromCharCode(65 + optIdx)}.</span>
-                                      <span className="opt-text">{optText}</span>
-                                      {tagText && <span className="opt-tag">{tagText}</span>}
+                              {/* Options Grid (MCQ) or Direct Answer Display */}
+                              {q.questionType === 'direct' ? (
+                                <div className="qcard-direct-answer-block" style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem' }}>
+                                  <div>
+                                    <strong style={{ color: '#94a3b8' }}>Your Answer: </strong>
+                                    <span style={{ color: isCorrect ? '#34d399' : '#f87171' }}>
+                                      {q.directUserAnswer || '(not answered)'}
+                                    </span>
+                                  </div>
+                                  {!isCorrect && (
+                                    <div>
+                                      <strong style={{ color: '#34d399' }}>Correct Answer: </strong>
+                                      <span style={{ color: '#34d399' }}>{q.directAnswer || '—'}</span>
                                     </div>
-                                  );
-                                })}
-                              </div>
+                                  )}
+                                  {q.explanation && (
+                                    <div style={{ marginTop: '0.25rem', padding: '0.4rem 0.6rem', background: 'rgba(99,102,241,0.1)', borderRadius: '6px', color: '#a5b4fc', fontSize: '0.8rem' }}>
+                                      💡 {q.explanation}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="qcard-options-grid">
+                                  {(q.options || []).map((optText, optIdx) => {
+                                    const isCorrectOpt = optIdx === q.correctAnswerIndex;
+                                    const isChosenOpt = optIdx === q.selectedOptionIndex;
+
+                                    let optClass = 'opt-neutral';
+                                    let tagText = null;
+
+                                    if (isCorrectOpt && isChosenOpt) {
+                                      optClass = 'opt-correct-chosen';
+                                      tagText = '✅ Your Choice (Correct)';
+                                    } else if (isCorrectOpt) {
+                                      optClass = 'opt-correct';
+                                      tagText = '✅ Correct Answer';
+                                    } else if (isChosenOpt) {
+                                      optClass = 'opt-wrong-chosen';
+                                      tagText = '❌ Your Choice (Incorrect)';
+                                    }
+
+                                    return (
+                                      <div key={optIdx} className={`qcard-option-item ${optClass}`}>
+                                        <span className="opt-prefix">{String.fromCharCode(65 + optIdx)}.</span>
+                                        <span className="opt-text">{optText}</span>
+                                        {tagText && <span className="opt-tag">{tagText}</span>}
+                                      </div>
+                                    );
+                                  })}
+                                  {q.explanation && (
+                                    <div style={{ marginTop: '0.25rem', padding: '0.4rem 0.6rem', background: 'rgba(99,102,241,0.1)', borderRadius: '6px', color: '#a5b4fc', fontSize: '0.8rem', gridColumn: '1 / -1' }}>
+                                      💡 {q.explanation}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
