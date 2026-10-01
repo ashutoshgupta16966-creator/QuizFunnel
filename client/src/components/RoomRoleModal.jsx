@@ -69,6 +69,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     roomPassword: '',
     quizTitle: '',
     progressionMode: 'level_gated',
+    timerMinutes: 15,
+    timerSeconds: 0,
   });
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
@@ -804,6 +806,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         roomPassword: pwd,
         quizTitle: adminForm.quizTitle.trim(),
         progressionMode: adminForm.progressionMode || 'level_gated',
+        customTimeSeconds: (parseInt(adminForm.timerMinutes, 10) || 15) * 60 + (parseInt(adminForm.timerSeconds, 10) || 0),
       });
 
       // Save admin credentials to sessionStorage for live dashboard authentication
@@ -1543,7 +1546,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
             {aiParsing ? (
               <div className="ai-parsing-state">
                 <div className="ai-spinner-glow" />
-                <h4 className="ai-parsing-title">Gemini Vision is Processing…</h4>
+                <h4 className="ai-parsing-title">Processing…</h4>
                 <p className="ai-parsing-desc">
                   Analyzing question paper text, options, and diagrams. This usually takes 5–15 seconds.
                 </p>
@@ -1867,7 +1870,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                               disabled={generatingOptionsIdx === qIdx}
                             >
                               {generatingOptionsIdx === qIdx ? (
-                                <><span className="btn-spinner" />Generating 4 Options via Gemini…</>
+                                <><span className="btn-spinner" />Generating Options…</>
                               ) : (
                                 '🪄 Generate / Re-generate Options with AI'
                               )}
@@ -2067,6 +2070,56 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                     <span className="progression-pill-title">🔓 Open Attempt (Attempt All Questions)</span>
                     <span className="progression-pill-desc">Unlocks all levels unconditionally across all scores</span>
                   </button>
+               </div>
+              </div>
+
+              {/* Room Timer Setting */}
+              <div className="ai-timer-config-card" style={{
+                background: 'rgba(99,102,241,0.08)',
+                border: '1px solid rgba(139,92,246,0.25)',
+                borderRadius: '12px',
+                padding: '1rem 1.25rem',
+                marginBottom: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.6rem',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      ⏱️ Quiz Level Timer
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                      Set the countdown time applied to all students for each quiz level.
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <input
+                        type="number"
+                        min="1"
+                        max="180"
+                        className="form-input"
+                        style={{ width: '65px', textAlign: 'center', fontWeight: 700, padding: '4px 6px' }}
+                        value={adminForm.timerMinutes ?? 15}
+                        onChange={(e) => setAdminForm({ ...adminForm, timerMinutes: Math.max(1, Math.min(180, parseInt(e.target.value) || 1)) })}
+                      />
+                      <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>min</span>
+                    </div>
+                    <span style={{ color: '#818cf8', fontWeight: 800 }}>:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        className="form-input"
+                        style={{ width: '60px', textAlign: 'center', fontWeight: 700, padding: '4px 6px' }}
+                        value={adminForm.timerSeconds ?? 0}
+                        onChange={(e) => setAdminForm({ ...adminForm, timerSeconds: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })}
+                      />
+                      <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>sec</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 

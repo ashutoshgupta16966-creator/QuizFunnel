@@ -50,6 +50,8 @@ router.post('/create', async (req, res, next) => {
       });
     }
 
+    const roomCustomTime = req.body.customTimeSeconds ? Math.max(0, parseInt(req.body.customTimeSeconds, 10)) : 0;
+
     const room = await Room.create({
       roomCode: normalizedCode,
       quizTitle: quizTitle?.trim() || '',
@@ -60,6 +62,7 @@ router.post('/create', async (req, res, next) => {
       status: 'active',
       progressionMode: req.body.progressionMode === 'open_attempt' ? 'open_attempt' : 'level_gated',
       maxLevel: req.body.maxLevel ? Math.min(4, Math.max(1, parseInt(req.body.maxLevel, 10))) : 4,
+      customTimeSeconds: roomCustomTime,
       participants: [],
     });
 
@@ -72,6 +75,7 @@ router.post('/create', async (req, res, next) => {
         maxCapacity: room.maxCapacity,
         progressionMode: room.progressionMode,
         maxLevel: room.maxLevel || 4,
+        customTimeSeconds: room.customTimeSeconds,
         createdAt: room.createdAt,
       },
     });
@@ -208,7 +212,31 @@ router.post('/create-ai', async (req, res, next) => {
           explanation: exp,
         });
       } else {
-        const sanitized = sanitizeMcqOptions(qText, q.options, q.directAnswer || '', q.correctAnswerIndex, sec);
+        // FIX 2 (CRITICAL): The Admin's finalized review is the ABSOLUTE SOURCE OF TRUTH.
+        // Clean options, validate correctAnswerIndex, and safeguard that the correct index
+        // strictly maps to the admin-confirmed correct option content without drift.
+        let cleanOpts = Array.isArray(q.options)
+          ? q.options.map((o) => cleanOptionPrefix(String(o || '')).trim()).filter(Boolean)
+          : [];
+
+        // If for any reason options are missing (< 4), only then synthesize missing slots
+        if (cleanOpts.length < 4) {
+          const sanitized = sanitizeMcqOptions(qText, cleanOpts, q.directAnswer || '', q.correctAnswerIndex, sec);
+          cleanOpts = sanitized.options;
+        }
+
+        let cIdx = parseInt(q.correctAnswerIndex, 10);
+        if (isNaN(cIdx) || cIdx < 0 || cIdx >= cleanOpts.length) {
+          cIdx = 0;
+        }
+
+        const directAns = cleanOpts[cIdx] || '';
+
+        // Safeguard logging before database insertion
+        console.log(
+          `[Admin Finalized Q#${questionDocs.length + 1}] Lvl ${lvl} | "${qText.slice(0, 45)}..." -> ` +
+          `Correct: Option [${['A', 'B', 'C', 'D'][cIdx] || cIdx}] "${directAns}" (Index: ${cIdx})`
+        );
 
         questionDocs.push({
           roomCode: normalizedCode,
@@ -216,9 +244,9 @@ router.post('/create-ai', async (req, res, next) => {
           level: lvl,
           section: sec,
           questionText: qText,
-          options: sanitized.options,
-          correctAnswerIndex: sanitized.correctAnswerIndex,
-          directAnswer: sanitized.directAnswer || sanitized.options[sanitized.correctAnswerIndex] || '',
+          options: cleanOpts.slice(0, 4),
+          correctAnswerIndex: cIdx,
+          directAnswer: directAns,
           difficulty: diff,
           explanation: exp,
         });
@@ -898,7 +926,13 @@ Where correctIndex is 0-based (0=first option, 1=second, 2=third, 3=fourth).`;
           parsed.correctIndex <= 3 &&
           !parsed.options.every(isGenericPlaceholderOption)
         ) {
-          result = sanitizeMcqOptions(questionText, parsed.options, '', parsed.correctIndex);
+          const cleanedOpts = parsed.options.map((o) => cleanOptionPrefix(String(o || '')).trim());
+          const cIdx = parsed.correctIndex;
+          result = {
+            options: cleanedOpts,
+            correctAnswerIndex: cIdx,
+            directAnswer: cleanedOpts[cIdx] || '',
+          };
           break;
         }
       } catch (modelErr) {

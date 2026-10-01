@@ -16,19 +16,19 @@ const { sanitizeMcqOptions, isGenericPlaceholderOption } = require('../controlle
  *   student picks newPosition → originalPosition = shuffleMap[newPosition]
  *   isCorrect = (originalPosition === question.correctAnswerIndex)
  */
-function shuffleOptions(options, questionText = '', section = 'Technical') {
-  let cleanOpts = Array.isArray(options) ? options : [];
-  if (cleanOpts.length < 4 || cleanOpts.some(isGenericPlaceholderOption)) {
-    const sanitized = sanitizeMcqOptions(questionText, cleanOpts, '', 0, section);
-    cleanOpts = sanitized.options;
+function shuffleOptions(options) {
+  let cleanOpts = Array.isArray(options) ? options.map((o) => String(o || '').trim()) : [];
+  while (cleanOpts.length < 4) {
+    cleanOpts.push(`Option ${String.fromCharCode(65 + cleanOpts.length)}`);
   }
+  const sliceOpts = cleanOpts.slice(0, 4);
   const indices = [0, 1, 2, 3];
   for (let i = 3; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [indices[i], indices[j]] = [indices[j], indices[i]];
   }
   return {
-    shuffledOptions: indices.map((i) => cleanOpts[i]),
+    shuffledOptions: indices.map((i) => sliceOpts[i]),
     shuffleMap: indices,
   };
 }
@@ -118,15 +118,16 @@ router.get('/questions/:level', async (req, res, next) => {
             options: [],
           };
         }
-        // Rebuild shuffled options from stored shuffleMap using active context-aware sanitizer
-        const rawRebuilt = Array.isArray(sq.shuffleMap) ? sq.shuffleMap.map((i) => q.options[i]) : q.options;
-        const sanitized = sanitizeMcqOptions(q.questionText, rawRebuilt, q.directAnswer || '', q.correctAnswerIndex, q.section);
+        // Rebuild shuffled options from stored shuffleMap
+        const rawRebuilt = Array.isArray(sq.shuffleMap) && sq.shuffleMap.length === 4
+          ? sq.shuffleMap.map((i) => q.options[i])
+          : q.options;
         return {
           _id: q._id,
           questionText: q.questionText,
           questionType: 'mcq',
           section: q.section,
-          options: sanitized.options,
+          options: rawRebuilt,
         };
       }).filter(Boolean);
 
@@ -394,11 +395,23 @@ router.post('/submit', async (req, res, next) => {
       } else {
         // selectedIndex is the SHUFFLED index → map back to original
         // shuffleMap[shuffledPos] = originalPos
-        const originalIndex = Array.isArray(sessionQ.shuffleMap)
+        const originalIndex = Array.isArray(sessionQ.shuffleMap) && sessionQ.shuffleMap[answer.selectedIndex] !== undefined
           ? sessionQ.shuffleMap[answer.selectedIndex]
           : answer.selectedIndex;
-        const isCorrect = Number.isInteger(originalIndex) &&
+
+        const isCorrectByIndex = Number.isInteger(originalIndex) &&
           originalIndex === dbQ.correctAnswerIndex;
+
+        // Content-based safeguard: verify by comparing student's selected option text
+        // against dbQ.options[dbQ.correctAnswerIndex] or dbQ.directAnswer
+        const rawStudentText = String(answer.selectedText || (dbQ.options && Number.isInteger(originalIndex) ? dbQ.options[originalIndex] : '')).trim();
+        const studentTextNorm = rawStudentText.toLowerCase();
+        const correctTextNorm = String(
+          (dbQ.options && dbQ.options[dbQ.correctAnswerIndex]) || dbQ.directAnswer || ''
+        ).trim().toLowerCase();
+
+        const isCorrectByText = Boolean(studentTextNorm && correctTextNorm && studentTextNorm === correctTextNorm);
+        const isCorrect = isCorrectByIndex || isCorrectByText;
 
         if (isCorrect) score++;
 
@@ -406,6 +419,7 @@ router.post('/submit', async (req, res, next) => {
           questionId: answer.questionId,
           questionType: 'mcq',
           selectedIndex: answer.selectedIndex,
+          selectedText: rawStudentText,
           shuffleMap: sessionQ.shuffleMap,
           isCorrect,
         });
@@ -730,6 +744,23 @@ router.get('/review/:mobile', async (req, res, next) => {
     const dbQuestions = await Question.find({ _id: { $in: allQIds } }).lean();
     const qMap = Object.fromEntries(dbQuestions.map((q) => [q._id.toString(), q]));
 
+    // Room questions fallback: check room questions if some were embedded directly on the room
+    if (dbQuestions.length < allQIds.length) {
+      const roomCodes = (student.attemptHistory || []).map((h) => h.roomCode).filter(Boolean);
+      if (roomCodes.length > 0) {
+        try {
+          const rooms = await Room.find({ roomCode: { $in: roomCodes } }).lean();
+          rooms.forEach((r) => {
+            (r.questions || []).forEach((rq) => {
+              if (rq._id && !qMap[rq._id.toString()]) {
+                qMap[rq._id.toString()] = rq;
+              }
+            });
+          });
+        } catch { /* noop */ }
+      }
+    }
+
     const reviewData = levelsToReview.map((lvl) => {
       const reviewedQuestions = (lvl.answers || []).map((ans, idx) => {
         const q = qMap[ans.questionId ? ans.questionId.toString() : ''];
@@ -747,7 +778,7 @@ router.get('/review/:mobile', async (req, res, next) => {
           const studentAns = String(ans.directAnswer !== undefined ? ans.directAnswer : '').trim();
           const targetAns = String(q.directAnswer || '').trim();
           isUnattempted = !studentAns;
-          isCorrect = !isUnattempted && studentAns.toLowerCase() === targetAns.toLowerCase();
+          isCorrect = ans.isCorrect !== undefined ? Boolean(ans.isCorrect) : (!isUnattempted && studentAns.toLowerCase() === targetAns.toLowerCase());
           selectedOptionText = studentAns || null;
           correctAnswerText = targetAns;
         } else {
@@ -759,9 +790,11 @@ router.get('/review/:mobile', async (req, res, next) => {
           }
 
           isUnattempted = originalSelected === null || originalSelected === undefined || originalSelected === -1;
-          isCorrect = !isUnattempted && originalSelected === q.correctAnswerIndex;
-          selectedOptionText = !isUnattempted && q.options && q.options[originalSelected] ? q.options[originalSelected] : null;
-          correctAnswerText = q.options && q.options[q.correctAnswerIndex] ? q.options[q.correctAnswerIndex] : '';
+          isCorrect = ans.isCorrect !== undefined ? Boolean(ans.isCorrect) : (!isUnattempted && originalSelected === q.correctAnswerIndex);
+          selectedOptionText = !isUnattempted
+            ? (ans.selectedText || (q.options && Number.isInteger(originalSelected) ? q.options[originalSelected] : null))
+            : null;
+          correctAnswerText = (q.options && q.options[q.correctAnswerIndex]) || q.directAnswer || '';
         }
 
         const explanation = q.explanation ||

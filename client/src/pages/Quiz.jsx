@@ -44,9 +44,11 @@ export default function Quiz() {
   const displayUnit    = quizUnit || roomSession?.unit || '';
 
   // ── Custom Level Countdown Timer State ─────────────────────────────────────
+  // FIX 1: Students in live Quiz Rooms must NEVER see or set the timer.
+  // The Admin sets the room timer, which applies uniformly to all students.
   const defaultLevelTime = levelConfig?.timeSeconds || 900;
   const [customTimeSeconds, setCustomTimeSeconds] = useState(defaultLevelTime);
-  const [showTimerSetup, setShowTimerSetup] = useState(true);
+  const [showTimerSetup, setShowTimerSetup] = useState(!isRoomQuiz);
   const [timerSetupMins, setTimerSetupMins] = useState(Math.floor(defaultLevelTime / 60));
   const [timerSetupSecs, setTimerSetupSecs] = useState(defaultLevelTime % 60);
 
@@ -251,6 +253,10 @@ export default function Quiz() {
       setTimerSetupMins(Math.floor(targetTime / 60));
       setTimerSetupSecs(targetTime % 60);
 
+      if (isRoomQuiz) {
+        setShowTimerSetup(false);
+      }
+
       setStartedAt(new Date(sAt || Date.now()));
       restoreSavedProgress(qs);
     } catch (err) {
@@ -268,6 +274,7 @@ export default function Quiz() {
             setCustomTimeSeconds(targetTime);
             setTimerSetupMins(Math.floor(targetTime / 60));
             setTimerSetupSecs(targetTime % 60);
+            setShowTimerSetup(false);
 
             setStartedAt(new Date());
             restoreSavedProgress(qs);
@@ -340,10 +347,12 @@ export default function Quiz() {
         };
       }
 
+      const selectedOptText = (typeof val === 'number' && q.options && q.options[val]) ? String(q.options[val]).trim() : '';
       return {
         questionId: q._id,
         questionType: 'mcq',
         selectedIndex: typeof val === 'number' ? val : -1,
+        selectedText: selectedOptText,
       };
     });
 
@@ -598,7 +607,7 @@ export default function Quiz() {
     }
   };
 
-  if (showTimerSetup && questions.length > 0) {
+  if (!isRoomQuiz && showTimerSetup && questions.length > 0) {
     return (
       <div className="quiz-page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
         <div className="room-modal-card" style={{ maxWidth: '440px', width: '100%', padding: '2rem 2.25rem', textAlign: 'center', borderRadius: '20px', background: 'var(--surface-color, #1e293b)', border: '1px solid rgba(139,92,246,0.3)', boxShadow: '0 20px 40px -15px rgba(0,0,0,0.5)' }}>

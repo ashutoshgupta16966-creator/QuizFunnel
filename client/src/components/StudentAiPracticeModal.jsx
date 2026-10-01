@@ -483,7 +483,7 @@ export default function StudentAiPracticeModal({
 
     setUploadError('');
     setIsParsing(true);
-    setParseProgressMsg('Initializing Gemini 3.x Multimodal Vision Pipeline…');
+    setParseProgressMsg('Initializing AI Processing Pipeline…');
 
     const msgTimer1 = setTimeout(() => {
       setParseProgressMsg('Transcribing verbatim text, diagrams & numerical problems…');
@@ -1018,7 +1018,7 @@ export default function StudentAiPracticeModal({
             {isParsing ? (
               <div className="ai-parsing-state">
                 <div className="ai-spinner-glow" />
-                <h4 className="ai-parsing-title">Gemini Vision is Processing…</h4>
+                <h4 className="ai-parsing-title">Processing…</h4>
                 <p className="ai-parsing-desc">
                   {parseProgressMsg || 'Transcribing questions and diagrams without spoiling answers. Usually takes 5–15 seconds.'}
                 </p>
@@ -1038,7 +1038,7 @@ export default function StudentAiPracticeModal({
                   onClick={handleStartExtraction}
                   disabled={files.length === 0}
                 >
-                  ✨ Extract Questions with Gemini
+                  ✨ Extract Questions
                 </button>
               </div>
             )}
