@@ -64,6 +64,7 @@ const RoomSchema = new mongoose.Schema({
   unit:         { type: String, trim: true, default: '' },
   progressionMode: { type: String, enum: ['level_gated', 'open_attempt'], default: 'level_gated' },
   maxLevel:     { type: Number, default: 4, min: 1, max: 4 },
+  customTimeSeconds: { type: Number, default: 0 },
   questions:    [RoomQuestionSchema],
   participants: [ParticipantSchema],
   reattemptRequests: [ReattemptRequestSchema],

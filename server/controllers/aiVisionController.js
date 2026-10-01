@@ -460,25 +460,31 @@ JSON Structure:
 }
 
 CRITICAL RULES:
-1. If "questionType" is "mcq":
-   - "options" MUST contain 4 distinct, meaningful, contextual option strings transcribed directly from the document.
-   - NEVER output generic placeholder strings like "Option A", "Option B", "Option C", "Option D".
+1. 100% ACCURACY & ANSWER VERIFICATION (MANDATORY):
+   - You MUST solve or rigorously verify the question yourself before marking the correct answer.
+   - The marked correct answer ("correctAnswerIndex" for MCQ or "directAnswer" for direct) MUST be verified as factually and logically correct with 100% accuracy.
+   - NEVER mark a wrong or approximate answer as correct under any circumstance.
+   - MANDATORY DOUBLE-CHECK: Before finalizing your output, double-check your correct answer against the question text. If a calculation is involved, re-solve it to verify.
+2. If "questionType" is "mcq":
+   - "options" MUST contain 4 distinct, meaningful, contextual option strings.
+   - The 3 incorrect options (distractors) must NOT be random, nonsensical, or obviously wrong at a glance. They must look like plausible, realistic answers that require actually solving or reading the question to rule out — matching the exact format, structure, complexity, and units of the correct option (not one carefully-written option and three throwaways).
+   - NEVER output generic placeholder strings like "Option A", "Option B", "Option C", "Option D", "Choice 1", or empty options.
    - CRITICAL FOR MATHEMATICAL / NUMERICAL / CALCULATION QUESTIONS:
      * Options MUST be 4 realistic, distinct mathematical numbers, variations, or formulas.
      * STRICTLY BAN generic filler options ('True', 'False', 'Cannot be determined', 'None of the above') on non-boolean mathematical queries!
    - ONLY for explicit boolean/truth questions (e.g. True/False questions) may True/False choices be used.
    - "correctAnswerIndex" MUST be an integer between 0 and 3 (0 for first option, 1 for second, 2 for third, 3 for fourth).
-2. If "questionType" is "direct":
+3. If "questionType" is "direct":
    - "options" should be empty [].
-   - "directAnswer" MUST be a non-empty string with the expected target answer (can be an integer, short phrase, formula, or symbol).
-3. "level" MUST be an integer from 1 to 4:
+   - "directAnswer" MUST be a non-empty string that EXACTLY matches what a correct solve of the question produces (accounting for standard equivalent formats like "42" vs "42.0" where applicable) — NEVER an inaccurate, rounded, or approximate value.
+4. "level" MUST be an integer from 1 to 4:
    - Level 1: Basic concepts & definitions
    - Level 2: Intermediate / application
    - Level 3: Advanced / problem solving & code tracing
    - Level 4: Final Round / complex analysis
-4. "section" MUST be one of: ["Technical", "GK", "Reasoning", "Aptitude", "Mixed"].
-5. "difficulty" MUST be one of: ["easy", "medium", "hard"].
-6. Preserve formatting, mathematical formulas, code blocks, or special symbols accurately in "questionText".`;
+5. "section" MUST be one of: ["Technical", "GK", "Reasoning", "Aptitude", "Mixed"].
+6. "difficulty" MUST be one of: ["easy", "medium", "hard"].
+7. Preserve formatting, mathematical formulas, code blocks, or special symbols accurately in "questionText".`;
 
   let rawText = '';
   let lastError = null;

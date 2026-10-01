@@ -140,7 +140,8 @@ router.get('/questions/:level', async (req, res, next) => {
         data: {
           questions: clientQuestions,
           level,
-          timeSeconds: LEVELS[level].timeSeconds,
+          timeSeconds: activeRoom?.customTimeSeconds || LEVELS[level].timeSeconds,
+          customTimeSeconds: activeRoom?.customTimeSeconds || 0,
           cutoff: resumedCutoff,
           subject: roomSubject,
           unit: roomUnit,
@@ -258,7 +259,8 @@ router.get('/questions/:level', async (req, res, next) => {
       data: {
         questions: clientQuestions,
         level,
-        timeSeconds: levelConfig.timeSeconds,
+        timeSeconds: activeRoom?.customTimeSeconds || levelConfig.timeSeconds,
+        customTimeSeconds: activeRoom?.customTimeSeconds || 0,
         cutoff: effectiveCutoff,
         subject: roomSubject,
         unit: roomUnit,

@@ -235,6 +235,7 @@ router.post('/create-ai', async (req, res, next) => {
     // Insert questions strictly isolated to this room
     const inserted = await Question.insertMany(questionDocs);
     const calculatedMaxLevel = Math.min(4, Math.max(...inserted.map((q) => q.level || 1), 1));
+    const roomCustomTime = parseInt(req.body.customTimeSeconds, 10) || 0;
 
     const room = await Room.create({
       roomCode: normalizedCode,
@@ -249,6 +250,7 @@ router.post('/create-ai', async (req, res, next) => {
       unit: unit?.trim() || '',
       progressionMode: req.body.progressionMode === 'open_attempt' ? 'open_attempt' : 'level_gated',
       maxLevel: calculatedMaxLevel,
+      customTimeSeconds: roomCustomTime,
       questions: inserted,
       participants: [],
     });
@@ -265,6 +267,7 @@ router.post('/create-ai', async (req, res, next) => {
         isAiGenerated: room.isAiGenerated,
         progressionMode: room.progressionMode,
         maxLevel: room.maxLevel || calculatedMaxLevel,
+        customTimeSeconds: room.customTimeSeconds,
         questionCount: inserted.length,
         createdAt: room.createdAt,
       },
@@ -908,7 +911,14 @@ Where correctIndex is 0-based (0=first option, 1=second, 2=third, 3=fourth).`;
       return res.status(500).json({ success: false, error: 'Failed to generate options. Please try again or enter manually.' });
     }
 
-    res.json({ success: true, data: result });
+    res.json({
+      success: true,
+      data: {
+        ...result,
+        correctIndex: result.correctAnswerIndex,
+        correctAnswerIndex: result.correctAnswerIndex,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -1452,6 +1462,7 @@ router.get('/:roomCode/questions', async (req, res, next) => {
         subject: room.subject || '',
         unit: room.unit || '',
         isAiGenerated: Boolean(room.isAiGenerated),
+        customTimeSeconds: room.customTimeSeconds || 0,
         questions: clientQuestions,
         total: clientQuestions.length,
       },

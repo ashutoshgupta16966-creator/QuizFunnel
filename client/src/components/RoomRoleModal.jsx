@@ -145,6 +145,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     roomCode: '',
     roomPassword: '',
     progressionMode: 'level_gated',
+    timerMinutes: 15,
+    timerSeconds: 0,
   });
   const [aiFiles, setAiFiles] = useState([]); // [{ file, name, size, type, previewUrl }]
   const [aiParsing, setAiParsing] = useState(false);
@@ -602,13 +604,17 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       try {
         const res = await generateMcqOptions(q.questionText.trim());
         if (res.data?.success && res.data?.data) {
-          const { options, correctAnswerIndex } = res.data.data;
+          const { options, correctAnswerIndex, correctIndex } = res.data.data;
+          const finalIdx = typeof correctAnswerIndex === 'number'
+            ? correctAnswerIndex
+            : (typeof correctIndex === 'number' ? correctIndex : 0);
           setAiResult((prev) => {
             const nextQs = [...prev.questions];
             nextQs[qIdx] = {
               ...nextQs[qIdx],
               options: Array.isArray(options) && options.length === 4 ? options : nextQs[qIdx].options,
-              correctAnswerIndex: typeof correctAnswerIndex === 'number' ? correctAnswerIndex : 0,
+              correctAnswerIndex: finalIdx,
+              directAnswer: Array.isArray(options) ? (options[finalIdx] || '') : nextQs[qIdx].directAnswer,
               optionMode: 'auto',
             };
             return { ...prev, questions: nextQs };
@@ -668,13 +674,17 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     try {
       const res = await generateMcqOptions(q.questionText.trim());
       if (res.data?.success && res.data?.data) {
-        const { options, correctIndex } = res.data.data;
+        const { options, correctAnswerIndex, correctIndex } = res.data.data;
+        const finalIdx = typeof correctAnswerIndex === 'number'
+          ? correctAnswerIndex
+          : (typeof correctIndex === 'number' ? correctIndex : 0);
         setAiResult((prev) => {
           const nextQs = [...prev.questions];
           nextQs[qIdx] = {
             ...nextQs[qIdx],
             options: Array.isArray(options) && options.length === 4 ? options : nextQs[qIdx].options,
-            correctAnswerIndex: typeof correctIndex === 'number' ? correctIndex : 0,
+            correctAnswerIndex: finalIdx,
+            directAnswer: Array.isArray(options) ? (options[finalIdx] || '') : nextQs[qIdx].directAnswer,
             optionMode: 'auto',
           };
           return { ...prev, questions: nextQs };
@@ -723,6 +733,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     try {
       const code = aiForm.roomCode.trim().toUpperCase();
       const pwd = aiForm.roomPassword.trim();
+      const customTimeSecs = (parseInt(aiForm.timerMinutes, 10) || 15) * 60 + (parseInt(aiForm.timerSeconds, 10) || 0);
 
       await createAiRoom({
         adminName: aiForm.adminName.trim(),
@@ -733,6 +744,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         subject: aiResult.subject.trim(),
         unit: aiResult.unit.trim(),
         progressionMode: aiForm.progressionMode || 'level_gated',
+        customTimeSeconds: customTimeSecs > 0 ? customTimeSecs : 900,
         questions: aiResult.questions,
       });
 
@@ -1615,6 +1627,56 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                   <span className="progression-pill-title">🔓 Open Attempt (Attempt All Questions)</span>
                   <span className="progression-pill-desc">Unlocks all levels unconditionally across all scores</span>
                 </button>
+              </div>
+            </div>
+
+            {/* AI Room Custom Timer Setting */}
+            <div className="ai-timer-config-card" style={{
+              background: 'rgba(99,102,241,0.08)',
+              border: '1px solid rgba(139,92,246,0.25)',
+              borderRadius: '12px',
+              padding: '1rem 1.25rem',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.6rem',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    ⏱️ Custom Quiz Level Timer
+                  </span>
+                  <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                    Set custom countdown time allowed for this quiz level before participants start.
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      max="180"
+                      className="form-input"
+                      style={{ width: '65px', textAlign: 'center', fontWeight: 700, padding: '4px 6px' }}
+                      value={aiForm.timerMinutes ?? 15}
+                      onChange={(e) => setAiForm({ ...aiForm, timerMinutes: Math.max(1, Math.min(180, parseInt(e.target.value) || 1)) })}
+                    />
+                    <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>min</span>
+                  </div>
+                  <span style={{ color: '#818cf8', fontWeight: 800 }}>:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      className="form-input"
+                      style={{ width: '60px', textAlign: 'center', fontWeight: 700, padding: '4px 6px' }}
+                      value={aiForm.timerSeconds ?? 0}
+                      onChange={(e) => setAiForm({ ...aiForm, timerSeconds: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })}
+                    />
+                    <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>sec</span>
+                  </div>
+                </div>
               </div>
             </div>
 

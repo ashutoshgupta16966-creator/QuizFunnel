@@ -43,6 +43,13 @@ export default function Quiz() {
   const displaySubject = quizSubject || roomSession?.subject || '';
   const displayUnit    = quizUnit || roomSession?.unit || '';
 
+  // ── Custom Level Countdown Timer State ─────────────────────────────────────
+  const defaultLevelTime = levelConfig?.timeSeconds || 900;
+  const [customTimeSeconds, setCustomTimeSeconds] = useState(defaultLevelTime);
+  const [showTimerSetup, setShowTimerSetup] = useState(true);
+  const [timerSetupMins, setTimerSetupMins] = useState(Math.floor(defaultLevelTime / 60));
+  const [timerSetupSecs, setTimerSetupSecs] = useState(defaultLevelTime % 60);
+
   // Storage keys for auto-saving progress & bookmarks
   const progressKey = student?.mobile ? `quiz_progress_${student.mobile}_${levelNum}` : null;
   const bookmarkKey = student?.mobile ? `quiz_bookmarks_${student.mobile}_${levelNum}` : null;
@@ -173,6 +180,15 @@ export default function Quiz() {
         const parsed = JSON.parse(saved);
         if (parsed?.answers && typeof parsed.answers === 'object') {
           setAnswers(parsed.answers);
+          // If answers are already recorded, student is actively resuming; do not block with timer setup
+          if (Object.keys(parsed.answers).length > 0) {
+            setShowTimerSetup(false);
+          }
+        }
+        if (typeof parsed?.customTimeSeconds === 'number' && parsed.customTimeSeconds > 0) {
+          setCustomTimeSeconds(parsed.customTimeSeconds);
+          setTimerSetupMins(Math.floor(parsed.customTimeSeconds / 60));
+          setTimerSetupSecs(parsed.customTimeSeconds % 60);
         }
         if (typeof parsed?.currentIndex === 'number' && parsed.currentIndex < qs.length) {
           setCurrentIndex(parsed.currentIndex);
@@ -188,10 +204,11 @@ export default function Quiz() {
       localStorage.setItem(progressKey, JSON.stringify({
         currentIndex,
         answers,
+        customTimeSeconds,
         updatedAt: Date.now(),
       }));
     } catch { /* noop */ }
-  }, [answers, currentIndex, progressKey, loading, questions]);
+  }, [answers, currentIndex, customTimeSeconds, progressKey, loading, questions]);
 
   // ── Browser unload / navigation protection ────────────────────────────────
   useEffect(() => {
@@ -224,22 +241,34 @@ export default function Quiz() {
       setLoading(true);
       setLoadError(null);
       const res = await getQuestions(levelNum, student.mobile, roomSession?.roomCode);
-      const { questions: qs, startedAt: sAt, subject: resSub, unit: resUn } = res.data.data;
+      const { questions: qs, startedAt: sAt, subject: resSub, unit: resUn, customTimeSeconds: resCustomTime, timeSeconds: resTime } = res.data.data;
       setQuestions(qs);
       if (resSub) setQuizSubject(resSub);
       if (resUn) setQuizUnit(resUn);
-      setStartedAt(new Date(sAt));
+
+      const targetTime = resCustomTime || resTime || levelConfig?.timeSeconds || 900;
+      setCustomTimeSeconds(targetTime);
+      setTimerSetupMins(Math.floor(targetTime / 60));
+      setTimerSetupSecs(targetTime % 60);
+
+      setStartedAt(new Date(sAt || Date.now()));
       restoreSavedProgress(qs);
     } catch (err) {
       // If room quiz and standard questions endpoint had an error, fallback to getRoomQuestions
       if (isRoomQuiz && roomSession?.roomCode) {
         try {
           const roomRes = await getRoomQuestions(roomSession.roomCode, levelNum);
-          const { questions: qs, subject: resSub, unit: resUn } = roomRes.data.data;
+          const { questions: qs, subject: resSub, unit: resUn, customTimeSeconds: resCustomTime } = roomRes.data.data;
           if (Array.isArray(qs) && qs.length > 0) {
             setQuestions(qs);
             if (resSub) setQuizSubject(resSub);
             if (resUn) setQuizUnit(resUn);
+
+            const targetTime = resCustomTime || levelConfig?.timeSeconds || 900;
+            setCustomTimeSeconds(targetTime);
+            setTimerSetupMins(Math.floor(targetTime / 60));
+            setTimerSetupSecs(targetTime % 60);
+
             setStartedAt(new Date());
             restoreSavedProgress(qs);
             return;
@@ -295,7 +324,7 @@ export default function Quiz() {
 
     const elapsed = startedAt
       ? Math.floor((Date.now() - startedAt.getTime()) / 1000)
-      : levelConfig.timeSeconds;
+      : (customTimeSeconds || levelConfig.timeSeconds);
 
     // Build answers array supporting both MCQ and Direct question formats
     const answersArray = questions.map((q) => {
@@ -550,6 +579,155 @@ export default function Quiz() {
     );
   }
 
+  // ── PRE-QUIZ CUSTOM TIMER SETUP SCREEN ─────────────────────────────────
+  const handleConfirmTimerSetup = () => {
+    const total = (parseInt(timerSetupMins, 10) || 0) * 60 + (parseInt(timerSetupSecs, 10) || 0);
+    const finalSecs = total > 0 ? total : (levelConfig?.timeSeconds || 900);
+    setCustomTimeSeconds(finalSecs);
+    setStartedAt(new Date());
+    setShowTimerSetup(false);
+    if (progressKey) {
+      try {
+        const existing = JSON.parse(localStorage.getItem(progressKey) || '{}');
+        localStorage.setItem(progressKey, JSON.stringify({
+          ...existing,
+          customTimeSeconds: finalSecs,
+          updatedAt: Date.now(),
+        }));
+      } catch { /* noop */ }
+    }
+  };
+
+  if (showTimerSetup && questions.length > 0) {
+    return (
+      <div className="quiz-page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+        <div className="room-modal-card" style={{ maxWidth: '440px', width: '100%', padding: '2rem 2.25rem', textAlign: 'center', borderRadius: '20px', background: 'var(--surface-color, #1e293b)', border: '1px solid rgba(139,92,246,0.3)', boxShadow: '0 20px 40px -15px rgba(0,0,0,0.5)' }}>
+          <div style={{ marginBottom: '1.25rem' }}>
+            <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.5rem' }}>⏱️</span>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.25rem 0.75rem', borderRadius: '999px', background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+              <span>{levelConfig.label}</span>
+              {(displaySubject || displayUnit) && <span>• {displaySubject} {displayUnit ? `(${displayUnit})` : ''}</span>}
+            </div>
+            <h2 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#f8fafc', margin: '0 0 0.4rem' }}>
+              Set Your Quiz Timer
+            </h2>
+            <p style={{ fontSize: '0.86rem', color: '#94a3b8', margin: 0, lineHeight: 1.45 }}>
+              Questions are ready ({questions.length} questions). Choose your countdown time for this level before starting.
+            </p>
+          </div>
+
+          {/* Big Digital Countdown Time Inputs */}
+          <div style={{
+            background: 'rgba(15,23,42,0.6)',
+            border: '2px solid rgba(139,92,246,0.4)',
+            borderRadius: '16px',
+            padding: '1.25rem 1.5rem',
+            marginBottom: '1.25rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>
+                  MINUTES
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="180"
+                  value={timerSetupMins}
+                  onChange={(e) => setTimerSetupMins(Math.max(0, Math.min(180, parseInt(e.target.value) || 0)))}
+                  style={{
+                    width: '88px',
+                    fontSize: '2.2rem',
+                    fontWeight: 800,
+                    textAlign: 'center',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1.5px solid rgba(139,92,246,0.5)',
+                    borderRadius: '10px',
+                    color: '#f8fafc',
+                    padding: '0.35rem',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: '2.2rem', fontWeight: 800, color: '#818cf8', lineHeight: 1, marginTop: '1rem' }}>:</span>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>
+                  SECONDS
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={timerSetupSecs}
+                  onChange={(e) => setTimerSetupSecs(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
+                  style={{
+                    width: '88px',
+                    fontSize: '2.2rem',
+                    fontWeight: 800,
+                    textAlign: 'center',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1.5px solid rgba(139,92,246,0.5)',
+                    borderRadius: '10px',
+                    color: '#f8fafc',
+                    padding: '0.35rem',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Quick Preset Buttons */}
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '1rem' }}>
+              {[
+                { label: '5 min', m: 5, s: 0 },
+                { label: '10 min', m: 10, s: 0 },
+                { label: '15 min', m: 15, s: 0 },
+                { label: '20 min', m: 20, s: 0 },
+                { label: '30 min', m: 30, s: 0 },
+                { label: `Default (${Math.floor(levelConfig.timeSeconds / 60)}m)`, m: Math.floor(levelConfig.timeSeconds / 60), s: levelConfig.timeSeconds % 60 },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => { setTimerSetupMins(preset.m); setTimerSetupSecs(preset.s); }}
+                  style={{
+                    background: (timerSetupMins === preset.m && timerSetupSecs === preset.s)
+                      ? 'rgba(99,102,241,0.35)'
+                      : 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(139,92,246,0.35)',
+                    borderRadius: '20px',
+                    color: '#c4b5fd',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    padding: '0.25rem 0.65rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <p style={{ fontSize: '0.78rem', color: '#94a3b8', margin: '0.75rem 0 0', textAlign: 'center' }}>
+              {(timerSetupMins === 0 && timerSetupSecs === 0)
+                ? '⚠️ Untimed: Timer will not auto-submit.'
+                : `⏱️ ${timerSetupMins}m ${timerSetupSecs}s countdown will start upon entering.`}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ width: '100%', padding: '0.85rem', fontSize: '1rem', fontWeight: 700 }}
+            onClick={handleConfirmTimerSetup}
+          >
+            🚀 Start Quiz ({questions.length} Questions)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const currentQuestion = questions[currentIndex];
   const answeredCount   = Object.keys(answers).length;
   const canGoPrev       = currentIndex > 0;
@@ -584,7 +762,7 @@ export default function Quiz() {
         </button>
         {startedAt && (
           <TimerBar
-            totalSeconds={levelConfig.timeSeconds}
+            totalSeconds={customTimeSeconds || levelConfig.timeSeconds}
             startedAt={startedAt}
             onTimeUp={handleTimeUp}
             isPaused={isAntiCheatTerminal || submitting || hasSubmitted.current}

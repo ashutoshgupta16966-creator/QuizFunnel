@@ -517,13 +517,17 @@ export default function StudentAiPracticeModal({
         try {
           const res = await generateMcqOptions(q.questionText.trim());
           if (res.data?.success && res.data?.data) {
-            const { options, correctAnswerIndex } = res.data.data;
+            const { options, correctAnswerIndex, correctIndex } = res.data.data;
+            const finalIdx = typeof correctAnswerIndex === 'number'
+              ? correctAnswerIndex
+              : (typeof correctIndex === 'number' ? correctIndex : 0);
             setQuestions((prev) => {
               const next = [...prev];
               next[qIdx] = {
                 ...next[qIdx],
                 options: Array.isArray(options) && options.length === 4 ? options : next[qIdx].options,
-                correctAnswerIndex: typeof correctAnswerIndex === 'number' ? correctAnswerIndex : 0,
+                correctAnswerIndex: finalIdx,
+                directAnswer: Array.isArray(options) ? (options[finalIdx] || '') : next[qIdx].directAnswer,
                 optionMode: 'auto',
               };
               return next;
