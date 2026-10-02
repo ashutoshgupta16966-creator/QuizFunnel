@@ -3,6 +3,7 @@ import { parseAiQuizDocument, savePracticeAttempt, generateMcqOptions } from '..
 import ThemeToggle from './ThemeToggle';
 import GuidanceDrawer, { GUIDES } from './GuidanceDrawer';
 import AntiCheatModal from './AntiCheatModal';
+import { checkDirectAnswerCorrectness } from '../utils/scoringHelper';
 
 const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_IMAGES = 10;
@@ -573,10 +574,12 @@ export default function StudentAiPracticeModal({
     });
     setQuestions(mcqQuestions);
 
-    // Auto mode: trigger real Gemini API call for every question
+    // Auto mode: trigger parallel AI option generation for questions needing options
     if (mode === 'auto') {
       setIsBulkGenerating(true);
       setBulkGenErrors({});
+
+      const tasks = [];
       for (let qIdx = 0; qIdx < mcqQuestions.length; qIdx++) {
         const q = mcqQuestions[qIdx];
         if (!q?.questionText?.trim()) continue;
@@ -590,42 +593,48 @@ export default function StudentAiPracticeModal({
           continue;
         }
 
-        const known = q.directAnswer || (Array.isArray(q.options) && q.options[q.correctAnswerIndex]) || '';
+        tasks.push({ q, qIdx });
+      }
 
-        setBulkGenIdx(qIdx);
-        try {
-          const res = await generateMcqOptions({
-            questionText: q.questionText.trim(),
-            knownAnswer: known,
-          });
-          if (res.data?.success && res.data?.data) {
-            const { options, correctAnswerIndex, correctIndex } = res.data.data;
-            const finalIdx = typeof correctAnswerIndex === 'number'
-              ? correctAnswerIndex
-              : (typeof correctIndex === 'number' ? correctIndex : 0);
-            setQuestions((prev) => {
-              const next = [...prev];
-              next[qIdx] = {
-                ...next[qIdx],
-                options: Array.isArray(options) && options.length === 4 ? options : next[qIdx].options,
-                correctAnswerIndex: finalIdx,
-                directAnswer: Array.isArray(options) ? (options[finalIdx] || '') : next[qIdx].directAnswer,
-                optionMode: 'auto',
-              };
-              return next;
-            });
-          } else {
-            setBulkGenErrors((prev) => ({
-              ...prev,
-              [qIdx]: res.data?.error || 'AI generation failed for this question.',
-            }));
-          }
-        } catch (err) {
-          setBulkGenErrors((prev) => ({
-            ...prev,
-            [qIdx]: err.response?.data?.error || err.message || 'AI generation failed. Edit manually.',
-          }));
-        }
+      if (tasks.length > 0) {
+        await Promise.allSettled(
+          tasks.map(async ({ q, qIdx }) => {
+            const known = q.directAnswer || (Array.isArray(q.options) && q.options[q.correctAnswerIndex]) || '';
+            try {
+              const res = await generateMcqOptions({
+                questionText: q.questionText.trim(),
+                knownAnswer: known,
+              });
+              if (res.data?.success && res.data?.data) {
+                const { options, correctAnswerIndex, correctIndex } = res.data.data;
+                const finalIdx = typeof correctAnswerIndex === 'number'
+                  ? correctAnswerIndex
+                  : (typeof correctIndex === 'number' ? correctIndex : 0);
+                setQuestions((prev) => {
+                  const next = [...prev];
+                  next[qIdx] = {
+                    ...next[qIdx],
+                    options: Array.isArray(options) && options.length === 4 ? options : next[qIdx].options,
+                    correctAnswerIndex: finalIdx,
+                    directAnswer: Array.isArray(options) ? (options[finalIdx] || '') : next[qIdx].directAnswer,
+                    optionMode: 'auto',
+                  };
+                  return next;
+                });
+              } else {
+                setBulkGenErrors((prev) => ({
+                  ...prev,
+                  [qIdx]: res.data?.error || 'AI generation failed for this question.',
+                }));
+              }
+            } catch (err) {
+              setBulkGenErrors((prev) => ({
+                ...prev,
+                [qIdx]: err.response?.data?.error || err.message || 'AI generation failed. Edit manually.',
+              }));
+            }
+          })
+        );
       }
       setBulkGenIdx(null);
       setIsBulkGenerating(false);
@@ -753,9 +762,7 @@ export default function StudentAiPracticeModal({
       let isCorrect = false;
 
       if (q.questionType === 'direct') {
-        const userNorm = String(userAns || '').trim().toLowerCase();
-        const correctNorm = String(q.directAnswer || '').trim().toLowerCase();
-        isCorrect = userNorm !== '' && userNorm === correctNorm;
+        isCorrect = checkDirectAnswerCorrectness(userAns, q.directAnswer);
       } else {
         isCorrect = typeof userAns === 'number' && userAns === q.correctAnswerIndex;
       }
@@ -1251,7 +1258,7 @@ export default function StudentAiPracticeModal({
               }}>
                 <span className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px' }} />
                 <span>
-                  🪄 AI generating options for Q{(bulkGenIdx ?? 0) + 1} of {questions.length}…
+                  🪄 AI generating options…
                   <span style={{ color: '#94a3b8', marginLeft: '0.4rem', fontSize: '0.78rem' }}>
                     Options will fill in automatically.
                   </span>

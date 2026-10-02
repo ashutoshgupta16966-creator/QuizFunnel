@@ -1,27 +1,11 @@
 const Question = require('../models/Question');
 const { sanitizeMcqOptions } = require('./aiVisionController');
-
-let GoogleGenAI;
-try {
-  const genaiPkg = require('@google/genai');
-  GoogleGenAI = genaiPkg.GoogleGenAI;
-} catch {
-  console.log('[AI Question Generator]: @google/genai package loading optional');
-}
-
-// Gemini Model Fallback Ladder (gemini-3.6-flash primary with gemini-3.5-flash-lite fallback, 3.x series)
-const FALLBACK_MODELS = [
-  'gemini-3.6-flash',
-  'gemini-3.5-flash-lite',
-  'gemini-3.7-flash',
-  'gemini-3.6-flash-lite',
-  'gemini-3.5-flash',
-];
+const { generateTextWithFallback, cleanJsonCodeblock } = require('../services/aiProvider');
 
 /**
- * Generates dynamic quiz questions using Google Gemini API based on topic & difficulty level.
+ * Generates dynamic quiz questions using AI (Claude-first priority, falling back to Gemini).
  * Automatically inserts newly generated questions into MongoDB.
- * Fallback: If Gemini API fails or exceeds quota/rate-limits, falls back gracefully
+ * Fallback: If AI APIs fail or exceed quota, falls back gracefully
  * to fetching existing questions from MongoDB using $sample aggregation.
  */
 async function generateAndPopulateQuestions({ topic, difficultyLevel, count = 5 }) {
@@ -29,13 +13,15 @@ async function generateAndPopulateQuestions({ topic, difficultyLevel, count = 5 
   const targetCount = Math.min(Math.max(parseInt(count, 10) || 5, 1), 20);
   const topicName = topic || 'Technical & General Aptitude';
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const hasApiKey = Boolean(
+    (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_api_key_here') ||
+    (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_google_gemini_api_key_here')
+  );
 
-  if (apiKey && apiKey !== 'your_google_gemini_api_key_here' && GoogleGenAI) {
+  if (hasApiKey) {
     try {
-      console.log(`[AI Question Generator]: Generating ${targetCount} Level ${levelNum} questions for topic '${topicName}' via Gemini API...`);
+      console.log(`[AI Question Generator]: Generating ${targetCount} Level ${levelNum} questions for topic '${topicName}' via AI Provider...`);
 
-      const ai = new GoogleGenAI({ apiKey });
       const prompt = `You are a world-class academic quiz question author and assessment designer for college students.
 Generate exactly ${targetCount} multiple-choice quiz questions for Level ${levelNum} candidates.
 Topic/Subject: ${topicName}.
@@ -64,39 +50,22 @@ STRICT ACCURACY & DISTRACTOR RULES:
 8. "difficulty" MUST be "easy", "medium", or "hard".
 9. Level is ${levelNum}. Make question complexity appropriate for Level ${levelNum}.`;
 
-      let rawText = '';
-      for (const modelName of FALLBACK_MODELS) {
+      const validate = (raw) => {
         try {
-          console.log(`[AI Question Generator]: Trying model "${modelName}"...`);
-          let response;
-          try {
-            response = await ai.models.generateContent({
-              model: modelName,
-              contents: prompt,
-              config: { responseMimeType: 'application/json' },
-            });
-          } catch (cfgErr) {
-            response = await ai.models.generateContent({
-              model: modelName,
-              contents: prompt,
-            });
-          }
-          rawText = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
-          if (rawText && rawText.trim()) {
-            console.log(`[AI Question Generator]: Succeeded with model "${modelName}".`);
-            break;
-          }
-        } catch (modelErr) {
-          console.warn(`[AI Question Generator]: Model "${modelName}" failed (${modelErr.message}). Trying next fallback model...`);
+          const arr = JSON.parse(cleanJsonCodeblock(raw));
+          return Array.isArray(arr) && arr.length > 0;
+        } catch {
+          return false;
         }
-      }
+      };
 
-      let cleaned = rawText.trim();
-      if (cleaned.startsWith('```')) {
-        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-      }
+      const { text, modelUsed, provider } = await generateTextWithFallback({
+        prompt,
+        jsonMode: true,
+        validate,
+      });
 
-      const parsedArray = JSON.parse(cleaned);
+      const parsedArray = JSON.parse(cleanJsonCodeblock(text));
 
       if (Array.isArray(parsedArray) && parsedArray.length > 0) {
         const validDocs = [];
@@ -126,21 +95,22 @@ STRICT ACCURACY & DISTRACTOR RULES:
 
         if (validDocs.length > 0) {
           const inserted = await Question.insertMany(validDocs);
-          console.log(`[AI Question Generator]: Successfully inserted ${inserted.length} generated questions into MongoDB.`);
+          console.log(`[AI Question Generator]: Successfully inserted ${inserted.length} generated questions into MongoDB (model: ${modelUsed}).`);
           return {
             success: true,
-            source: 'gemini-ai',
+            source: `${provider}-ai`,
+            modelUsed,
             count: inserted.length,
-            message: `Successfully generated and stored ${inserted.length} questions via Gemini API.`,
+            message: `Successfully generated and stored ${inserted.length} questions via ${provider.toUpperCase()} (${modelUsed}).`,
             questions: inserted,
           };
         }
       }
     } catch (aiErr) {
-      console.warn(`[AI Question Generator Warning]: Gemini API error (${aiErr.message}). Falling back to MongoDB $sample...`);
+      console.warn(`[AI Question Generator Warning]: AI generation error (${aiErr.message}). Falling back to MongoDB $sample...`);
     }
   } else {
-    console.log('[AI Question Generator]: Gemini API key missing or inactive. Falling back to MongoDB $sample...');
+    console.log('[AI Question Generator]: No active AI API keys configured. Falling back to MongoDB $sample...');
   }
 
   // ── FALLBACK MECHANISM: Fetch existing questions from MongoDB using $sample ──

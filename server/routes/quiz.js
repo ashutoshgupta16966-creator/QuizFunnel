@@ -5,6 +5,7 @@ const Student = require('../models/Student');
 const Room = require('../models/Room');
 const LEVELS = require('../config/levels');
 const { sanitizeMcqOptions, isGenericPlaceholderOption } = require('../controllers/aiVisionController');
+const { checkDirectAnswerCorrectness } = require('../utils/scoringHelper');
 
 /**
  * Fisher-Yates shuffle for 4 option indices.
@@ -374,14 +375,11 @@ router.post('/submit', async (req, res, next) => {
       const isDirect = dbQ.questionType === 'direct' || sessionQ.questionType === 'direct' || (!dbQ.options || dbQ.options.length === 0);
 
       if (isDirect) {
-        // Direct text/integer answer evaluation:
-        // Strict normalization: studentInput.trim().toLowerCase() === correctAnswer.trim().toLowerCase()
+        // Direct text/numerical answer evaluation with near-match tolerance for typos
         const rawStudentAnswer = answer.directAnswer !== undefined
           ? answer.directAnswer
           : (answer.selectedAnswer !== undefined ? answer.selectedAnswer : (answer.textAnswer !== undefined ? answer.textAnswer : ''));
-        const studentNormalized = String(rawStudentAnswer || '').trim().toLowerCase();
-        const correctNormalized = String(dbQ.directAnswer || '').trim().toLowerCase();
-        const isCorrect = studentNormalized !== '' && studentNormalized === correctNormalized;
+        const isCorrect = checkDirectAnswerCorrectness(rawStudentAnswer, dbQ.directAnswer);
 
         if (isCorrect) score++;
 
@@ -778,7 +776,7 @@ router.get('/review/:mobile', async (req, res, next) => {
           const studentAns = String(ans.directAnswer !== undefined ? ans.directAnswer : '').trim();
           const targetAns = String(q.directAnswer || '').trim();
           isUnattempted = !studentAns;
-          isCorrect = ans.isCorrect !== undefined ? Boolean(ans.isCorrect) : (!isUnattempted && studentAns.toLowerCase() === targetAns.toLowerCase());
+          isCorrect = ans.isCorrect !== undefined ? Boolean(ans.isCorrect) : (!isUnattempted && checkDirectAnswerCorrectness(studentAns, targetAns));
           selectedOptionText = studentAns || null;
           correctAnswerText = targetAns;
         } else {

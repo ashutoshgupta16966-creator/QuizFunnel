@@ -5,6 +5,7 @@ const Room = require('../models/Room');
 const Student = require('../models/Student');
 const Question = require('../models/Question');
 const { parseQuizDocumentWithGemini, sanitizeMcqOptions, isGenericPlaceholderOption, cleanOptionPrefix } = require('../controllers/aiVisionController');
+const { generateMcqOptionsUnified } = require('../services/aiProvider');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -880,135 +881,7 @@ router.post('/ai/generate-options', async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'questionText is required.' });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ success: false, error: 'Gemini API key not configured.' });
-    }
-
-    let GoogleGenAI;
-    try {
-      const genaiPkg = require('@google/genai');
-      GoogleGenAI = genaiPkg.GoogleGenAI;
-    } catch (e) {
-      console.warn('[generate-options]: @google/genai SDK not available:', e.message);
-    }
-
-    if (!GoogleGenAI) {
-      return res.status(500).json({ success: false, error: '@google/genai SDK not available on server.' });
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-    const FALLBACK_MODELS = [
-      'gemini-3.6-flash',
-      'gemini-3.5-flash-lite',
-      'gemini-3.7-flash',
-      'gemini-3.6-flash-lite',
-      'gemini-3.5-flash',
-    ];
-    let result = null;
-
-    const knownDirective = knownAnswer
-      ? `\n\nPRIORITY MANDATE — SOURCE MATERIAL KNOWN ANSWER:
-The correct answer for this question from the source document is ALREADY VERIFIED as: "${knownAnswer}"
-You MUST include this exact answer ("${knownAnswer}") as one of the 4 options.
-The "correctIndex" MUST point to this answer.
-DO NOT substitute, modify, or guess a different correct answer. Only generate 3 realistic, plausible distractors.`
-      : '';
-
-    const prompt = `You are a highly accurate academic quiz question expert and assessment designer.
-
-TASK: For the following question, generate exactly 4 multiple-choice options where ONE is verifiably correct and THREE are convincing but incorrect distractors.
-
-QUESTION:
-"${questionText.trim()}"${knownDirective}
-
-STEP 1 — ${knownAnswer ? 'USE PROVIDED ANSWER' : 'SOLVE FIRST'}: ${
-      knownAnswer
-        ? `The designated correct answer is "${knownAnswer}". Place it as one of the four options.`
-        : 'Before generating options, carefully solve or reason through the question yourself to determine the factually/logically correct answer. Double-check your answer. Only then place it as one of the four options.'
-    }
-
-STEP 2 — GENERATE DISTRACTORS: Create 3 distractor options that:
-  - Are the same TYPE and FORMAT as the correct answer (numbers look like numbers, terms look like terms, formulas look like formulas)
-  - Are plausible enough that a student who has NOT studied carefully might pick them
-  - Are NOT obviously wrong at a glance — they must require actual knowledge/calculation to rule out
-  - Do NOT use generic non-answers like "None of the above", "All of the above", "Cannot be determined" UNLESS the original question is explicitly a True/False or Boolean type
-  - Do NOT reuse the correct answer or use near-duplicates
-
-STEP 3 — SHUFFLE: Randomly place the correct answer at index 0, 1, 2, or 3 (not always at index 0).
-
-CRITICAL RULES:
-- The "correctIndex" MUST point to the FACTUALLY CORRECT answer (${knownAnswer ? `"${knownAnswer}"` : 'verified'}). Verify this before responding.
-- For NUMERICAL / MATHEMATICAL questions: All 4 options MUST be realistic numerical values (e.g. 12, 15, 18, 24 — not "True/False/None").
-- For CONCEPTUAL questions: All 4 options MUST be domain-relevant technical terms or short phrases.
-- For CODE / FORMULA questions: All 4 options MUST be syntactically valid variations.
-- NEVER output generic placeholder strings like "Option A", "Option 1", "Choice B", etc.
-- Each option MUST be concise (under 20 words).
-
-Respond ONLY with a valid raw JSON object — no markdown, no backticks, no explanation:
-{"options":["...", "...", "...", "..."], "correctIndex": 2}
-
-Where correctIndex is 0-based (0=first option, 1=second, 2=third, 3=fourth).`;
-
-    for (const modelName of FALLBACK_MODELS) {
-      try {
-        let response;
-        try {
-          response = await ai.models.generateContent({
-            model: modelName,
-            contents: prompt,
-            config: { responseMimeType: 'application/json' },
-          });
-        } catch {
-          response = await ai.models.generateContent({
-            model: modelName,
-            contents: prompt,
-          });
-        }
-
-        const raw = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
-        const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-        const parsed = JSON.parse(cleaned);
-
-        if (
-          Array.isArray(parsed.options) &&
-          parsed.options.length === 4 &&
-          typeof parsed.correctIndex === 'number' &&
-          parsed.correctIndex >= 0 &&
-          parsed.correctIndex <= 3 &&
-          !parsed.options.every(isGenericPlaceholderOption)
-        ) {
-          let cleanedOpts = parsed.options.map((o) => cleanOptionPrefix(String(o || '')).trim());
-          let cIdx = parsed.correctIndex;
-
-          if (knownAnswer) {
-            const cleanKnown = cleanOptionPrefix(knownAnswer).trim();
-            const existingMatchIdx = cleanedOpts.findIndex(
-              (o) => o.toLowerCase() === cleanKnown.toLowerCase()
-            );
-            if (existingMatchIdx >= 0) {
-              cIdx = existingMatchIdx;
-            } else {
-              cleanedOpts[cIdx] = cleanKnown;
-            }
-          }
-
-          result = {
-            options: cleanedOpts,
-            correctAnswerIndex: cIdx,
-            directAnswer: cleanedOpts[cIdx] || '',
-          };
-          break;
-        }
-      } catch (modelErr) {
-        console.warn(`[generate-options] Model ${modelName} failed:`, modelErr.message);
-        continue;
-      }
-    }
-
-    if (!result) {
-      return res.status(500).json({ success: false, error: 'Failed to generate options. Please try again or enter manually.' });
-    }
+    const result = await generateMcqOptionsUnified({ questionText, knownAnswer });
 
     res.json({
       success: true,
@@ -1019,7 +892,8 @@ Where correctIndex is 0-based (0=first option, 1=second, 2=third, 3=fourth).`;
       },
     });
   } catch (err) {
-    next(err);
+    console.error('[generate-options error]:', err.message);
+    res.status(500).json({ success: false, error: err.message || 'Failed to auto-generate options with AI.' });
   }
 });
 

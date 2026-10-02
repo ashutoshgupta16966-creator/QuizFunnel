@@ -1,24 +1,9 @@
-let GoogleGenAI;
-try {
-  const genaiPkg = require('@google/genai');
-  GoogleGenAI = genaiPkg.GoogleGenAI;
-} catch (e) {
-  console.warn('[AI Vision Controller]: @google/genai package failed to load:', e.message);
-}
+const { generateMultimodalWithFallback } = require('../services/aiProvider');
 
 const ALLOWED_SECTIONS = ['GK', 'Technical', 'Reasoning', 'Aptitude', 'Mixed'];
 const ALLOWED_DIFFICULTIES = ['easy', 'medium', 'hard'];
 const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_IMAGES = 10;
-
-// Gemini Multimodal Model Fallback Ladder (gemini-3.6-flash primary with gemini-3.5-flash-lite fallback, 3.x series)
-const FALLBACK_MODELS = [
-  'gemini-3.6-flash',
-  'gemini-3.5-flash-lite',
-  'gemini-3.7-flash',
-  'gemini-3.6-flash-lite',
-  'gemini-3.5-flash',
-];
 
 /**
  * Helper to test if a string is a generic placeholder option
@@ -372,19 +357,16 @@ async function parseQuizDocumentWithGemini(files) {
     }
   }
 
-  // ── Gemini API Client Check ──────────────────────────────────────────────
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'your_google_gemini_api_key_here') {
+  // ── AI API Key Check ───────────────────────────────────────────────────
+  const hasApiKey = Boolean(
+    (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_api_key_here') ||
+    (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_google_gemini_api_key_here')
+  );
+  if (!hasApiKey) {
     throw new Error(
-      'Gemini API Key is not configured on the server. Please add a valid GEMINI_API_KEY to your environment variables (.env).'
+      'AI API Key is not configured on the server. Please add GEMINI_API_KEY or ANTHROPIC_API_KEY to your environment variables (.env).'
     );
   }
-
-  if (!GoogleGenAI) {
-    throw new Error('@google/genai SDK is not available. Please install @google/genai in the server directory.');
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
 
   // ── Build Multimodal Prompt Parts ────────────────────────────────────────
   const inlineParts = files.map((f) => {
@@ -490,46 +472,25 @@ CRITICAL RULES:
 6. "difficulty" MUST be one of: ["easy", "medium", "hard"].
 7. Preserve formatting, mathematical formulas, code blocks, or special symbols accurately in "questionText".`;
 
-  let rawText = '';
-  let lastError = null;
-
-  for (const modelName of FALLBACK_MODELS) {
+  const validate = (raw) => {
     try {
-      console.log(`[AI Vision Controller]: Attempting visual extraction with model "${modelName}"...`);
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents: [...inlineParts, promptText],
-          config: {
-            responseMimeType: 'application/json',
-          },
-        });
-      } catch (cfgErr) {
-        // Retry without responseMimeType in case model doesn't support json config
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents: [...inlineParts, promptText],
-        });
-      }
-
-      rawText = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
-      if (rawText && rawText.trim()) {
-        console.log(`[AI Vision Controller]: Successfully parsed questions using model "${modelName}".`);
-        lastError = null;
-        break;
-      }
-    } catch (modelErr) {
-      lastError = modelErr;
-      console.warn(`[AI Vision Controller]: Model "${modelName}" failed or returned error (${modelErr.message}). Retrying next model in fallback ladder...`);
+      let c = (raw || '').trim();
+      if (c.startsWith('```')) c = c.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      const p = JSON.parse(c);
+      return Array.isArray(p.questions) && p.questions.length > 0;
+    } catch {
+      return false;
     }
-  }
+  };
 
-  if (!rawText || !rawText.trim()) {
-    throw new Error(
-      `Gemini Vision processing failed across all fallback models (${FALLBACK_MODELS.join(', ')}). Last error: ${lastError?.message || 'No output generated.'}`
-    );
-  }
+  const { text: rawText, modelUsed, provider } = await generateMultimodalWithFallback({
+    files,
+    inlineParts,
+    promptText,
+    validate,
+  });
+
+  console.log(`[AI Vision Controller]: Successfully parsed questions using ${provider.toUpperCase()} ("${modelUsed}").`);
 
   // ── Parse & Clean JSON Response ──────────────────────────────────────────
   let cleaned = (rawText || '').trim();

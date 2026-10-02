@@ -673,12 +673,13 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     });
     setAiResult((prev) => ({ ...prev, questions: updatedQuestions }));
 
-    // Auto-trigger AI option generation for questions that need options
+    // Auto-trigger parallel AI option generation for questions that need options
+    const tasks = [];
     for (let qIdx = 0; qIdx < updatedQuestions.length; qIdx++) {
       const q = updatedQuestions[qIdx];
       if (!q?.questionText?.trim()) continue;
 
-      // CRITICAL FIX 2 (Requirement 4): If document already provided 4 valid options, preserve them!
+      // CRITICAL: If document already provided 4 valid options, preserve them!
       const hasCompleteValidOptions = Array.isArray(q.options) &&
         q.options.length === 4 &&
         q.options.every((opt) => opt && opt.trim() && !/^(option|choice)\s*[a-d1-4]?$/i.test(opt.trim()));
@@ -688,49 +689,56 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         continue;
       }
 
-      const known = q.directAnswer || (Array.isArray(q.options) && q.options[q.correctAnswerIndex]) || '';
+      tasks.push({ q, qIdx });
+    }
 
-      setGeneratingOptionsIdx(qIdx);
-      setOptGenErrors((prev) => ({ ...prev, [qIdx]: '' }));
-      try {
-        const res = await generateMcqOptions({
-          questionText: q.questionText.trim(),
-          knownAnswer: known,
-        });
-        if (res.data?.success && res.data?.data) {
-          const { options, correctAnswerIndex, correctIndex } = res.data.data;
-          const finalIdx = typeof correctAnswerIndex === 'number'
-            ? correctAnswerIndex
-            : (typeof correctIndex === 'number' ? correctIndex : 0);
-          setAiResult((prev) => {
-            const nextQs = [...prev.questions];
-            nextQs[qIdx] = {
-              ...nextQs[qIdx],
-              options: Array.isArray(options) && options.length === 4 ? options : nextQs[qIdx].options,
+    if (tasks.length === 0) return;
+
+    setGeneratingOptionsIdx('all');
+    await Promise.allSettled(
+      tasks.map(async ({ q, qIdx }) => {
+        const known = q.directAnswer || (Array.isArray(q.options) && q.options[q.correctAnswerIndex]) || '';
+        setOptGenErrors((prev) => ({ ...prev, [qIdx]: '' }));
+        try {
+          const res = await generateMcqOptions({
+            questionText: q.questionText.trim(),
+            knownAnswer: known,
+          });
+          if (res.data?.success && res.data?.data) {
+            const { options, correctAnswerIndex, correctIndex } = res.data.data;
+            const finalIdx = typeof correctAnswerIndex === 'number'
+              ? correctAnswerIndex
+              : (typeof correctIndex === 'number' ? correctIndex : 0);
+            setAiResult((prev) => {
+              const nextQs = [...prev.questions];
+              nextQs[qIdx] = {
+                ...nextQs[qIdx],
+                options: Array.isArray(options) && options.length === 4 ? options : nextQs[qIdx].options,
+                correctAnswerIndex: finalIdx,
+                directAnswer: Array.isArray(options) ? (options[finalIdx] || '') : nextQs[qIdx].directAnswer,
+                optionMode: 'auto',
+              };
+              return { ...prev, questions: nextQs };
+            });
+            persistQuestionAnswer(qIdx, {
+              options,
               correctAnswerIndex: finalIdx,
-              directAnswer: Array.isArray(options) ? (options[finalIdx] || '') : nextQs[qIdx].directAnswer,
-              optionMode: 'auto',
-            };
-            return { ...prev, questions: nextQs };
-          });
-          persistQuestionAnswer(qIdx, {
-            options,
-            correctAnswerIndex: finalIdx,
-            directAnswer: options[finalIdx] || '',
-          });
-        } else {
+              directAnswer: options[finalIdx] || '',
+            });
+          } else {
+            setOptGenErrors((prev) => ({
+              ...prev,
+              [qIdx]: res.data?.error || 'AI generation failed for this question.',
+            }));
+          }
+        } catch (err) {
           setOptGenErrors((prev) => ({
             ...prev,
-            [qIdx]: res.data?.error || 'AI generation failed for this question.',
+            [qIdx]: err.response?.data?.error || err.message || 'AI generation failed. Enter options manually.',
           }));
         }
-      } catch (err) {
-        setOptGenErrors((prev) => ({
-          ...prev,
-          [qIdx]: err.response?.data?.error || err.message || 'AI generation failed. Enter options manually.',
-        }));
-      }
-    }
+      })
+    );
     setGeneratingOptionsIdx(null);
   };
 
@@ -1998,16 +2006,16 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                               type="button"
                               className="btn btn-sm btn-primary ai-gen-action-btn"
                               onClick={() => handleGenerateOptions(qIdx)}
-                              disabled={generatingOptionsIdx === qIdx}
+                              disabled={generatingOptionsIdx === qIdx || generatingOptionsIdx === 'all'}
                             >
-                              {generatingOptionsIdx === qIdx ? (
+                              {generatingOptionsIdx === qIdx || generatingOptionsIdx === 'all' ? (
                                 <><span className="btn-spinner" />Generating Options…</>
                               ) : (
                                 '🪄 Generate / Re-generate Options with AI'
                               )}
                             </button>
                             <span className="ai-auto-action-hint">
-                              Uses Gemini to craft 4 plausible options with 1 designated correct answer.
+                              Auto-crafts 4 plausible options with 1 designated correct answer.
                             </span>
                           </div>
 
