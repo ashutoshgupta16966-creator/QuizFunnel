@@ -22,8 +22,9 @@ module.exports = function errorHandler(err, req, res, next) {
   }
 
   const status = err.status || err.statusCode || 500;
+  console.error(`[ERROR ${status}]:`, err.message || err, err.stack || '');
   res.status(status).json({
     success: false,
-    error: status === 500 ? 'Internal server error' : err.message,
+    error: err.message || 'Internal server error',
   });
 };

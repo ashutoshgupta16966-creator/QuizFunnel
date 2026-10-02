@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom, sendAdminOtp, verifyAdminOtp, resetAdminPin, generateMcqOptions, sendSmsOtp, verifySmsOtp, resetPasswordWithOtp } from '../api';
+import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom, sendAdminOtp, verifyAdminOtp, resetAdminPin, generateMcqOptions, sendSmsOtp, verifySmsOtp, resetPasswordWithOtp, updateAiQuestionAnswer } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
 import { BRANCHES } from '../config';
 import ThemeToggle from './ThemeToggle';
@@ -160,6 +160,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [generatingOptionsIdx, setGeneratingOptionsIdx] = useState(null);
   const [optGenErrors, setOptGenErrors] = useState({});
   const [aiBulkFormatMode, setAiBulkFormatMode] = useState('manual'); // 'manual' | 'all_mcq' | 'all_direct'
+  const [answerSavedStatus, setAnswerSavedStatus] = useState({}); // { [qIdx]: 'confirmation message' }
+  const [answerSavingIdx, setAnswerSavingIdx] = useState(null);
 
   // ── Scroll lock while modal is open and safely release when closed ──────────
   useEffect(() => {
@@ -502,6 +504,9 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
 
     try {
       const formData = new FormData();
+      if (aiForm.roomCode) {
+        formData.append('roomCode', aiForm.roomCode.trim().toUpperCase());
+      }
       aiFiles.forEach((f) => {
         formData.append('files', f.file);
       });
@@ -525,12 +530,78 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     }
   };
 
+  const persistQuestionAnswer = async (qIdx, overrideData = {}) => {
+    const currentQ = aiResult.questions[qIdx];
+    if (!currentQ) return;
+    const q = { ...currentQ, ...overrideData };
+
+    setAnswerSavingIdx(qIdx);
+    try {
+      const payload = {
+        questionId: q._id,
+        roomCode: aiForm.roomCode,
+        questionIndex: qIdx,
+        questionText: q.questionText,
+        questionType: q.questionType,
+        correctAnswerIndex: q.correctAnswerIndex,
+        directAnswer: q.directAnswer,
+        options: q.options,
+      };
+      const res = await updateAiQuestionAnswer(payload);
+      if (res.data?.success && res.data?.data) {
+        const verified = res.data.data;
+        setAiResult((prev) => {
+          const nextQs = [...prev.questions];
+          nextQs[qIdx] = {
+            ...nextQs[qIdx],
+            _id: verified._id,
+            correctAnswerIndex: verified.correctAnswerIndex,
+            directAnswer: verified.directAnswer,
+            options: Array.isArray(verified.options) && verified.options.length > 0 ? verified.options : nextQs[qIdx].options,
+          };
+          return { ...prev, questions: nextQs };
+        });
+
+        const ansLabel = verified.questionType === 'direct'
+          ? verified.directAnswer
+          : `${['A', 'B', 'C', 'D'][verified.correctAnswerIndex]}. ${(verified.options || [])[verified.correctAnswerIndex] || ''}`;
+
+        setAnswerSavedStatus((prev) => ({
+          ...prev,
+          [qIdx]: `✅ Saved in database: ${ansLabel}`,
+        }));
+        setTimeout(() => {
+          setAnswerSavedStatus((prev) => ({ ...prev, [qIdx]: '' }));
+        }, 4000);
+      }
+    } catch (err) {
+      console.warn('Persist answer to DB error:', err.message);
+      setAnswerSavedStatus((prev) => ({
+        ...prev,
+        [qIdx]: `💾 Saved locally (${err.message})`,
+      }));
+    } finally {
+      setAnswerSavingIdx(null);
+    }
+  };
+
   const handleAiQuestionChange = (qIdx, field, value) => {
+    let updatedDirect;
     setAiResult((prev) => {
       const nextQs = [...prev.questions];
-      nextQs[qIdx] = { ...nextQs[qIdx], [field]: value };
+      const updated = { ...nextQs[qIdx], [field]: value };
+      // Auto-sync directAnswer when admin changes correctAnswerIndex via radio button
+      if (field === 'correctAnswerIndex' && Array.isArray(updated.options)) {
+        updated.directAnswer = updated.options[value] || updated.directAnswer || '';
+        updatedDirect = updated.directAnswer;
+      }
+      nextQs[qIdx] = updated;
       return { ...prev, questions: nextQs };
     });
+
+    if (field === 'correctAnswerIndex') {
+      persistQuestionAnswer(qIdx, { correctAnswerIndex: value, directAnswer: updatedDirect });
+    }
   };
 
   const handleAiOptionChange = (qIdx, optIdx, value) => {
@@ -538,7 +609,12 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       const nextQs = [...prev.questions];
       const nextOpts = [...nextQs[qIdx].options];
       nextOpts[optIdx] = value;
-      nextQs[qIdx] = { ...nextQs[qIdx], options: nextOpts };
+      const updated = { ...nextQs[qIdx], options: nextOpts };
+      // If admin is editing the currently-correct option, keep directAnswer in sync
+      if (optIdx === updated.correctAnswerIndex) {
+        updated.directAnswer = value;
+      }
+      nextQs[qIdx] = updated;
       return { ...prev, questions: nextQs };
     });
   };
@@ -597,14 +673,30 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     });
     setAiResult((prev) => ({ ...prev, questions: updatedQuestions }));
 
-    // Auto-trigger AI option generation for every question sequentially
+    // Auto-trigger AI option generation for questions that need options
     for (let qIdx = 0; qIdx < updatedQuestions.length; qIdx++) {
       const q = updatedQuestions[qIdx];
       if (!q?.questionText?.trim()) continue;
+
+      // CRITICAL FIX 2 (Requirement 4): If document already provided 4 valid options, preserve them!
+      const hasCompleteValidOptions = Array.isArray(q.options) &&
+        q.options.length === 4 &&
+        q.options.every((opt) => opt && opt.trim() && !/^(option|choice)\s*[a-d1-4]?$/i.test(opt.trim()));
+
+      if (hasCompleteValidOptions) {
+        // Keep existing options and answer from document!
+        continue;
+      }
+
+      const known = q.directAnswer || (Array.isArray(q.options) && q.options[q.correctAnswerIndex]) || '';
+
       setGeneratingOptionsIdx(qIdx);
       setOptGenErrors((prev) => ({ ...prev, [qIdx]: '' }));
       try {
-        const res = await generateMcqOptions(q.questionText.trim());
+        const res = await generateMcqOptions({
+          questionText: q.questionText.trim(),
+          knownAnswer: known,
+        });
         if (res.data?.success && res.data?.data) {
           const { options, correctAnswerIndex, correctIndex } = res.data.data;
           const finalIdx = typeof correctAnswerIndex === 'number'
@@ -620,6 +712,11 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
               optionMode: 'auto',
             };
             return { ...prev, questions: nextQs };
+          });
+          persistQuestionAnswer(qIdx, {
+            options,
+            correctAnswerIndex: finalIdx,
+            directAnswer: options[finalIdx] || '',
           });
         } else {
           setOptGenErrors((prev) => ({
@@ -641,18 +738,25 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     setAiBulkFormatMode('all_direct');
     setAiResult((prev) => ({
       ...prev,
-      questions: prev.questions.map((q) => {
+      questions: prev.questions.map((q, qIdx) => {
         let directAns = q.directAnswer || '';
         if (!directAns && Array.isArray(q.options) && q.options[q.correctAnswerIndex]) {
           directAns = q.options[q.correctAnswerIndex];
         }
-        return {
+        const updated = {
           ...q,
           questionType: 'direct',
           directAnswer: directAns,
           options: [],
           correctAnswerIndex: -1,
         };
+        persistQuestionAnswer(qIdx, {
+          questionType: 'direct',
+          directAnswer: directAns,
+          options: [],
+          correctAnswerIndex: -1,
+        });
+        return updated;
       }),
     }));
   };
@@ -671,10 +775,15 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       return;
     }
 
+    const known = q.directAnswer || (Array.isArray(q.options) && q.options[q.correctAnswerIndex]) || '';
+
     setGeneratingOptionsIdx(qIdx);
     setOptGenErrors((prev) => ({ ...prev, [qIdx]: '' }));
     try {
-      const res = await generateMcqOptions(q.questionText.trim());
+      const res = await generateMcqOptions({
+        questionText: q.questionText.trim(),
+        knownAnswer: known,
+      });
       if (res.data?.success && res.data?.data) {
         const { options, correctAnswerIndex, correctIndex } = res.data.data;
         const finalIdx = typeof correctAnswerIndex === 'number'
@@ -690,6 +799,11 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
             optionMode: 'auto',
           };
           return { ...prev, questions: nextQs };
+        });
+        persistQuestionAnswer(qIdx, {
+          options,
+          correctAnswerIndex: finalIdx,
+          directAnswer: options[finalIdx] || '',
         });
       } else {
         setOptGenErrors((prev) => ({
@@ -1820,13 +1934,30 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                       <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>
                         Correct Answer (Direct Text / Numerical):
                       </label>
-                      <input
-                        type="text"
-                        className="form-input ai-direct-ans-input"
-                        value={q.directAnswer || ''}
-                        onChange={(e) => handleAiQuestionChange(qIdx, 'directAnswer', e.target.value)}
-                        placeholder="e.g. 42, O(log n), Mitochondria, True, etc."
-                      />
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <input
+                          type="text"
+                          className="form-input ai-direct-ans-input"
+                          value={q.directAnswer || ''}
+                          onChange={(e) => handleAiQuestionChange(qIdx, 'directAnswer', e.target.value)}
+                          onBlur={() => persistQuestionAnswer(qIdx, { directAnswer: q.directAnswer })}
+                          placeholder="e.g. 42, O(log n), Mitochondria, True, etc."
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary"
+                          onClick={() => persistQuestionAnswer(qIdx, { directAnswer: q.directAnswer })}
+                          disabled={answerSavingIdx === qIdx || !q.directAnswer?.trim()}
+                          title="Save this answer to the database"
+                        >
+                          {answerSavingIdx === qIdx ? 'Saving…' : '💾 Save Answer'}
+                        </button>
+                      </div>
+                      {answerSavedStatus[qIdx] && (
+                        <div style={{ marginTop: '0.4rem', padding: '0.35rem 0.65rem', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', fontSize: '0.78rem', color: '#86efac' }}>
+                          {answerSavedStatus[qIdx]}
+                        </div>
+                      )}
                       <p className="ai-direct-hint">
                         💡 Students will see a direct text box. Scoring uses trimmed, case-insensitive evaluation.
                       </p>
@@ -1909,6 +2040,39 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                               />
                             </div>
                           ))}
+
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.6rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-primary"
+                                onClick={() => persistQuestionAnswer(qIdx, {
+                                  correctAnswerIndex: q.correctAnswerIndex,
+                                  directAnswer: (q.options || [])[q.correctAnswerIndex],
+                                  options: q.options,
+                                })}
+                                disabled={answerSavingIdx === qIdx}
+                                title="Explicitly save and verify this question's correct answer in the database"
+                              >
+                                {answerSavingIdx === qIdx ? 'Saving…' : '💾 Save Answer to DB'}
+                              </button>
+                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                (Auto-saved on radio selection)
+                              </span>
+                            </div>
+
+                            {q.correctAnswerIndex >= 0 && (q.options || [])[q.correctAnswerIndex] && (
+                              <div style={{ padding: '0.3rem 0.65rem', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '6px', fontSize: '0.75rem', color: '#86efac' }}>
+                                Target Correct: <strong>{['A', 'B', 'C', 'D'][q.correctAnswerIndex]}. {(q.options || [])[q.correctAnswerIndex]}</strong>
+                              </div>
+                            )}
+                          </div>
+
+                          {answerSavedStatus[qIdx] && (
+                            <div style={{ marginTop: '0.4rem', padding: '0.35rem 0.65rem', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', fontSize: '0.78rem', color: '#86efac', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              {answerSavedStatus[qIdx]}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="ai-manual-options-container">
@@ -1933,6 +2097,39 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                               />
                             </div>
                           ))}
+
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.6rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-primary"
+                                onClick={() => persistQuestionAnswer(qIdx, {
+                                  correctAnswerIndex: q.correctAnswerIndex,
+                                  directAnswer: (q.options || [])[q.correctAnswerIndex],
+                                  options: q.options,
+                                })}
+                                disabled={answerSavingIdx === qIdx}
+                                title="Explicitly save and verify this question's correct answer in the database"
+                              >
+                                {answerSavingIdx === qIdx ? 'Saving…' : '💾 Save Answer to DB'}
+                              </button>
+                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                (Auto-saved on radio selection)
+                              </span>
+                            </div>
+
+                            {q.correctAnswerIndex >= 0 && (q.options || [])[q.correctAnswerIndex] && (
+                              <div style={{ padding: '0.3rem 0.65rem', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '6px', fontSize: '0.75rem', color: '#86efac' }}>
+                                Target Correct: <strong>{['A', 'B', 'C', 'D'][q.correctAnswerIndex]}. {(q.options || [])[q.correctAnswerIndex]}</strong>
+                              </div>
+                            )}
+                          </div>
+
+                          {answerSavedStatus[qIdx] && (
+                            <div style={{ marginTop: '0.4rem', padding: '0.35rem 0.65rem', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', fontSize: '0.78rem', color: '#86efac', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              {answerSavedStatus[qIdx]}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

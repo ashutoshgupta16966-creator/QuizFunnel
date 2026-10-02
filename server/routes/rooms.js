@@ -4,7 +4,7 @@ const multer = require('multer');
 const Room = require('../models/Room');
 const Student = require('../models/Student');
 const Question = require('../models/Question');
-const { parseQuizDocumentWithGemini, sanitizeMcqOptions, isGenericPlaceholderOption } = require('../controllers/aiVisionController');
+const { parseQuizDocumentWithGemini, sanitizeMcqOptions, isGenericPlaceholderOption, cleanOptionPrefix } = require('../controllers/aiVisionController');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -125,6 +125,40 @@ router.post('/ai/parse', handleFileUpload, async (req, res, next) => {
     }
 
     const result = await parseQuizDocumentWithGemini(files);
+    const roomCode = (req.body?.roomCode || '').trim().toUpperCase();
+
+    if (roomCode && Array.isArray(result.questions) && result.questions.length > 0) {
+      try {
+        await Question.deleteMany({ roomCode });
+        const docs = result.questions.map((q) => {
+          const isDirect = q.questionType === 'direct';
+          const cleanOpts = Array.isArray(q.options)
+            ? q.options.map((o) => cleanOptionPrefix(String(o || '')).trim()).filter(Boolean)
+            : [];
+          let cIdx = parseInt(q.correctAnswerIndex, 10);
+          if (isNaN(cIdx) || cIdx < 0 || (cleanOpts.length > 0 && cIdx >= cleanOpts.length)) {
+            cIdx = 0;
+          }
+          return {
+            roomCode,
+            questionType: isDirect ? 'direct' : 'mcq',
+            level: q.level || 1,
+            section: q.section || 'Technical',
+            questionText: q.questionText,
+            options: cleanOpts.slice(0, 4),
+            correctAnswerIndex: isDirect ? -1 : cIdx,
+            directAnswer: isDirect ? (q.directAnswer || '') : (cleanOpts[cIdx] || q.directAnswer || ''),
+            difficulty: q.difficulty || 'medium',
+            explanation: q.explanation || '',
+          };
+        });
+        const inserted = await Question.insertMany(docs);
+        result.questions = inserted;
+      } catch (dbErr) {
+        console.warn('[AI Parse]: Failed to auto-persist questions to DB for roomCode:', dbErr.message);
+      }
+    }
+
     res.json(result);
   } catch (err) {
     console.error('[AI Parse Error]:', err.message);
@@ -301,7 +335,11 @@ router.post('/create-ai', async (req, res, next) => {
       },
     });
   } catch (err) {
-    next(err);
+    console.error('[create-ai] Internal error:', err.message, err.stack);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to create AI quiz room. Please try again.',
+    });
   }
 });
 
@@ -836,6 +874,8 @@ router.post('/admin/reset-pin', async (req, res, next) => {
 router.post('/ai/generate-options', async (req, res, next) => {
   try {
     const { questionText } = req.body;
+    const knownAnswer = String(req.body.knownAnswer || req.body.directAnswer || req.body.correctAnswer || '').trim();
+
     if (!questionText?.trim()) {
       return res.status(400).json({ success: false, error: 'questionText is required.' });
     }
@@ -867,14 +907,26 @@ router.post('/ai/generate-options', async (req, res, next) => {
     ];
     let result = null;
 
+    const knownDirective = knownAnswer
+      ? `\n\nPRIORITY MANDATE — SOURCE MATERIAL KNOWN ANSWER:
+The correct answer for this question from the source document is ALREADY VERIFIED as: "${knownAnswer}"
+You MUST include this exact answer ("${knownAnswer}") as one of the 4 options.
+The "correctIndex" MUST point to this answer.
+DO NOT substitute, modify, or guess a different correct answer. Only generate 3 realistic, plausible distractors.`
+      : '';
+
     const prompt = `You are a highly accurate academic quiz question expert and assessment designer.
 
 TASK: For the following question, generate exactly 4 multiple-choice options where ONE is verifiably correct and THREE are convincing but incorrect distractors.
 
 QUESTION:
-"${questionText.trim()}"
+"${questionText.trim()}"${knownDirective}
 
-STEP 1 — SOLVE FIRST: Before generating options, carefully solve or reason through the question yourself to determine the factually/logically correct answer. Double-check your answer. Only then place it as one of the four options.
+STEP 1 — ${knownAnswer ? 'USE PROVIDED ANSWER' : 'SOLVE FIRST'}: ${
+      knownAnswer
+        ? `The designated correct answer is "${knownAnswer}". Place it as one of the four options.`
+        : 'Before generating options, carefully solve or reason through the question yourself to determine the factually/logically correct answer. Double-check your answer. Only then place it as one of the four options.'
+    }
 
 STEP 2 — GENERATE DISTRACTORS: Create 3 distractor options that:
   - Are the same TYPE and FORMAT as the correct answer (numbers look like numbers, terms look like terms, formulas look like formulas)
@@ -886,7 +938,7 @@ STEP 2 — GENERATE DISTRACTORS: Create 3 distractor options that:
 STEP 3 — SHUFFLE: Randomly place the correct answer at index 0, 1, 2, or 3 (not always at index 0).
 
 CRITICAL RULES:
-- The "correctIndex" MUST point to the FACTUALLY CORRECT answer. Verify this before responding.
+- The "correctIndex" MUST point to the FACTUALLY CORRECT answer (${knownAnswer ? `"${knownAnswer}"` : 'verified'}). Verify this before responding.
 - For NUMERICAL / MATHEMATICAL questions: All 4 options MUST be realistic numerical values (e.g. 12, 15, 18, 24 — not "True/False/None").
 - For CONCEPTUAL questions: All 4 options MUST be domain-relevant technical terms or short phrases.
 - For CODE / FORMULA questions: All 4 options MUST be syntactically valid variations.
@@ -926,8 +978,21 @@ Where correctIndex is 0-based (0=first option, 1=second, 2=third, 3=fourth).`;
           parsed.correctIndex <= 3 &&
           !parsed.options.every(isGenericPlaceholderOption)
         ) {
-          const cleanedOpts = parsed.options.map((o) => cleanOptionPrefix(String(o || '')).trim());
-          const cIdx = parsed.correctIndex;
+          let cleanedOpts = parsed.options.map((o) => cleanOptionPrefix(String(o || '')).trim());
+          let cIdx = parsed.correctIndex;
+
+          if (knownAnswer) {
+            const cleanKnown = cleanOptionPrefix(knownAnswer).trim();
+            const existingMatchIdx = cleanedOpts.findIndex(
+              (o) => o.toLowerCase() === cleanKnown.toLowerCase()
+            );
+            if (existingMatchIdx >= 0) {
+              cIdx = existingMatchIdx;
+            } else {
+              cleanedOpts[cIdx] = cleanKnown;
+            }
+          }
+
           result = {
             options: cleanedOpts,
             correctAnswerIndex: cIdx,
@@ -955,6 +1020,111 @@ Where correctIndex is 0-based (0=first option, 1=second, 2=third, 3=fourth).`;
     });
   } catch (err) {
     next(err);
+  }
+});
+
+/**
+ * POST /api/rooms/ai/update-answer
+ * Immediately persists an admin's edited/selected correct answer for a question in MongoDB.
+ * Re-fetches and returns the latest saved question document for client verification.
+ */
+router.post('/ai/update-answer', async (req, res, next) => {
+  try {
+    const { questionId, roomCode, questionIndex, correctAnswerIndex, directAnswer, options, questionText } = req.body;
+
+    let targetQuestion = null;
+
+    if (questionId) {
+      targetQuestion = await Question.findById(questionId);
+    }
+
+    if (!targetQuestion && roomCode && Number.isInteger(questionIndex)) {
+      const qs = await Question.find({ roomCode: roomCode.trim().toUpperCase() }).sort({ _id: 1 });
+      if (qs[questionIndex]) {
+        targetQuestion = qs[questionIndex];
+      }
+    }
+
+    if (!targetQuestion && roomCode && questionText) {
+      targetQuestion = await Question.findOne({
+        roomCode: roomCode.trim().toUpperCase(),
+        questionText: questionText.trim(),
+      });
+    }
+
+    const cIdx = parseInt(correctAnswerIndex, 10);
+    const validCIdx = isNaN(cIdx) || cIdx < 0 ? 0 : cIdx;
+    let finalDirect = String(directAnswer || '').trim();
+
+    if (!targetQuestion) {
+      // If question document does not exist yet in DB, create it tagged with roomCode
+      if (roomCode) {
+        targetQuestion = await Question.create({
+          roomCode: roomCode.trim().toUpperCase(),
+          questionType: Array.isArray(options) && options.length > 0 ? 'mcq' : 'direct',
+          questionText: String(questionText || '').trim(),
+          options: Array.isArray(options) ? options.map((o) => cleanOptionPrefix(String(o || '')).trim()) : [],
+          correctAnswerIndex: validCIdx,
+          directAnswer: finalDirect || (Array.isArray(options) ? (options[validCIdx] || '') : ''),
+          level: 1,
+          section: 'Technical',
+        });
+      } else {
+        return res.status(404).json({ success: false, error: 'Question not found to update.' });
+      }
+    } else {
+      if (Array.isArray(options) && options.length > 0) {
+        targetQuestion.options = options.map((o) => cleanOptionPrefix(String(o || '')).trim());
+        targetQuestion.questionType = 'mcq';
+        targetQuestion.correctAnswerIndex = validCIdx;
+        if (!finalDirect && targetQuestion.options[validCIdx]) {
+          finalDirect = targetQuestion.options[validCIdx];
+        }
+        targetQuestion.directAnswer = finalDirect;
+      } else if (finalDirect) {
+        targetQuestion.questionType = 'direct';
+        targetQuestion.directAnswer = finalDirect;
+        targetQuestion.correctAnswerIndex = -1;
+      } else if (typeof correctAnswerIndex === 'number') {
+        targetQuestion.correctAnswerIndex = validCIdx;
+        if (targetQuestion.options && targetQuestion.options[validCIdx]) {
+          targetQuestion.directAnswer = targetQuestion.options[validCIdx];
+        }
+      }
+
+      await targetQuestion.save();
+
+      // If room already exists, also update embedded room.questions array
+      if (roomCode) {
+        await Room.updateOne(
+          { roomCode: roomCode.trim().toUpperCase(), 'questions._id': targetQuestion._id },
+          {
+            $set: {
+              'questions.$.correctAnswerIndex': targetQuestion.correctAnswerIndex,
+              'questions.$.directAnswer': targetQuestion.directAnswer,
+              'questions.$.options': targetQuestion.options,
+              'questions.$.questionType': targetQuestion.questionType,
+            },
+          }
+        );
+      }
+    }
+
+    // Re-fetch question from database to verify and return latest saved state
+    const verifiedQuestion = await Question.findById(targetQuestion._id).lean();
+
+    console.log(
+      `[Update Answer]: Persisted Q ${verifiedQuestion._id} -> Correct Answer: index=${verifiedQuestion.correctAnswerIndex}, direct="${verifiedQuestion.directAnswer}"`
+    );
+
+    res.json({
+      success: true,
+      data: verifiedQuestion,
+      message: 'Answer saved successfully',
+    });
+  } catch (err) {
+    console.error('[Update Answer Error]:', err.message);
+    res.status(500).json({ success: false, error: err.message || 'Failed to update question answer.' });
   }
 });
 

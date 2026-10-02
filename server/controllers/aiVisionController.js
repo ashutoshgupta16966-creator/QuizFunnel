@@ -633,6 +633,7 @@ CRITICAL RULES:
 module.exports = {
   parseQuizDocumentWithGemini,
   isGenericPlaceholderOption,
+  cleanOptionPrefix,
   sanitizeMcqOptions,
   isNumericalOrMathQuery,
   isBooleanQuery,

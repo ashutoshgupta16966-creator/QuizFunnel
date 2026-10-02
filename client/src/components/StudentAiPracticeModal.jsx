@@ -580,9 +580,24 @@ export default function StudentAiPracticeModal({
       for (let qIdx = 0; qIdx < mcqQuestions.length; qIdx++) {
         const q = mcqQuestions[qIdx];
         if (!q?.questionText?.trim()) continue;
+
+        // If document already provided 4 valid options, preserve them!
+        const hasCompleteValidOptions = Array.isArray(q.options) &&
+          q.options.length === 4 &&
+          q.options.every((opt) => opt && opt.trim() && !/^(option|choice)\s*[a-d1-4]?$/i.test(opt.trim()));
+
+        if (hasCompleteValidOptions) {
+          continue;
+        }
+
+        const known = q.directAnswer || (Array.isArray(q.options) && q.options[q.correctAnswerIndex]) || '';
+
         setBulkGenIdx(qIdx);
         try {
-          const res = await generateMcqOptions(q.questionText.trim());
+          const res = await generateMcqOptions({
+            questionText: q.questionText.trim(),
+            knownAnswer: known,
+          });
           if (res.data?.success && res.data?.data) {
             const { options, correctAnswerIndex, correctIndex } = res.data.data;
             const finalIdx = typeof correctAnswerIndex === 'number'

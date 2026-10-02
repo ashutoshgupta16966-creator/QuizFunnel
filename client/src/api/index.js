@@ -169,8 +169,13 @@ export const exportRoomResultsXLSX = (roomCode, password) =>
     responseType: 'blob',
   });
 
-export const generateMcqOptions = (questionText) =>
-  api.post('/api/rooms/ai/generate-options', { questionText });
+export const generateMcqOptions = (payload) => {
+  const body = typeof payload === 'string' ? { questionText: payload } : payload;
+  return api.post('/api/rooms/ai/generate-options', body);
+};
+
+export const updateAiQuestionAnswer = (payload) =>
+  api.post('/api/rooms/ai/update-answer', payload);
 
 
 
