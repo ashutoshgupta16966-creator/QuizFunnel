@@ -1448,7 +1448,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                       setStep('admin_ai_details');
                       if (!aiForm.roomCode) handleAutoGenerateAiCode();
                     }}
-                    title="Generate an instant quiz from question paper photo or PDF using Gemini Vision"
+                    title="Generate an instant quiz from a question paper photo or PDF using AI"
                   >
                     AI Quiz Generator 🤖✨
                   </button>
@@ -1688,7 +1688,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                   onClick={handleAiParseSubmit}
                   disabled={aiFiles.length === 0}
                 >
-                  ✨ Extract Questions with Gemini
+                  ✨ Extract Questions
                 </button>
               </div>
             )}

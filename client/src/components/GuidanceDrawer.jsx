@@ -165,7 +165,7 @@ export const GUIDES = {
           'Progress auto-saves — a mid-quiz browser refresh restores your session safely.',
           'Your 4-digit PIN is required to access "My Results". Set it once and remember it.',
           'Use the QR code to quickly share the quiz link with classmates on the same network.',
-          'Self Practice uses Gemini Vision OCR — clearer photos give better question extraction.',
+          'Self Practice uses AI OCR — clearer photos give better question extraction.',
           'Room quiz requires a Host Room Code and Password shared by your instructor.',
         ],
       },
@@ -274,7 +274,7 @@ export const GUIDES = {
         heading: 'Overview & Purpose',
         icon: '📌',
         items: [
-          'Self Practice uses Gemini Vision AI to extract questions from your notes and generate a quiz.',
+          'Self Practice uses AI to extract questions from your notes and generate a quiz.',
           'Upload your question paper (PDF or images) and the AI will parse and generate a quiz in seconds.',
           'Practice quizzes are private — only you can see your results.',
         ],
@@ -289,7 +289,7 @@ export const GUIDES = {
           { label: '⚠️ File Limit', desc: 'Cannot mix PDF and images. Choose one upload type per session.' },
           { label: '❓ Question Count', desc: 'Adjust how many questions to include from the scanned content.' },
           { label: '📝 MCQ Toggle', desc: 'Switch between Multiple-Choice (MCQ) and Direct/Numerical format.' },
-          { label: '🤖 AI Parse', desc: 'Gemini Vision reads the file and extracts all detected questions.' },
+          { label: '🤖 AI Parse', desc: 'AI reads the file and extracts all detected questions.' },
         ],
       },
       {

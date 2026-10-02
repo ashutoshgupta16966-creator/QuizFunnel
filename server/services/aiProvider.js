@@ -104,6 +104,7 @@ async function callClaude({ model, systemPrompt, prompt, maxTokens = 2048, conte
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25',
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
@@ -147,6 +148,7 @@ async function callClaude({ model, systemPrompt, prompt, maxTokens = 2048, conte
 async function callGemini({ model, prompt, inlineParts = [], jsonMode = false }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'your_google_gemini_api_key_here') {
+    console.warn(`[AI Provider]: Skipping Gemini model "${model}" — GEMINI_API_KEY not configured or is placeholder.`);
     return { success: false, skipped: true, reason: 'GEMINI_API_KEY not configured' };
   }
 
@@ -325,6 +327,7 @@ async function generateMultimodalWithFallback({ files, inlineParts, promptText, 
               provider: 'claude',
             };
           }
+          console.warn(`[AI Provider]: Claude model "${model}" returned text but failed validation. Preview: ${res.text.slice(0, 200)}`);
         }
         if (res.error && /unauthorized|invalid api key|credit balance/i.test(res.error)) {
           break;
@@ -336,6 +339,11 @@ async function generateMultimodalWithFallback({ files, inlineParts, promptText, 
   }
 
   // Fallback to Gemini Multimodal
+  const hasGeminiKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_google_gemini_api_key_here');
+  if (!hasGeminiKey) {
+    console.warn('[AI Provider]: No GEMINI_API_KEY configured. Skipping all Gemini attempts.');
+  }
+
   for (const model of GEMINI_MODELS) {
     console.log(`[AI Provider]: Attempting Gemini multimodal extraction with "${model}"...`);
     const res = await callGemini({
@@ -352,9 +360,17 @@ async function generateMultimodalWithFallback({ files, inlineParts, promptText, 
           provider: 'gemini',
         };
       }
+      console.warn(`[AI Provider]: Gemini model "${model}" returned text but failed validation. Preview: ${res.text.slice(0, 200)}`);
     }
   }
 
+  // Provide a specific error message based on what was configured
+  if (!hasClaudeKey && !hasGeminiKey) {
+    throw new Error(
+      'No AI API key configured. Please add a valid GEMINI_API_KEY (and optionally ANTHROPIC_API_KEY) ' +
+      'to your server environment variables (Render dashboard → Environment).'
+    );
+  }
   throw new Error('Document extraction failed across all Claude and Gemini multimodal models.');
 }
 
