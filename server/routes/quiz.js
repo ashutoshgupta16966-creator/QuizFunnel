@@ -200,6 +200,38 @@ router.get('/questions/:level', async (req, res, next) => {
     }
 
     if (allQuestions.length === 0) {
+      // For AI room quizzes: if no questions exist at this level, check if there are
+      // questions at a later level we should skip to. If not, signal quiz completion.
+      if (activeRoom && activeRoom.isAiGenerated && activeRoom.roomCode) {
+        // Find the next level that has questions
+        let nextLevelWithQs = null;
+        for (let nextLvl = level + 1; nextLvl <= 4; nextLvl++) {
+          const nextLvlQs = await Question.find({ roomCode: activeRoom.roomCode, level: nextLvl }).lean();
+          const embeddedNextLvlQs = Array.isArray(activeRoom.questions)
+            ? activeRoom.questions.filter((q) => (q.level || 1) === nextLvl)
+            : [];
+          if (nextLvlQs.length > 0 || embeddedNextLvlQs.length > 0) {
+            nextLevelWithQs = nextLvl;
+            break;
+          }
+        }
+
+        if (nextLevelWithQs) {
+          // Skip this empty level — tell the client to jump directly to the next level with questions
+          return res.status(200).json({
+            success: false,
+            skipToLevel: nextLevelWithQs,
+            error: `Level ${level} has no questions. Advancing to Level ${nextLevelWithQs}.`,
+          });
+        } else {
+          // No more questions at any level — quiz is complete
+          return res.status(200).json({
+            success: false,
+            quizComplete: true,
+            error: `No more questions available. Quiz is complete.`,
+          });
+        }
+      }
       return res.status(400).json({
         success: false,
         error: `No questions found for level ${level}.`,
@@ -435,25 +467,36 @@ router.post('/submit', async (req, res, next) => {
         roomDoc = await Room.findOne({ roomCode: normalizedRoomCode }).select('maxLevel questions progressionMode').lean();
         if (roomDoc) {
           const embeddedQs = Array.isArray(roomDoc.questions) ? roomDoc.questions : [];
+
+          // Use the room's explicit maxLevel as the authoritative source.
+          // Fall back to deriving from question data ONLY if maxLevel is missing/unset.
           if (roomDoc.maxLevel && roomDoc.maxLevel >= 1 && roomDoc.maxLevel <= 4) {
             effectiveMaxLevel = roomDoc.maxLevel;
           } else if (embeddedQs.length > 0) {
+            // Secondary: derive from question levels (kept as legacy fallback)
             effectiveMaxLevel = Math.min(4, Math.max(...embeddedQs.map((q) => q.level || 1), 1));
           }
 
-          // Check if there are any unattempted questions available for level + 1
-          const attemptedIds = new Set([
-            ...(student.levels || []).flatMap((lvl) => (lvl.answers || []).map((a) => String(a.questionId))),
-            ...scoredAnswers.map((a) => String(a.questionId)),
-          ]);
-
-          const nextLevelQs = await Question.find({ roomCode: normalizedRoomCode, level: level + 1 }).lean();
-          const unattemptedNextQs = nextLevelQs.filter((q) => !attemptedIds.has(String(q._id)));
-          const embeddedNextQs = embeddedQs.filter((q) => (q.level || 1) === level + 1 && !attemptedIds.has(String(q._id)));
-
-          // Dynamically terminate quiz if reached maximum level or no more unique questions remain
-          if (level >= effectiveMaxLevel || (unattemptedNextQs.length === 0 && embeddedNextQs.length === 0)) {
+          // Primary termination: did we reach the configured max level?
+          if (level >= effectiveMaxLevel) {
             isLastLevel = true;
+          } else {
+            // Secondary: if there genuinely are no more questions at level+1 AND no embedded ones,
+            // only then treat this as the last level. This handles edge cases where a room
+            // was intentionally created with fewer levels than maxLevel implies.
+            const nextLevelQs = await Question.find({ roomCode: normalizedRoomCode, level: level + 1 }).lean();
+            const unattemptedNextQs = nextLevelQs; // All next-level Qs count, no filtering needed
+            const embeddedNextQs = embeddedQs.filter((q) => (q.level || 1) === level + 1);
+
+            // Only force isLastLevel if BOTH sources have zero Level N+1 questions AND
+            // the room was clearly not set up to have more levels (maxLevel === level).
+            // When maxLevel > level, trust the maxLevel even with no next-level questions
+            // so the student still advances (they'll see an empty level or skip gracefully).
+            if (unattemptedNextQs.length === 0 && embeddedNextQs.length === 0 && effectiveMaxLevel <= level + 1) {
+              isLastLevel = true;
+            }
+            // If maxLevel > level+1 but no questions exist, leave isLastLevel=false
+            // so progression continues — getQuestions endpoint will handle empty level gracefully.
           }
         }
       } catch (rErr) {

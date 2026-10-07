@@ -55,7 +55,16 @@ export default function Quiz() {
   // ── Room Quiz Synchronized Start State ────────────────────────────────────
   // Students wait in a lobby until admin broadcasts ROOM_QUIZ_STARTED.
   // A 3-second countdown fires on all screens before questions unlock.
-  const [roomQuizStarted, setRoomQuizStarted] = useState(false);
+  // Persisted in sessionStorage so it survives level transitions (component remounts).
+  const roomStartedKey = isRoomQuiz && roomSession?.roomCode
+    ? `room_quiz_started_${roomSession.roomCode}`
+    : null;
+  const [roomQuizStarted, setRoomQuizStarted] = useState(() => {
+    if (!isRoomQuiz) return true; // Self-practice: always "started"
+    try {
+      return roomStartedKey ? Boolean(sessionStorage.getItem(roomStartedKey)) : false;
+    } catch { return false; }
+  });
   const [startCountdown, setStartCountdown] = useState(0); // 3 → 2 → 1 → 0 = live
 
   // Storage keys for auto-saving progress & bookmarks
@@ -157,6 +166,10 @@ export default function Quiz() {
           setIsRoomClosed(true);
         },
         onQuizStarted: (data) => {
+          // Persist quiz-started flag across level transitions (component remounts)
+          if (roomStartedKey) {
+            try { sessionStorage.setItem(roomStartedKey, '1'); } catch { /* noop */ }
+          }
           // Apply per-level timer override from admin's levelTimers config
           if (Array.isArray(data?.levelTimers) && data.levelTimers.length > 0) {
             const lt = data.levelTimers.find((t) => t.level === levelNum);
@@ -270,7 +283,32 @@ export default function Quiz() {
       setLoading(true);
       setLoadError(null);
       const res = await getQuestions(levelNum, student.mobile, roomSession?.roomCode);
-      const { questions: qs, startedAt: sAt, subject: resSub, unit: resUn, customTimeSeconds: resCustomTime, timeSeconds: resTime } = res.data.data;
+      const resData = res.data;
+
+      // ── Handle empty-level skip signals for room quizzes ─────────────────
+      // When a room level has no questions, the server sends skipToLevel or quizComplete.
+      if (!resData.success) {
+        if (resData.skipToLevel) {
+          // Auto-advance: this level is empty, jump to the next level with questions
+          console.log(`[loadQuestions] Level ${levelNum} empty — advancing to Level ${resData.skipToLevel}`);
+          // Update student's currentLevel in context so guards pass
+          updateStudent({ currentLevel: resData.skipToLevel });
+          navigate(`/quiz/${resData.skipToLevel}`);
+          return;
+        }
+        if (resData.quizComplete) {
+          // No more questions at any level — complete the quiz
+          console.log('[loadQuestions] No more questions in any level — quiz complete');
+          updateStudent({ status: 'completed' });
+          navigate('/results');
+          return;
+        }
+        // Generic error from server
+        setLoadError(resData.error || 'Failed to load questions. Check your connection and refresh.');
+        return;
+      }
+
+      const { questions: qs, startedAt: sAt, subject: resSub, unit: resUn, customTimeSeconds: resCustomTime, timeSeconds: resTime } = resData.data;
       setQuestions(qs);
       if (resSub) setQuizSubject(resSub);
       if (resUn) setQuizUnit(resUn);
@@ -587,6 +625,9 @@ export default function Quiz() {
   const handleConfirmExit = () => {
     if (student?.mobile) {
       try { localStorage.removeItem(`quiz_tab_switches_${student.mobile}`); } catch { /* noop */ }
+    }
+    if (roomStartedKey) {
+      try { sessionStorage.removeItem(roomStartedKey); } catch { /* noop */ }
     }
     clearSavedProgress();
     clearStudent();

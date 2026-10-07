@@ -306,7 +306,10 @@ router.post('/create-ai', async (req, res, next) => {
 
     // Insert questions strictly isolated to this room
     const inserted = await Question.insertMany(questionDocs);
-    const calculatedMaxLevel = Math.min(4, Math.max(...inserted.map((q) => q.level || 1), 1));
+    // maxLevel: default to 4 (all 4 levels) for AI rooms so progression works even when
+    // all extracted questions happen to be Level 1. Admin can override via req.body.maxLevel.
+    const explicitMaxLevel = req.body.maxLevel ? Math.min(4, Math.max(1, parseInt(req.body.maxLevel, 10))) : null;
+    const calculatedMaxLevel = explicitMaxLevel || 4;
     const roomCustomTime = parseInt(req.body.customTimeSeconds, 10) || 0;
 
     // Parse per-level timer overrides: [{ level, seconds }, ...]
