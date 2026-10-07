@@ -124,7 +124,7 @@ function ResultsContent() {
 
   const levelNum = Number(lastResult?.level || student?.currentLevel || 1);
   const clearedLevel = isCompleted
-    ? (lastResult?.level || student?.currentLevel || (Array.isArray(student?.levels) && student.levels.length > 0 ? student.levels[student.levels.length - 1]?.level : 4))
+    ? (lastResult?.level || student?.currentLevel || (Array.isArray(student?.levels) && student.levels.length > 0 ? student.levels[student.levels.length - 1]?.level : (lastResult?.totalLevels || 4)))
     : (levelNum > 0 ? levelNum : 1);
   const levelConfig = LEVELS[clearedLevel] || LEVELS[1];
 

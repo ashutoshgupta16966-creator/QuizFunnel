@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { LEVELS } from '../config';
+import { LEVELS, TOTAL_LEVELS } from '../config';
 import ExitConfirmModal from '../components/ExitConfirmModal';
 
 // Simple CSS confetti burst — no library needed
@@ -67,7 +67,8 @@ export default function LevelTransition() {
 
   if (!student || !lastResult) return null;
 
-  const { score, total, nextLevel, nextLevelQuestions } = lastResult;
+  const { score, total, nextLevel, nextLevelQuestions, totalLevels: resultTotalLevels } = lastResult;
+  const totalLevelsDisplay = resultTotalLevels || TOTAL_LEVELS;
   const nextConfig   = LEVELS[nextLevel];
   const clearedLevel = nextLevel - 1;
   const dynamicNextQuestions = nextLevelQuestions || nextConfig?.questions || 15;
@@ -91,6 +92,32 @@ export default function LevelTransition() {
         <div className="transition-celebration" role="img" aria-label="Celebration">🎉</div>
 
         <h1 className="transition-title">Level {clearedLevel} Cleared!</h1>
+        {/* Dynamic level progression indicator */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, margin: '0.6rem 0 0.4rem' }}>
+          {Array.from({ length: totalLevelsDisplay }, (_, i) => {
+            const lvl = i + 1;
+            const done = lvl <= clearedLevel;
+            const next = lvl === nextLevel;
+            return (
+              <div key={lvl} style={{ display: 'flex', alignItems: 'center' }}>
+                {i > 0 && <div style={{ width: '24px', height: '2px', background: done ? '#10b981' : 'rgba(255,255,255,0.15)' }} />}
+                <div style={{
+                  width: next ? '28px' : '20px', height: next ? '28px' : '20px',
+                  borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 800, fontSize: next ? '0.78rem' : '0.65rem',
+                  color: done ? '#fff' : next ? '#fff' : 'rgba(255,255,255,0.35)',
+                  background: done ? 'linear-gradient(135deg,#10b981,#059669)' : next ? 'linear-gradient(135deg,#6366f1,#4f46e5)' : 'rgba(255,255,255,0.06)',
+                  border: done ? '2px solid #10b981' : next ? '2px solid #818cf8' : '2px solid rgba(255,255,255,0.12)',
+                  boxShadow: next ? '0 0 10px rgba(99,102,241,0.5)' : 'none',
+                  transition: 'all 0.3s',
+                }}>{done ? '✓' : lvl}</div>
+              </div>
+            );
+          })}
+          <span style={{ marginLeft: '0.6rem', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>
+            {clearedLevel} of {totalLevelsDisplay} done
+          </span>
+        </div>
         <p className="transition-score">{score} / {total} correct</p>
         <p className="transition-message">
           Outstanding! You've made it to the next round. Keep up the momentum!

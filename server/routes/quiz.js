@@ -137,6 +137,11 @@ router.get('/questions/:level', async (req, res, next) => {
         ? Math.max(1, Math.ceil(qCount * 0.7))
         : LEVELS[level].cutoff;
 
+      const configTotalLvls = Math.max(...Object.keys(LEVELS).map(Number));
+      const resumedTotalLevels = (activeRoom?.maxLevel && activeRoom.maxLevel >= 1)
+        ? activeRoom.maxLevel
+        : configTotalLvls;
+
       return res.json({
         success: true,
         data: {
@@ -148,6 +153,7 @@ router.get('/questions/:level', async (req, res, next) => {
           subject: roomSubject,
           unit: roomUnit,
           startedAt: student.quizSession.startedAt,
+          totalLevels: resumedTotalLevels,
           isResumed: true,
         },
       });
@@ -203,9 +209,10 @@ router.get('/questions/:level', async (req, res, next) => {
       // For AI room quizzes: if no questions exist at this level, check if there are
       // questions at a later level we should skip to. If not, signal quiz completion.
       if (activeRoom && activeRoom.isAiGenerated && activeRoom.roomCode) {
+        const TOTAL_LEVELS_QS = Math.max(...Object.keys(LEVELS).map(Number));
         // Find the next level that has questions
         let nextLevelWithQs = null;
-        for (let nextLvl = level + 1; nextLvl <= 4; nextLvl++) {
+        for (let nextLvl = level + 1; nextLvl <= TOTAL_LEVELS_QS; nextLvl++) {
           const nextLvlQs = await Question.find({ roomCode: activeRoom.roomCode, level: nextLvl }).lean();
           const embeddedNextLvlQs = Array.isArray(activeRoom.questions)
             ? activeRoom.questions.filter((q) => (q.level || 1) === nextLvl)
@@ -288,6 +295,12 @@ router.get('/questions/:level', async (req, res, next) => {
       ? Math.max(1, Math.ceil(actualCount * 0.7))
       : levelConfig.cutoff;
 
+    // Dynamic total level count: from room config or LEVELS config keys
+    const configTotalLevels = Math.max(...Object.keys(LEVELS).map(Number));
+    const totalLevels = (activeRoom?.maxLevel && activeRoom.maxLevel >= 1)
+      ? activeRoom.maxLevel
+      : configTotalLevels;
+
     res.json({
       success: true,
       data: {
@@ -299,6 +312,7 @@ router.get('/questions/:level', async (req, res, next) => {
         subject: roomSubject,
         unit: roomUnit,
         startedAt,
+        totalLevels,
         isResumed: false,
       },
     });
@@ -457,8 +471,10 @@ router.post('/submit', async (req, res, next) => {
     }
 
     // ── DYNAMIC LEVEL TERMINATION & CUTOFF CHECK ─────────────────────────
-    let isLastLevel = level >= 4;
-    let effectiveMaxLevel = 4;
+    // Derive total levels from config — never hardcode 4.
+    const TOTAL_LEVELS = Math.max(...Object.keys(LEVELS).map(Number));
+    let isLastLevel = level >= TOTAL_LEVELS;
+    let effectiveMaxLevel = TOTAL_LEVELS;
     let roomDoc = null;
 
     if (isRoom && roomCode) {
@@ -470,11 +486,11 @@ router.post('/submit', async (req, res, next) => {
 
           // Use the room's explicit maxLevel as the authoritative source.
           // Fall back to deriving from question data ONLY if maxLevel is missing/unset.
-          if (roomDoc.maxLevel && roomDoc.maxLevel >= 1 && roomDoc.maxLevel <= 4) {
+          if (roomDoc.maxLevel && roomDoc.maxLevel >= 1 && roomDoc.maxLevel <= TOTAL_LEVELS) {
             effectiveMaxLevel = roomDoc.maxLevel;
           } else if (embeddedQs.length > 0) {
             // Secondary: derive from question levels (kept as legacy fallback)
-            effectiveMaxLevel = Math.min(4, Math.max(...embeddedQs.map((q) => q.level || 1), 1));
+            effectiveMaxLevel = Math.min(TOTAL_LEVELS, Math.max(...embeddedQs.map((q) => q.level || 1), 1));
           }
 
           // Primary termination: did we reach the configured max level?
@@ -509,8 +525,8 @@ router.post('/submit', async (req, res, next) => {
       ? Math.max(1, Math.ceil(sessionCount * 0.7))
       : levelConfig.cutoff;
 
-    // Cutoff check: Level 4 has no cutoff. Levels 1-3 require meeting cutoff unless open_attempt mode is active.
-    let passed = isDisqualified ? false : (level === 4 ? true : score >= dynamicCutoff);
+    // Cutoff check: Levels with cutoff 0 (like final round) have no cutoff requirement. Other levels require meeting dynamicCutoff unless open_attempt mode is active.
+    let passed = isDisqualified ? false : (levelConfig?.cutoff === 0 ? true : score >= dynamicCutoff);
 
     // Open Attempt Mode: Unconditionally allow progression/completion across all levels
     if (roomDoc?.progressionMode === 'open_attempt' && !isDisqualified) {
@@ -707,6 +723,7 @@ router.post('/submit', async (req, res, next) => {
         nextLevel: passed && !isLastLevel ? level + 1 : null,
         nextLevelQuestions,
         quizTotalQuestions,
+        totalLevels: effectiveMaxLevel,
         isLastLevel,
         isDisqualified: Boolean(isDisqualified),
         isRoom: Boolean(isRoom),

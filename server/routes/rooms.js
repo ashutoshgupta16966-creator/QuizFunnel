@@ -4,6 +4,7 @@ const multer = require('multer');
 const Room = require('../models/Room');
 const Student = require('../models/Student');
 const Question = require('../models/Question');
+const LEVELS = require('../config/levels');
 const { parseQuizDocumentWithGemini, sanitizeMcqOptions, isGenericPlaceholderOption, cleanOptionPrefix } = require('../controllers/aiVisionController');
 const { generateMcqOptionsUnified } = require('../services/aiProvider');
 
@@ -1511,8 +1512,9 @@ router.get('/:roomCode/questions', async (req, res, next) => {
     }
 
     // If level filter provided and matching questions exist, filter by level
+    const maxLvl = room.maxLevel || Math.max(...Object.keys(LEVELS).map(Number));
     let filteredQuestions = roomQuestions;
-    if (!isNaN(targetLevel) && targetLevel >= 1 && targetLevel <= 4) {
+    if (!isNaN(targetLevel) && targetLevel >= 1 && targetLevel <= maxLvl) {
       const levelMatches = roomQuestions.filter((q) => q.level === targetLevel);
       if (levelMatches.length > 0) {
         filteredQuestions = levelMatches;
@@ -1562,6 +1564,7 @@ router.get('/:roomCode/questions', async (req, res, next) => {
         unit: room.unit || '',
         isAiGenerated: Boolean(room.isAiGenerated),
         customTimeSeconds: room.customTimeSeconds || 0,
+        totalLevels: maxLvl,
         questions: clientQuestions,
         total: clientQuestions.length,
       },

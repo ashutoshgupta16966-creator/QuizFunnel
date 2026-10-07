@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
 import { getQuestions, getRoomQuestions, submitQuiz } from '../api';
 import { joinStudentRoomSocket, emitStudentProgress, emitStudentDisqualified } from '../utils/socket';
-import { LEVELS } from '../config';
+import { LEVELS, TOTAL_LEVELS } from '../config';
 import QuestionCard from '../components/QuestionCard';
 import TimerBar from '../components/TimerBar';
 import ProgressBar from '../components/ProgressBar';
@@ -39,6 +39,8 @@ export default function Quiz() {
   const [quizSubject, setQuizSubject]   = useState('');
   const [quizUnit, setQuizUnit]         = useState('');
   const [showGuide, setShowGuide]       = useState(false);
+  // Dynamic total level count — set from API response, falls back to config default
+  const [totalLevels, setTotalLevels]   = useState(TOTAL_LEVELS);
 
   const displaySubject = quizSubject || roomSession?.subject || '';
   const displayUnit    = quizUnit || roomSession?.unit || '';
@@ -308,10 +310,12 @@ export default function Quiz() {
         return;
       }
 
-      const { questions: qs, startedAt: sAt, subject: resSub, unit: resUn, customTimeSeconds: resCustomTime, timeSeconds: resTime } = resData.data;
+      const { questions: qs, startedAt: sAt, subject: resSub, unit: resUn, customTimeSeconds: resCustomTime, timeSeconds: resTime, totalLevels: apiTotalLevels } = resData.data;
       setQuestions(qs);
       if (resSub) setQuizSubject(resSub);
       if (resUn) setQuizUnit(resUn);
+      // Set dynamic total levels from API if provided (overrides config default)
+      if (apiTotalLevels && apiTotalLevels >= 1) setTotalLevels(apiTotalLevels);
 
       const targetTime = resCustomTime || resTime || levelConfig?.timeSeconds || 900;
       setCustomTimeSeconds(targetTime);
@@ -329,11 +333,12 @@ export default function Quiz() {
       if (isRoomQuiz && roomSession?.roomCode) {
         try {
           const roomRes = await getRoomQuestions(roomSession.roomCode, levelNum);
-          const { questions: qs, subject: resSub, unit: resUn, customTimeSeconds: resCustomTime } = roomRes.data.data;
+          const { questions: qs, subject: resSub, unit: resUn, customTimeSeconds: resCustomTime, totalLevels: fallbackTotalLevels } = roomRes.data.data;
           if (Array.isArray(qs) && qs.length > 0) {
             setQuestions(qs);
             if (resSub) setQuizSubject(resSub);
             if (resUn) setQuizUnit(resUn);
+            if (fallbackTotalLevels && fallbackTotalLevels >= 1) setTotalLevels(fallbackTotalLevels);
 
             const targetTime = resCustomTime || levelConfig?.timeSeconds || 900;
             setCustomTimeSeconds(targetTime);
@@ -980,6 +985,82 @@ export default function Quiz() {
           <ThemeToggle />
         </div>
       </header>
+
+      {/* ── Dynamic Level Stepper: renders N steps from totalLevels, never hardcoded ── */}
+      {totalLevels > 1 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 0,
+          padding: '0.45rem 1rem',
+          background: 'rgba(15,23,42,0.55)',
+          borderBottom: '1px solid rgba(99,102,241,0.15)',
+        }}>
+          {Array.from({ length: totalLevels }, (_, i) => {
+            const lvl = i + 1;
+            const isCompleted = lvl < levelNum;
+            const isCurrent = lvl === levelNum;
+            return (
+              <div key={lvl} style={{ display: 'flex', alignItems: 'center' }}>
+                {/* Connector line before each step except the first */}
+                {i > 0 && (
+                  <div style={{
+                    width: '32px',
+                    height: '2px',
+                    background: isCompleted || isCurrent
+                      ? 'rgba(99,102,241,0.7)'
+                      : 'rgba(99,102,241,0.18)',
+                    transition: 'background 0.3s',
+                  }} />
+                )}
+                {/* Step dot */}
+                <div
+                  title={`Level ${lvl}${LEVELS[lvl] ? ` — ${LEVELS[lvl].label || LEVELS[lvl].sublabel || ''}` : ''}`}
+                  style={{
+                    width: isCurrent ? '30px' : '22px',
+                    height: isCurrent ? '30px' : '22px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 800,
+                    fontSize: isCurrent ? '0.8rem' : '0.68rem',
+                    color: isCompleted ? '#fff' : isCurrent ? '#fff' : '#475569',
+                    background: isCompleted
+                      ? 'linear-gradient(135deg, #10b981, #059669)'
+                      : isCurrent
+                        ? 'linear-gradient(135deg, #6366f1, #4f46e5)'
+                        : 'rgba(99,102,241,0.08)',
+                    border: isCompleted
+                      ? '2px solid #10b981'
+                      : isCurrent
+                        ? '2px solid #818cf8'
+                        : '2px solid rgba(99,102,241,0.2)',
+                    boxShadow: isCurrent ? '0 0 12px rgba(99,102,241,0.5)' : 'none',
+                    transition: 'all 0.3s ease',
+                    cursor: 'default',
+                    flexShrink: 0,
+                  }}
+                >
+                  {isCompleted ? '✓' : lvl}
+                </div>
+              </div>
+            );
+          })}
+          {/* Level count label */}
+          <span style={{
+            marginLeft: '0.75rem',
+            fontSize: '0.72rem',
+            color: '#64748b',
+            fontWeight: 600,
+            letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+          }}>
+            Level {levelNum} of {totalLevels}
+          </span>
+        </div>
+      )}
 
       {/* ── Centered Action Strip: Instructions button & Timer between Header and Progress Bar ── */}
       <div className="quiz-action-strip">
