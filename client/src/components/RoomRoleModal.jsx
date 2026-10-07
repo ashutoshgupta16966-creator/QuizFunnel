@@ -74,6 +74,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   });
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
+  // Per-level timer: { 1: minutes, 2: minutes, 3: minutes, 4: minutes }
+  const [adminLevelTimerMins, setAdminLevelTimerMins] = useState({ 1: 15, 2: 12, 3: 10, 4: 8 });
 
   // ── Admin Rejoin form state ──────────────────────────────────────────────────
   const [rejoinForm, setRejoinForm] = useState({
@@ -162,6 +164,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [aiBulkFormatMode, setAiBulkFormatMode] = useState('manual'); // 'manual' | 'all_mcq' | 'all_direct'
   const [answerSavedStatus, setAnswerSavedStatus] = useState({}); // { [qIdx]: 'confirmation message' }
   const [answerSavingIdx, setAnswerSavingIdx] = useState(null);
+  // Per-level timer for AI room: { 1: minutes, 2: minutes, 3: minutes, 4: minutes }
+  const [aiLevelTimerMins, setAiLevelTimerMins] = useState({ 1: 15, 2: 12, 3: 10, 4: 8 });
 
   // ── Scroll lock while modal is open and safely release when closed ──────────
   useEffect(() => {
@@ -858,6 +862,10 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       const code = aiForm.roomCode.trim().toUpperCase();
       const pwd = aiForm.roomPassword.trim();
       const customTimeSecs = (parseInt(aiForm.timerMinutes, 10) || 15) * 60 + (parseInt(aiForm.timerSeconds, 10) || 0);
+      const levelTimers = [1, 2, 3, 4].map((lvl) => ({
+        level: lvl,
+        seconds: (parseInt(aiLevelTimerMins[lvl], 10) || 15) * 60,
+      }));
 
       await createAiRoom({
         adminName: aiForm.adminName.trim(),
@@ -869,6 +877,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         unit: aiResult.unit.trim(),
         progressionMode: aiForm.progressionMode || 'level_gated',
         customTimeSeconds: customTimeSecs > 0 ? customTimeSecs : 900,
+        levelTimers,
         questions: aiResult.questions,
       });
 
@@ -929,6 +938,10 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         quizTitle: adminForm.quizTitle.trim(),
         progressionMode: adminForm.progressionMode || 'level_gated',
         customTimeSeconds: (parseInt(adminForm.timerMinutes, 10) || 15) * 60 + (parseInt(adminForm.timerSeconds, 10) || 0),
+        levelTimers: [1, 2, 3, 4].map((lvl) => ({
+          level: lvl,
+          seconds: (parseInt(adminLevelTimerMins[lvl], 10) || 15) * 60,
+        })),
       });
 
       // Save admin credentials to sessionStorage for live dashboard authentication
@@ -1805,6 +1818,44 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
               </div>
             </div>
 
+            {/* ── Per-Level Timer Override ── */}
+            <div style={{
+              background: 'rgba(99,102,241,0.08)',
+              border: '1px solid rgba(99,102,241,0.2)',
+              borderRadius: '12px',
+              padding: '0.85rem 1rem',
+              marginBottom: '0.75rem',
+            }}>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  🎯 Per-Level Timer Overrides
+                </span>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                  Set individual countdown (minutes) per level — applies uniformly to ALL students.
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                {[1, 2, 3, 4].map((lvl) => (
+                  <div key={lvl} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                    <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>L{lvl}</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                      <input
+                        type="number"
+                        min="1"
+                        max="180"
+                        className="form-input"
+                        style={{ width: '55px', textAlign: 'center', fontWeight: 700, padding: '4px 4px', fontSize: '0.85rem' }}
+                        value={aiLevelTimerMins[lvl] ?? 15}
+                        onChange={(e) => setAiLevelTimerMins((prev) => ({ ...prev, [lvl]: Math.max(1, Math.min(180, parseInt(e.target.value) || 1)) }))}
+                        title={`Timer for Level ${lvl} in minutes`}
+                      />
+                      <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>min</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Global Bulk Format Selector Toolbar */}
             <div className="ai-bulk-format-bar">
               <span className="ai-bulk-format-label">⚡ Bulk Format Selector:</span>
@@ -2325,6 +2376,44 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                       <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>sec</span>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* ── Per-Level Timer Override ── */}
+              <div style={{
+                background: 'rgba(99,102,241,0.08)',
+                border: '1px solid rgba(99,102,241,0.2)',
+                borderRadius: '12px',
+                padding: '0.85rem 1rem',
+                marginBottom: '0.75rem',
+              }}>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    🎯 Per-Level Timer Overrides
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                    Set individual countdown (minutes) per level — applies uniformly to ALL students.
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  {[1, 2, 3, 4].map((lvl) => (
+                    <div key={lvl} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                      <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>L{lvl}</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                        <input
+                          type="number"
+                          min="1"
+                          max="180"
+                          className="form-input"
+                          style={{ width: '55px', textAlign: 'center', fontWeight: 700, padding: '4px 4px', fontSize: '0.85rem' }}
+                          value={adminLevelTimerMins[lvl] ?? 15}
+                          onChange={(e) => setAdminLevelTimerMins((prev) => ({ ...prev, [lvl]: Math.max(1, Math.min(180, parseInt(e.target.value) || 1)) }))}
+                          title={`Timer for Level ${lvl} in minutes`}
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>min</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 

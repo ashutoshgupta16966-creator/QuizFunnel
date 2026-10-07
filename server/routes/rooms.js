@@ -53,6 +53,14 @@ router.post('/create', async (req, res, next) => {
 
     const roomCustomTime = req.body.customTimeSeconds ? Math.max(0, parseInt(req.body.customTimeSeconds, 10)) : 0;
 
+    // Parse per-level timer overrides: [{ level, seconds }, ...]
+    let roomLevelTimers = [];
+    if (Array.isArray(req.body.levelTimers)) {
+      roomLevelTimers = req.body.levelTimers
+        .filter((t) => t && typeof t.level === 'number' && typeof t.seconds === 'number')
+        .map((t) => ({ level: Math.min(4, Math.max(1, t.level)), seconds: Math.max(0, t.seconds) }));
+    }
+
     const room = await Room.create({
       roomCode: normalizedCode,
       quizTitle: quizTitle?.trim() || '',
@@ -64,6 +72,7 @@ router.post('/create', async (req, res, next) => {
       progressionMode: req.body.progressionMode === 'open_attempt' ? 'open_attempt' : 'level_gated',
       maxLevel: req.body.maxLevel ? Math.min(4, Math.max(1, parseInt(req.body.maxLevel, 10))) : 4,
       customTimeSeconds: roomCustomTime,
+      levelTimers: roomLevelTimers,
       participants: [],
     });
 
@@ -300,6 +309,14 @@ router.post('/create-ai', async (req, res, next) => {
     const calculatedMaxLevel = Math.min(4, Math.max(...inserted.map((q) => q.level || 1), 1));
     const roomCustomTime = parseInt(req.body.customTimeSeconds, 10) || 0;
 
+    // Parse per-level timer overrides: [{ level, seconds }, ...]
+    let roomLevelTimers = [];
+    if (Array.isArray(req.body.levelTimers)) {
+      roomLevelTimers = req.body.levelTimers
+        .filter((t) => t && typeof t.level === 'number' && typeof t.seconds === 'number')
+        .map((t) => ({ level: Math.min(4, Math.max(1, t.level)), seconds: Math.max(0, t.seconds) }));
+    }
+
     const room = await Room.create({
       roomCode: normalizedCode,
       quizTitle: quizTitle?.trim() || (subject ? `${subject} Quiz` : 'AI Generated Quiz'),
@@ -314,6 +331,7 @@ router.post('/create-ai', async (req, res, next) => {
       progressionMode: req.body.progressionMode === 'open_attempt' ? 'open_attempt' : 'level_gated',
       maxLevel: calculatedMaxLevel,
       customTimeSeconds: roomCustomTime,
+      levelTimers: roomLevelTimers,
       questions: inserted,
       participants: [],
     });

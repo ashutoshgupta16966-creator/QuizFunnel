@@ -65,6 +65,13 @@ const RoomSchema = new mongoose.Schema({
   progressionMode: { type: String, enum: ['level_gated', 'open_attempt'], default: 'level_gated' },
   maxLevel:     { type: Number, default: 4, min: 1, max: 4 },
   customTimeSeconds: { type: Number, default: 0 },
+  // Admin-controlled quiz start: flips to true when admin broadcasts "START QUIZ FOR ALL"
+  quizStarted:  { type: Boolean, default: false },
+  // Per-level timer overrides: [{ level: 1, seconds: 600 }, { level: 2, seconds: 480 }, ...]
+  levelTimers:  {
+    type: [{ level: Number, seconds: Number, _id: false }],
+    default: [],
+  },
   questions:    [RoomQuestionSchema],
   participants: [ParticipantSchema],
   reattemptRequests: [ReattemptRequestSchema],

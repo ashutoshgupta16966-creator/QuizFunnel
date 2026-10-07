@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getRoomDetails, closeRoom, getRoomAnalytics, approveReattempt, denyReattempt, exportRoomResultsXLSX } from '../api';
-import { joinAdminRoomSocket, disconnectSocket } from '../utils/socket';
+import { joinAdminRoomSocket, disconnectSocket, emitAdminStartQuiz } from '../utils/socket';
 import ThemeToggle from '../components/ThemeToggle';
 import LevelDistributionChart from '../components/LevelDistributionChart';
 
@@ -47,6 +47,11 @@ export default function RoomAdminDashboard() {
   const [analyticsError, setAnalyticsError] = useState('');
   const [analyticsLevel, setAnalyticsLevel] = useState(1); // active level tab
 
+  // ── Admin "Start Quiz For All" state ────────────────────────────────────────
+  const [quizStarted, setQuizStarted] = useState(false);
+  const [startingQuiz, setStartingQuiz] = useState(false);
+  const [levelTimers, setLevelTimers] = useState([]); // [{ level, seconds }]
+
 
   // ── Fetch Initial Room Details ──
   const fetchDetails = useCallback(async () => {
@@ -76,6 +81,8 @@ export default function RoomAdminDashboard() {
 
     const cleanupSocket = joinAdminRoomSocket(roomCode, adminPassword, {
       onJoined: (data) => {
+        if (data?.quizStarted) setQuizStarted(true);
+        if (Array.isArray(data?.levelTimers)) setLevelTimers(data.levelTimers);
         setRoom((prev) => {
           if (!prev) return data;
           const incoming = data?.participants || [];
@@ -184,6 +191,29 @@ export default function RoomAdminDashboard() {
       alert(err.response?.data?.error || 'Failed to deny re-attempt.');
     } finally {
       setProcessingAction('');
+    }
+  };
+
+  // ── Admin Start Quiz For All ──────────────────────────────────────────────────
+  const handleStartQuiz = async () => {
+    if (quizStarted || startingQuiz) return;
+    const confirmed = window.confirm(
+      `🚀 Start Quiz for ALL ${totalJoined} joined student${totalJoined !== 1 ? 's' : ''}?\n\n` +
+      `All students will see a 3-second countdown then Level 1 questions will unlock simultaneously.\n\n` +
+      `You cannot undo this action.`
+    );
+    if (!confirmed) return;
+    setStartingQuiz(true);
+    try {
+      emitAdminStartQuiz({ roomCode, roomPassword: adminPassword });
+      // Optimistically mark as started; the socket event will confirm it
+      setTimeout(() => {
+        setQuizStarted(true);
+        setStartingQuiz(false);
+      }, 800);
+    } catch (err) {
+      console.error('Start quiz error:', err);
+      setStartingQuiz(false);
     }
   };
 
@@ -439,6 +469,97 @@ export default function RoomAdminDashboard() {
               </div>
             </div>
 
+            {/* ── Admin "START QUIZ FOR ALL" Banner ── */}
+            {room.status === 'active' && (
+              <div style={{
+                margin: '0.75rem 0',
+                borderRadius: '16px',
+                padding: '1rem 1.25rem',
+                background: quizStarted
+                  ? 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(5,150,105,0.1))'
+                  : 'linear-gradient(135deg, rgba(239,68,68,0.18), rgba(220,38,38,0.1))',
+                border: quizStarted
+                  ? '2px solid rgba(16,185,129,0.5)'
+                  : '2px solid rgba(239,68,68,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+              }}>
+                <div>
+                  {quizStarted ? (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                        <span style={{ fontSize: '1.25rem' }}>🟢</span>
+                        <strong style={{ color: '#10b981', fontSize: '1rem' }}>Quiz is LIVE — Students are solving questions</strong>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: '#6ee7b7' }}>
+                        All {totalJoined} student{totalJoined !== 1 ? 's' : ''} received the start signal. Countdown has fired.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                        <span style={{ fontSize: '1.25rem' }}>⏳</span>
+                        <strong style={{ color: '#f87171', fontSize: '1rem' }}>Quiz NOT Started — Students are in the Waiting Lobby</strong>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: '#fca5a5' }}>
+                        {totalJoined === 0
+                          ? 'No students have joined yet. Share the room code first.'
+                          : `${totalJoined} student${totalJoined !== 1 ? 's' : ''} waiting. Click "START QUIZ FOR ALL" when ready.`}
+                      </p>
+                    </>
+                  )}
+                  {/* Per-level timer summary */}
+                  {levelTimers.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                      {levelTimers.map((lt) => (
+                        <span key={lt.level} style={{
+                          background: 'rgba(255,255,255,0.08)',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: '999px',
+                          padding: '2px 10px',
+                          fontSize: '0.75rem',
+                          color: '#cbd5e1',
+                          fontWeight: 600,
+                        }}>
+                          L{lt.level}: {Math.floor(lt.seconds / 60)}m{lt.seconds % 60 > 0 ? ` ${lt.seconds % 60}s` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {!quizStarted && (
+                  <button
+                    type="button"
+                    onClick={handleStartQuiz}
+                    disabled={startingQuiz || totalJoined === 0}
+                    style={{
+                      background: startingQuiz ? 'rgba(99,102,241,0.5)' : 'linear-gradient(135deg, #ef4444, #dc2626)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '12px',
+                      padding: '0.7rem 1.4rem',
+                      fontSize: '1rem',
+                      fontWeight: 800,
+                      cursor: startingQuiz || totalJoined === 0 ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      letterSpacing: '0.02em',
+                      boxShadow: '0 4px 15px rgba(239,68,68,0.4)',
+                      flexShrink: 0,
+                      opacity: totalJoined === 0 ? 0.55 : 1,
+                    }}
+                    title={totalJoined === 0 ? 'Wait for at least 1 student to join before starting' : 'Start the quiz for all joined students simultaneously'}
+                  >
+                    {startingQuiz ? '⏳ Starting…' : '🚀 START QUIZ FOR ALL'}
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* ── Pending Re-attempt Requests Queue ── */}
             {pendingRequests.length > 0 && (
               <div className="reattempt-requests-container">
@@ -575,7 +696,7 @@ export default function RoomAdminDashboard() {
 
 
             {/* ── Real-Time Participants Table ── */}
-            <div className="table-wrapper">
+            <div className="table-wrapper" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <table className="dashboard-table">
                 <thead>
                   <tr>

@@ -28,11 +28,47 @@ function initRoomSocket(io) {
           adminName: room.adminName,
           status: room.status,
           maxCapacity: room.maxCapacity,
+          quizStarted: Boolean(room.quizStarted),
+          levelTimers: Array.isArray(room.levelTimers) ? room.levelTimers : [],
           participants: enrichedParticipants,
           reattemptRequests: (room.reattemptRequests || []).filter((r) => r.status === 'pending'),
         });
       } catch (err) {
         console.error('Socket admin:join-room error:', err.message);
+      }
+    });
+
+    // ── Admin broadcasts "START QUIZ FOR ALL" ────────────────────────────────
+    // Persists quizStarted=true in DB, then broadcasts room:quiz-started
+    // to all sockets in the room (including students in the waiting lobby).
+    socket.on('admin:start-quiz', async ({ roomCode, roomPassword }) => {
+      try {
+        if (!roomCode) return;
+        const normalizedCode = roomCode.trim().toUpperCase();
+
+        const room = await Room.findOne({ roomCode: normalizedCode });
+        if (!room) {
+          socket.emit('error:room', { message: 'Room not found' });
+          return;
+        }
+        if (room.roomPassword !== roomPassword) {
+          socket.emit('error:room', { message: 'Invalid room password for start-quiz' });
+          return;
+        }
+
+        // Persist started state to DB so late-joining students also get it
+        await Room.updateOne({ roomCode: normalizedCode }, { $set: { quizStarted: true } });
+
+        console.log(`[Socket] Admin started quiz for room: ${normalizedCode}`);
+
+        // Broadcast to ALL sockets in this room (admin + all students)
+        io.to(`room:${normalizedCode}`).emit('room:quiz-started', {
+          roomCode: normalizedCode,
+          startedAt: new Date().toISOString(),
+          levelTimers: Array.isArray(room.levelTimers) ? room.levelTimers : [],
+        });
+      } catch (err) {
+        console.error('Socket admin:start-quiz error:', err.message);
       }
     });
 
@@ -42,6 +78,17 @@ function initRoomSocket(io) {
         if (!roomCode || !student?.mobile) return;
         const normalizedCode = roomCode.trim().toUpperCase();
         socket.join(`room:${normalizedCode}`);
+
+        // Check if quiz has already been started by admin (late joiner catch-up)
+        const room = await Room.findOne({ roomCode: normalizedCode }).select('quizStarted levelTimers status').lean();
+        if (room?.quizStarted) {
+          // Immediately tell this student the quiz has started (they missed the broadcast)
+          socket.emit('room:quiz-started', {
+            roomCode: normalizedCode,
+            startedAt: new Date().toISOString(),
+            levelTimers: Array.isArray(room.levelTimers) ? room.levelTimers : [],
+          });
+        }
 
         // Notify admin in this room
         io.to(`room:${normalizedCode}`).emit('student:joined', {

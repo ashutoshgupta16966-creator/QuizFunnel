@@ -52,6 +52,12 @@ export default function Quiz() {
   const [timerSetupMins, setTimerSetupMins] = useState(Math.floor(defaultLevelTime / 60));
   const [timerSetupSecs, setTimerSetupSecs] = useState(defaultLevelTime % 60);
 
+  // ── Room Quiz Synchronized Start State ────────────────────────────────────
+  // Students wait in a lobby until admin broadcasts ROOM_QUIZ_STARTED.
+  // A 3-second countdown fires on all screens before questions unlock.
+  const [roomQuizStarted, setRoomQuizStarted] = useState(false);
+  const [startCountdown, setStartCountdown] = useState(0); // 3 → 2 → 1 → 0 = live
+
   // Storage keys for auto-saving progress & bookmarks
   const progressKey = student?.mobile ? `quiz_progress_${student.mobile}_${levelNum}` : null;
   const bookmarkKey = student?.mobile ? `quiz_bookmarks_${student.mobile}_${levelNum}` : null;
@@ -149,6 +155,27 @@ export default function Quiz() {
       const cleanup = joinStudentRoomSocket(roomSession.roomCode, student, {
         onRoomClosed: () => {
           setIsRoomClosed(true);
+        },
+        onQuizStarted: (data) => {
+          // Apply per-level timer override from admin's levelTimers config
+          if (Array.isArray(data?.levelTimers) && data.levelTimers.length > 0) {
+            const lt = data.levelTimers.find((t) => t.level === levelNum);
+            if (lt && lt.seconds > 0) {
+              setCustomTimeSeconds(lt.seconds);
+              setTimerSetupMins(Math.floor(lt.seconds / 60));
+              setTimerSetupSecs(lt.seconds % 60);
+            }
+          }
+          // Fire 3-second synchronized countdown
+          setStartCountdown(3);
+          const t1 = setTimeout(() => setStartCountdown(2), 1000);
+          const t2 = setTimeout(() => setStartCountdown(1), 2000);
+          const t3 = setTimeout(() => {
+            setStartCountdown(0);
+            setRoomQuizStarted(true);
+            setStartedAt(new Date());
+          }, 3000);
+          return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
         },
       });
       emitStudentProgress({
@@ -584,6 +611,160 @@ export default function Quiz() {
         <p className="error-icon">⚠️</p>
         <p className="error-text">{loadError}</p>
         <button className="btn btn-primary" onClick={loadQuestions}>Try Again</button>
+      </div>
+    );
+  }
+
+  // ── ROOM QUIZ: Student Waiting Lobby (shown until admin starts the quiz) ──
+  if (isRoomQuiz && !roomQuizStarted && startCountdown === 0 && !loading && questions.length > 0) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+        background: 'var(--bg-color, #0f172a)',
+      }}>
+        {/* Waiting Lobby Modal Card */}
+        <div style={{
+          maxWidth: '460px',
+          width: '100%',
+          padding: '2.5rem 2rem',
+          textAlign: 'center',
+          borderRadius: '24px',
+          background: 'var(--surface-color, #1e293b)',
+          border: '2px solid rgba(99,102,241,0.35)',
+          boxShadow: '0 24px 60px -12px rgba(0,0,0,0.6)',
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
+          {/* Subtle animated gradient background */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'radial-gradient(ellipse at center top, rgba(99,102,241,0.1) 0%, transparent 70%)',
+            pointerEvents: 'none',
+          }} />
+
+          <div style={{ position: 'relative' }}>
+            {/* Animated pulse ring */}
+            <div style={{ position: 'relative', display: 'inline-flex', marginBottom: '1.25rem' }}>
+              <span style={{ fontSize: '3.5rem', lineHeight: 1 }}>⏳</span>
+              <span style={{
+                position: 'absolute', inset: '-12px',
+                borderRadius: '50%',
+                border: '3px solid rgba(99,102,241,0.5)',
+                animation: 'pulse-ring 1.8s ease-in-out infinite',
+              }} />
+            </div>
+
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#f8fafc', margin: '0 0 0.5rem' }}>
+              Waiting for Host to Start
+            </h2>
+            <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 1.5rem', lineHeight: 1.5 }}>
+              You've joined <strong style={{ color: '#a5b4fc' }}>Room {roomSession?.roomCode}</strong>.<br />
+              Questions are ready — the quiz will start for everyone simultaneously when the host fires it.
+            </p>
+
+            {/* Live participant count badge */}
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.4rem 1rem',
+              borderRadius: '999px',
+              background: 'rgba(99,102,241,0.15)',
+              border: '1px solid rgba(99,102,241,0.3)',
+              color: '#a5b4fc',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              marginBottom: '1.5rem',
+            }}>
+              <span style={{
+                width: '8px', height: '8px', borderRadius: '50%',
+                background: '#6366f1',
+                display: 'inline-block',
+                boxShadow: '0 0 0 3px rgba(99,102,241,0.3)',
+                animation: 'pulse-dot 1.4s ease-in-out infinite',
+              }} />
+              You're in! Waiting for the host to start…
+            </div>
+
+            {/* Info strip */}
+            <div style={{
+              background: 'rgba(255,255,255,0.04)',
+              borderRadius: '12px',
+              padding: '0.75rem 1rem',
+              fontSize: '0.8rem',
+              color: '#64748b',
+              lineHeight: 1.5,
+            }}>
+              📌 {questions.length} question{questions.length !== 1 ? 's' : ''} loaded &nbsp;·&nbsp;
+              Level {levelNum} &nbsp;·&nbsp;
+              {student?.name || 'You'}
+            </div>
+
+            {/* Room info footer */}
+            <p style={{ fontSize: '0.75rem', color: '#475569', marginTop: '1rem', marginBottom: 0 }}>
+              <strong style={{ color: '#6366f1' }}>{roomSession?.roomCode}</strong> — Do not refresh the page
+            </p>
+          </div>
+        </div>
+
+        {/* Inline keyframe styles */}
+        <style>{`
+          @keyframes pulse-ring {
+            0% { transform: scale(0.9); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 0.3; }
+            100% { transform: scale(0.9); opacity: 0.8; }
+          }
+          @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ── ROOM QUIZ: 3-2-1 Countdown Overlay (fires after admin starts, before questions show) ──
+  if (isRoomQuiz && startCountdown > 0) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--bg-color, #0f172a)',
+        gap: '1rem',
+      }}>
+        <p style={{ color: '#94a3b8', fontSize: '1rem', fontWeight: 600, margin: 0, letterSpacing: '0.05em' }}>
+          QUIZ STARTING IN
+        </p>
+        <div style={{
+          fontSize: '9rem',
+          fontWeight: 900,
+          lineHeight: 1,
+          color: '#6366f1',
+          textShadow: '0 0 60px rgba(99,102,241,0.6)',
+          animation: 'countdown-pop 0.4s ease-out',
+          minWidth: '1ch',
+          textAlign: 'center',
+        }}>
+          {startCountdown}
+        </div>
+        <p style={{ color: '#64748b', fontSize: '0.9rem', margin: 0 }}>
+          Get ready — questions unlock in {startCountdown} second{startCountdown !== 1 ? 's' : ''}…
+        </p>
+        <style>{`
+          @keyframes countdown-pop {
+            0% { transform: scale(1.4); opacity: 0; }
+            60% { transform: scale(0.95); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+        `}</style>
       </div>
     );
   }

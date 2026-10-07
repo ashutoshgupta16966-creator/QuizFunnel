@@ -84,9 +84,20 @@ export function joinAdminRoomSocket(roomCode, roomPassword, { onJoined, onStuden
 }
 
 /**
+ * Admin emits start-quiz event to trigger synchronized launch for all students.
+ */
+export function emitAdminStartQuiz({ roomCode, roomPassword }) {
+  if (!roomCode) return;
+  const s = getSocket();
+  if (s && s.connected) {
+    s.emit('admin:start-quiz', { roomCode, roomPassword });
+  }
+}
+
+/**
  * Student joins room socket.
  */
-export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReattemptApproved, onReattemptDenied } = {}) {
+export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReattemptApproved, onReattemptDenied, onQuizStarted } = {}) {
   const s = connectSocket();
 
   s.emit('student:join-room', { roomCode, student });
@@ -94,6 +105,10 @@ export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReatt
   if (onRoomClosed) {
     s.on('room:closed', onRoomClosed);
     s.on('room_closed', onRoomClosed);
+  }
+
+  if (onQuizStarted) {
+    s.on('room:quiz-started', onQuizStarted);
   }
 
   if (onReattemptApproved) {
@@ -122,6 +137,9 @@ export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReatt
     if (onRoomClosed) {
       s.off('room:closed', onRoomClosed);
       s.off('room_closed', onRoomClosed);
+    }
+    if (onQuizStarted) {
+      s.off('room:quiz-started', onQuizStarted);
     }
     if (onReattemptApproved) {
       s.off('reattempt:approved');
