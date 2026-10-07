@@ -363,9 +363,15 @@ async function parseQuizDocumentWithGemini(files) {
     (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_google_gemini_api_key_here')
   );
   if (!hasApiKey) {
-    throw new Error(
-      'AI API Key is not configured on the server. Please add GEMINI_API_KEY or ANTHROPIC_API_KEY to your environment variables (.env).'
+    // If PDF files are uploaded, our offline parser can extract text without an AI API key!
+    const hasPdf = files.some(
+      (f) => (f.mimetype || '').toLowerCase() === 'application/pdf' || (f.originalname || '').toLowerCase().endsWith('.pdf')
     );
+    if (!hasPdf) {
+      throw new Error(
+        'AI API Key is not configured on the server. Please add GEMINI_API_KEY or ANTHROPIC_API_KEY to your environment variables (.env).'
+      );
+    }
   }
 
   // ── Build Multimodal Prompt Parts ────────────────────────────────────────
@@ -475,7 +481,16 @@ CRITICAL RULES:
   const validate = (raw) => {
     try {
       let c = (raw || '').trim();
-      if (c.startsWith('```')) c = c.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      const codeBlockMatch = c.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (codeBlockMatch) {
+        c = codeBlockMatch[1].trim();
+      } else {
+        const firstBrace = c.indexOf('{');
+        const lastBrace = c.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          c = c.slice(firstBrace, lastBrace + 1).trim();
+        }
+      }
       const p = JSON.parse(c);
       return Array.isArray(p.questions) && p.questions.length > 0;
     } catch {
@@ -494,8 +509,15 @@ CRITICAL RULES:
 
   // ── Parse & Clean JSON Response ──────────────────────────────────────────
   let cleaned = (rawText || '').trim();
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch) {
+    cleaned = codeBlockMatch[1].trim();
+  } else {
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.slice(firstBrace, lastBrace + 1).trim();
+    }
   }
 
   let parsed;
@@ -503,7 +525,7 @@ CRITICAL RULES:
     parsed = JSON.parse(cleaned);
   } catch (jsonErr) {
     console.error('[AI Vision Controller] Failed to parse JSON:', cleaned.slice(0, 500));
-    throw new Error('Gemini did not return valid JSON. Please try uploading a clearer image or PDF.');
+    throw new Error('AI did not return valid JSON. Please try uploading a clearer image or PDF.');
   }
 
   const subject = typeof parsed.subject === 'string' && parsed.subject.trim() ? parsed.subject.trim() : 'General Quiz';

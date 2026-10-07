@@ -18,6 +18,8 @@
  *    - Logs precise timings (ms) and status (SUCCESS / TIMEOUT / ERROR) for transparency.
  */
 
+const { extractTextFromPdfBuffer, parseQuestionsFromRawText } = require('./pdfExtractionService');
+
 let GoogleGenAI;
 try {
   const genaiPkg = require('@google/genai');
@@ -34,17 +36,24 @@ const CLAUDE_MODELS = [
 ];
 
 const GEMINI_MODELS = [
-  'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
+  'gemini-1.5-pro',
 ];
 
-const CLAUDE_TIMEOUT_MS = 8000; // 8 seconds strict timeout per Claude attempt
+const CLAUDE_TIMEOUT_MS = 8000; // 8 seconds for text-only calls
+const CLAUDE_MULTIMODAL_TIMEOUT_MS = 25000; // 25 seconds for multimodal/PDF vision calls
 
 function cleanJsonCodeblock(rawText) {
   let cleaned = (rawText || '').trim();
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch) {
+    return codeBlockMatch[1].trim();
+  }
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return cleaned.slice(firstBrace, lastBrace + 1).trim();
   }
   return cleaned;
 }
@@ -70,16 +79,17 @@ function isGenericPlaceholderOption(text) {
 /**
  * Executes a single Claude request with a strict AbortController timeout.
  */
-async function callClaude({ model, systemPrompt, prompt, maxTokens = 2048, contentBlocks = null }) {
+async function callClaude({ model, systemPrompt, prompt, maxTokens = 2048, contentBlocks = null, timeoutMs = null }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || apiKey === 'your_anthropic_api_key_here') {
     return { success: false, skipped: true, reason: 'ANTHROPIC_API_KEY not configured' };
   }
 
+  const effectiveTimeout = timeoutMs || (contentBlocks ? CLAUDE_MULTIMODAL_TIMEOUT_MS : CLAUDE_TIMEOUT_MS);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
     controller.abort();
-  }, CLAUDE_TIMEOUT_MS);
+  }, effectiveTimeout);
 
   const t0 = Date.now();
   try {
@@ -135,7 +145,7 @@ async function callClaude({ model, systemPrompt, prompt, maxTokens = 2048, conte
     const isTimeout = err.name === 'AbortError' || err.code === 20;
     if (isTimeout) {
       console.warn(`[AI Provider]: Claude model "${model}" TIMED OUT after strict ${elapsed}ms limit. Falling back...`);
-      return { success: false, timedOut: true, elapsed, error: `Timed out after ${CLAUDE_TIMEOUT_MS}ms` };
+      return { success: false, timedOut: true, elapsed, error: `Timed out after ${effectiveTimeout}ms` };
     }
     console.warn(`[AI Provider]: Claude model "${model}" error after ${elapsed}ms: ${err.message}`);
     return { success: false, elapsed, error: err.message };
@@ -269,9 +279,29 @@ async function generateTextWithFallback({ prompt, systemPrompt, jsonMode = false
  */
 async function generateMultimodalWithFallback({ files, inlineParts, promptText, validate = null }) {
   const hasClaudeKey = Boolean(process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'your_anthropic_api_key_here');
+  const hasGeminiKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_google_gemini_api_key_here');
 
+  // Eagerly extract raw text from any uploaded PDF documents
+  let extractedPdfText = '';
+  if (Array.isArray(files)) {
+    for (const f of files) {
+      const mime = (f.mimetype || '').toLowerCase();
+      const name = (f.originalname || '').toLowerCase();
+      if (mime === 'application/pdf' || name.endsWith('.pdf')) {
+        try {
+          const txt = await extractTextFromPdfBuffer(f.buffer);
+          if (txt && txt.trim()) {
+            extractedPdfText += (extractedPdfText ? '\n\n' : '') + txt.trim();
+          }
+        } catch (pdfTxtErr) {
+          console.warn('[AI Provider]: Failed extracting PDF text:', pdfTxtErr.message);
+        }
+      }
+    }
+  }
+
+  // 1. Try Claude Multimodal Vision (if API key configured)
   if (hasClaudeKey && Array.isArray(files) && files.length > 0) {
-    // Build Claude content blocks
     try {
       const contentBlocks = [];
       for (const f of files) {
@@ -287,7 +317,9 @@ async function generateMultimodalWithFallback({ files, inlineParts, promptText, 
           b64 = b64.split('base64,')[1];
         }
 
-        const mime = f.mimetype || 'image/jpeg';
+        const rawMime = (f.mimetype || '').toLowerCase().trim();
+        const mime = rawMime === 'image/jpg' ? 'image/jpeg' : (rawMime || 'image/jpeg');
+
         if (mime === 'application/pdf') {
           contentBlocks.push({
             type: 'document',
@@ -311,12 +343,13 @@ async function generateMultimodalWithFallback({ files, inlineParts, promptText, 
       contentBlocks.push({ type: 'text', text: promptText });
 
       for (const model of CLAUDE_MODELS) {
-        console.log(`[AI Provider]: Attempting Claude multimodal extraction with "${model}" (timeout: ${CLAUDE_TIMEOUT_MS}ms)...`);
+        console.log(`[AI Provider]: Attempting Claude multimodal extraction with "${model}" (timeout: ${CLAUDE_MULTIMODAL_TIMEOUT_MS}ms)...`);
         const res = await callClaude({
           model,
           prompt: promptText,
           contentBlocks,
           maxTokens: 4096,
+          timeoutMs: CLAUDE_MULTIMODAL_TIMEOUT_MS,
         });
 
         if (res.success && res.text) {
@@ -330,6 +363,7 @@ async function generateMultimodalWithFallback({ files, inlineParts, promptText, 
           console.warn(`[AI Provider]: Claude model "${model}" returned text but failed validation. Preview: ${res.text.slice(0, 200)}`);
         }
         if (res.error && /unauthorized|invalid api key|credit balance/i.test(res.error)) {
+          console.warn(`[AI Provider]: Claude authentication error (${res.error}). Skipping remaining Claude models.`);
           break;
         }
       }
@@ -338,40 +372,81 @@ async function generateMultimodalWithFallback({ files, inlineParts, promptText, 
     }
   }
 
-  // Fallback to Gemini Multimodal
-  const hasGeminiKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_google_gemini_api_key_here');
-  if (!hasGeminiKey) {
-    console.warn('[AI Provider]: No GEMINI_API_KEY configured. Skipping all Gemini attempts.');
+  // 2. Fall back to Gemini Multimodal Vision
+  if (hasGeminiKey) {
+    for (const model of GEMINI_MODELS) {
+      console.log(`[AI Provider]: Attempting Gemini multimodal extraction with "${model}"...`);
+      const res = await callGemini({
+        model,
+        prompt: promptText,
+        inlineParts,
+        jsonMode: true,
+      });
+      if (res.success && res.text) {
+        if (!validate || validate(res.text)) {
+          return {
+            text: res.text,
+            modelUsed: model,
+            provider: 'gemini',
+          };
+        }
+        console.warn(`[AI Provider]: Gemini model "${model}" returned text but failed validation. Preview: ${res.text.slice(0, 200)}`);
+      }
+    }
+  } else {
+    console.warn('[AI Provider]: No GEMINI_API_KEY configured. Skipping Gemini multimodal attempts.');
   }
 
-  for (const model of GEMINI_MODELS) {
-    console.log(`[AI Provider]: Attempting Gemini multimodal extraction with "${model}"...`);
-    const res = await callGemini({
-      model,
-      prompt: promptText,
-      inlineParts,
-      jsonMode: true,
-    });
-    if (res.success && res.text) {
-      if (!validate || validate(res.text)) {
-        return {
-          text: res.text,
-          modelUsed: model,
-          provider: 'gemini',
-        };
+  // 3. Fallback: Direct Text Prompt using Raw Extracted PDF Text
+  // If multimodal vision API calls failed or timed out, but text was extracted from the PDF,
+  // pass the raw text directly to the text-generation ladder (avoids base64 image/vision errors).
+  if (extractedPdfText && extractedPdfText.trim().length > 20) {
+    console.log(`[AI Provider]: Multimodal vision calls exhausted. Falling back to direct TEXT prompt with ${extractedPdfText.length} characters of extracted PDF text...`);
+    const textExtractionPrompt = `${promptText}\n\n=== VERBATIM DOCUMENT TEXT TRANSCRIPTION ===\n${extractedPdfText}`;
+
+    if (hasClaudeKey || hasGeminiKey) {
+      try {
+        const textAiRes = await generateTextWithFallback({
+          prompt: textExtractionPrompt,
+          jsonMode: true,
+          validate,
+        });
+        if (textAiRes && textAiRes.text) {
+          console.log(`[AI Provider]: Successfully extracted questions via text model "${textAiRes.modelUsed}".`);
+          return {
+            text: textAiRes.text,
+            modelUsed: `${textAiRes.modelUsed} (text-mode)`,
+            provider: textAiRes.provider,
+          };
+        }
+      } catch (textAiErr) {
+        console.warn('[AI Provider]: Text AI fallback encountered error:', textAiErr.message);
       }
-      console.warn(`[AI Provider]: Gemini model "${model}" returned text but failed validation. Preview: ${res.text.slice(0, 200)}`);
+    }
+
+    // 4. Fallback: Offline Local Rule-Based Question Parser
+    // When external AI APIs are totally offline, unconfigured, or rate-limited, parse questions locally!
+    console.log('[AI Provider]: Running local offline question parser on extracted PDF text...');
+    const localResult = parseQuestionsFromRawText(extractedPdfText);
+    if (Array.isArray(localResult.questions) && localResult.questions.length > 0) {
+      console.log(`[AI Provider]: Successfully extracted ${localResult.questions.length} questions offline from PDF.`);
+      return {
+        text: JSON.stringify(localResult),
+        modelUsed: 'local-offline-parser',
+        provider: 'local',
+      };
     }
   }
 
-  // Provide a specific error message based on what was configured
-  if (!hasClaudeKey && !hasGeminiKey) {
-    throw new Error(
-      'No AI API key configured. Please add a valid GEMINI_API_KEY (and optionally ANTHROPIC_API_KEY) ' +
-      'to your server environment variables (Render dashboard → Environment).'
-    );
-  }
-  throw new Error('Document extraction failed across all Claude and Gemini multimodal models.');
+  // 5. Final error reporting with actionable diagnostics
+  const claudeStatus = hasClaudeKey ? 'configured' : 'missing';
+  const geminiStatus = hasGeminiKey ? 'configured' : 'missing';
+  throw new Error(
+    `Document extraction failed across all Claude and Gemini multimodal models. ` +
+    `(Claude API key: ${claudeStatus}, Gemini API key: ${geminiStatus}). ` +
+    `Please ensure a valid GEMINI_API_KEY or ANTHROPIC_API_KEY is active in your environment, ` +
+    `or upload a document with clear, readable text.`
+  );
 }
 
 /**
