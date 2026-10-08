@@ -4,11 +4,12 @@ import ThemeToggle from './ThemeToggle';
 import GuidanceDrawer, { GUIDES } from './GuidanceDrawer';
 import AntiCheatModal from './AntiCheatModal';
 import { checkDirectAnswerCorrectness } from '../utils/scoringHelper';
+import { useTabSwitchMonitor, MAX_TAB_SWITCH_ALLOWED } from '../utils/antiCheat';
 
 const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_IMAGES = 10;
 const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
-const MAX_TAB_SWITCH_ALLOWED = 4; // Mirror of Quiz.jsx anti-cheat limit
+
 
 function formatMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -314,58 +315,42 @@ export default function StudentAiPracticeModal({
     };
   }, [timerRunning, isTimedSession]);
 
-  // ── Tab-Switch Detection (mirrors Quiz.jsx logic) ────────────────────────
-  // Active only while the quiz is running. Debounced to 800ms to avoid double-
-  // firing from the simultaneous visibilitychange + blur events.
-  useEffect(() => {
-    if (step !== 'quiz_running') return;
+  // ── Tab-Switch Detection ─────────────────────────────────────────────────
+  // Uses the shared 4.5-second cooldown hook so a single physical tab-switch
+  // (which fires both visibilitychange + blur in rapid succession) is only
+  // counted once — identical behaviour to Quiz.jsx, zero code duplication.
+  const handlePracticeSwitchViolation = () => {
+    if (hasSubmittedPractice.current || isAntiCheatTerminal) return;
 
-    let lastSwitchTime = 0;
+    setTabSwitchCount((prev) => {
+      const nextCount = prev + 1;
+      const clampedCount = Math.min(nextCount, MAX_TAB_SWITCH_ALLOWED);
 
-    const handleSwitchViolation = () => {
-      if (hasSubmittedPractice.current || isAntiCheatTerminal) return;
-      const now = Date.now();
-      if (now - lastSwitchTime < 800) return; // Debounce
-      lastSwitchTime = now;
-
-      setTabSwitchCount((prev) => {
-        const nextCount = prev + 1;
-        const clampedCount = Math.min(nextCount, MAX_TAB_SWITCH_ALLOWED);
-
-        if (nextCount >= MAX_TAB_SWITCH_ALLOWED) {
-          // 4th switch → terminal disqualification, identical to Quiz.jsx
-          hasSubmittedPractice.current = true;
-          setTimerRunning(false);
-          setIsAntiCheatTerminal(true);
-          setShowAntiCheatModal(true);
-          // Auto-submit with isDisqualified=true after a short lag so the modal can render
-          setTimeout(() => {
-            document.getElementById('practice-disqualified-submit-btn')?.click();
-          }, 150);
-          return clampedCount;
-        }
-
-        // Warnings 1–3: show modal with remaining count
+      if (nextCount >= MAX_TAB_SWITCH_ALLOWED) {
+        // 4th switch → terminal disqualification
+        hasSubmittedPractice.current = true;
+        setTimerRunning(false);
+        setIsAntiCheatTerminal(true);
         setShowAntiCheatModal(true);
+        // Auto-submit with isDisqualified=true after a short lag so the modal can render
+        setTimeout(() => {
+          document.getElementById('practice-disqualified-submit-btn')?.click();
+        }, 150);
         return clampedCount;
-      });
-    };
+      }
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) handleSwitchViolation();
-    };
+      // Warnings 1–3: show modal with remaining count
+      setShowAntiCheatModal(true);
+      return clampedCount;
+    });
+  };
 
-    const handleWindowBlur = () => {
-      handleSwitchViolation();
-    };
+  useTabSwitchMonitor({
+    enabled: step === 'quiz_running',
+    onViolation: handlePracticeSwitchViolation,
+  });
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('blur', handleWindowBlur);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleWindowBlur);
-    };
-  }, [step, isAntiCheatTerminal]);
+
 
   if (!isOpen) return null;
 

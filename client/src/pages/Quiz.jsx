@@ -14,8 +14,7 @@ import AntiCheatModal from '../components/AntiCheatModal';
 import QuestionPalette from '../components/QuestionPalette';
 import UnattemptedWarningModal from '../components/UnattemptedWarningModal';
 import GuidanceDrawer, { GUIDES } from '../components/GuidanceDrawer';
-
-const MAX_TAB_SWITCH_ALLOWED = 4;
+import { useTabSwitchMonitor, MAX_TAB_SWITCH_ALLOWED } from '../utils/antiCheat';
 
 export default function Quiz() {
   const { level: levelParam } = useParams();
@@ -521,116 +520,98 @@ export default function Quiz() {
   }, [executeSubmit]);
 
   // ── Tab-Switching & Visibility Monitoring ───────────────────────────────
-  useEffect(() => {
-    if (loading || submitting || hasSubmitted.current) return;
+  // Shared 4.5-second cooldown hook prevents a single physical tab-switch from
+  // being counted multiple times due to rapid-fire visibilitychange + blur events.
+  const handleSwitchViolation = useCallback(() => {
+    if (hasSubmitted.current || isAntiCheatTerminal) return;
 
-    let lastSwitchTime = 0;
+    setTabSwitchCount((prev) => {
+      const nextCount = prev + 1;
+      const clampedCount = Math.min(nextCount, MAX_TAB_SWITCH_ALLOWED);
+      if (student?.mobile) {
+        try {
+          localStorage.setItem(`quiz_tab_switches_${student.mobile}`, String(clampedCount));
+        } catch { /* noop */ }
+      }
 
-    const handleSwitchViolation = () => {
-      if (hasSubmitted.current || isAntiCheatTerminal) return;
-      const now = Date.now();
-      if (now - lastSwitchTime < 800) return; // Debounce blur + visibilitychange
-      lastSwitchTime = now;
+      if (nextCount >= MAX_TAB_SWITCH_ALLOWED) {
+        // 4th detection: immediately stop quiz timers, invalidate input handlers, route to disqualification flow
+        hasSubmitted.current = true;
+        setIsAntiCheatTerminal(true);
+        setShowAntiCheatModal(true);
 
-      setTabSwitchCount((prev) => {
-        const nextCount = prev + 1;
-        const clampedCount = Math.min(nextCount, MAX_TAB_SWITCH_ALLOWED);
         if (student?.mobile) {
           try {
-            localStorage.setItem(`quiz_tab_switches_${student.mobile}`, String(clampedCount));
+            localStorage.setItem(`quiz_anti_cheated_${student.mobile}`, '1');
+
+            // If active in a live room, notify room host via socket immediately
+            if (isRoomQuiz && roomSession?.roomCode) {
+              emitStudentDisqualified({
+                roomCode: roomSession.roomCode,
+                mobile:   student.mobile,
+              });
+            }
+
+            // Immediately record isDisqualified: true in LocalStorage attempt history
+            const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
+            const existing = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
+            const attemptId = activeAttemptId.current || `${student.mobile}_lvl${levelNum}_${student.totalScore || 0}_${student.totalTimeTaken || 0}`;
+            const alreadySaved = existing.some((a) => a.id === attemptId);
+            if (!alreadySaved) {
+              const newRecord = {
+                id: attemptId,
+                attemptDate: new Date().toISOString(),
+                studentName: student.name || 'Student',
+                mobile: student.mobile,
+                branch: student.branch || '',
+                levelReached: levelNum,
+                totalScore: student.totalScore || 0,
+                maxPossible: 50,
+                accuracyPct: 0,
+                totalTimeTaken: student.totalTimeTaken || 0,
+                timeFormatted: '00:00',
+                status: 'disqualified',
+                isDisqualified: true,
+                isRoom: Boolean(isRoomQuiz),
+                roomCode: roomSession?.roomCode || '',
+                quizType: isRoomQuiz ? 'room' : 'normal',
+              };
+              localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify([newRecord, ...existing].slice(0, 30)));
+            } else {
+              const updated = existing.map((a) => (a.id === attemptId ? {
+                ...a,
+                status: 'disqualified',
+                isDisqualified: true,
+                isRoom: Boolean(isRoomQuiz || a.isRoom),
+                roomCode: roomSession?.roomCode || a.roomCode || '',
+                quizType: isRoomQuiz ? 'room' : (a.quizType || 'normal'),
+              } : a));
+              localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+            }
           } catch { /* noop */ }
         }
 
-        if (nextCount >= MAX_TAB_SWITCH_ALLOWED) {
-          // Exact 4th detection (if switchCount >= 4): immediately stop quiz timers, invalidate input handlers, route to disqualification flow without execution lag
-          hasSubmitted.current = true;
-          setIsAntiCheatTerminal(true);
-          setShowAntiCheatModal(true);
-
-          if (student?.mobile) {
-            try {
-              localStorage.setItem(`quiz_anti_cheated_${student.mobile}`, '1');
-
-              // If active in a live room, notify room host via socket immediately
-              if (isRoomQuiz && roomSession?.roomCode) {
-                emitStudentDisqualified({
-                  roomCode: roomSession.roomCode,
-                  mobile:   student.mobile,
-                });
-              }
-
-              // Immediately record isDisqualified: true in LocalStorage attempt history
-              const HISTORY_STORAGE_KEY = 'quiz_attempts_history';
-              const existing = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
-              const attemptId = activeAttemptId.current || `${student.mobile}_lvl${levelNum}_${student.totalScore || 0}_${student.totalTimeTaken || 0}`;
-              const alreadySaved = existing.some((a) => a.id === attemptId);
-              if (!alreadySaved) {
-                const newRecord = {
-                  id: attemptId,
-                  attemptDate: new Date().toISOString(),
-                  studentName: student.name || 'Student',
-                  mobile: student.mobile,
-                  branch: student.branch || '',
-                  levelReached: levelNum,
-                  totalScore: student.totalScore || 0,
-                  maxPossible: 50,
-                  accuracyPct: 0,
-                  totalTimeTaken: student.totalTimeTaken || 0,
-                  timeFormatted: '00:00',
-                  status: 'disqualified',
-                  isDisqualified: true,
-                  isRoom: Boolean(isRoomQuiz),
-                  roomCode: roomSession?.roomCode || '',
-                  quizType: isRoomQuiz ? 'room' : 'normal',
-                };
-                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify([newRecord, ...existing].slice(0, 30)));
-              } else {
-                const updated = existing.map((a) => (a.id === attemptId ? {
-                  ...a,
-                  status: 'disqualified',
-                  isDisqualified: true,
-                  isRoom: Boolean(isRoomQuiz || a.isRoom),
-                  roomCode: roomSession?.roomCode || a.roomCode || '',
-                  quizType: isRoomQuiz ? 'room' : (a.quizType || 'normal'),
-                } : a));
-                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
-              }
-            } catch { /* noop */ }
-          }
-
-          executeSubmit(true);
-          return clampedCount;
-        } else {
-          // Switches 1 to (MAX-1): Trigger warning toast displaying remaining attempts
-          setToast({
-            type: 'warning',
-            message: `Warning ${clampedCount}/${MAX_TAB_SWITCH_ALLOWED}: Switching tabs is monitored. ${MAX_TAB_SWITCH_ALLOWED}th switch will auto-disqualify.`,
-            duration: 4000,
-          });
-          setShowAntiCheatModal(true);
-          return clampedCount;
-        }
-      });
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        handleSwitchViolation();
+        executeSubmit(true);
+        return clampedCount;
+      } else {
+        // Switches 1 to (MAX-1): show warning toast with remaining attempts
+        setToast({
+          type: 'warning',
+          message: `Warning ${clampedCount}/${MAX_TAB_SWITCH_ALLOWED}: Switching tabs is monitored. ${MAX_TAB_SWITCH_ALLOWED}th switch will auto-disqualify.`,
+          duration: 4000,
+        });
+        setShowAntiCheatModal(true);
+        return clampedCount;
       }
-    };
+    });
+  }, [isAntiCheatTerminal, student?.mobile, levelNum, isRoomQuiz, roomSession, executeSubmit]);
 
-    const handleWindowBlur = () => {
-      handleSwitchViolation();
-    };
+  useTabSwitchMonitor({
+    enabled: !loading && !submitting && !hasSubmitted.current,
+    onViolation: handleSwitchViolation,
+  });
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('blur', handleWindowBlur);
 
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleWindowBlur);
-    };
-  }, [loading, submitting, student?.mobile, executeSubmit, isRoomQuiz, roomSession]);
 
   // Handle confirmed exit
   const handleConfirmExit = () => {
