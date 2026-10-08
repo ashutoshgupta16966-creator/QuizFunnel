@@ -229,10 +229,9 @@ export default function Admin() {
                   <th>Branch</th>
                   <th>Status</th>
                   <th>Level</th>
-                  <th>L1</th>
-                  <th>L2</th>
-                  <th>L3</th>
-                  <th>L4</th>
+                  {Array.from({ length: Math.max(1, ...(students || []).map((s) => s.currentLevel || 1), ...((students || []).flatMap((s) => (s.levels || []).map((l) => l.level || 1)))) }, (_, idx) => (
+                    <th key={idx + 1}>L{idx + 1}</th>
+                  ))}
                   <th>Total Score</th>
                   <th>Total Time</th>
                 </tr>
@@ -242,22 +241,25 @@ export default function Admin() {
                   <tr><td colSpan={12} style={{ textAlign: 'center', padding: '2rem' }}>Loading…</td></tr>
                 ) : students.length === 0 ? (
                   <tr><td colSpan={12} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No students found.</td></tr>
-                ) : students.map((s, i) => (
-                  <tr key={s._id}>
-                    <td style={{ color: 'var(--color-text-dim)' }}>{i + 1}</td>
-                    <td style={{ fontWeight: 600 }}>{s.name}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{s.mobile}</td>
-                    <td>{s.branch}</td>
-                    <td><span className={`status-badge ${s.status}`}>{STATUS_LABELS[s.status]}</span></td>
-                    <td style={{ textAlign: 'center' }}>{s.currentLevel}</td>
-                    <td>{s.levels?.find((l) => l.level === 1)?.score ?? '—'}</td>
-                    <td>{s.levels?.find((l) => l.level === 2)?.score ?? '—'}</td>
-                    <td>{s.levels?.find((l) => l.level === 3)?.score ?? '—'}</td>
-                    <td>{s.levels?.find((l) => l.level === 4)?.score ?? '—'}</td>
-                    <td style={{ fontWeight: 700, color: 'var(--color-primary)' }}>{s.totalScore}</td>
-                    <td>{formatTime(s.totalTimeTaken)}</td>
-                  </tr>
-                ))}
+                ) : students.map((s, i) => {
+                  const maxL = Math.max(1, ...(students || []).map((st) => st.currentLevel || 1), ...((students || []).flatMap((st) => (st.levels || []).map((l) => l.level || 1))));
+                  return (
+                    <tr key={s._id}>
+                      <td style={{ color: 'var(--color-text-dim)' }}>{i + 1}</td>
+                      <td style={{ fontWeight: 600 }}>{s.name}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{s.mobile}</td>
+                      <td>{s.branch}</td>
+                      <td><span className={`status-badge ${s.status}`}>{STATUS_LABELS[s.status]}</span></td>
+                      <td style={{ textAlign: 'center' }}>{s.currentLevel}</td>
+                      {Array.from({ length: maxL }, (_, idx) => {
+                        const lvlNum = idx + 1;
+                        return <td key={lvlNum}>{s.levels?.find((l) => l.level === lvlNum)?.score ?? '—'}</td>;
+                      })}
+                      <td style={{ fontWeight: 700, color: 'var(--color-primary)' }}>{s.totalScore}</td>
+                      <td>{formatTime(s.totalTimeTaken)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

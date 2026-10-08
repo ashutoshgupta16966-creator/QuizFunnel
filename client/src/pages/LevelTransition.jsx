@@ -59,10 +59,14 @@ export default function LevelTransition() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Guard: redirect if state is missing or the level was not passed
+  // Guard: continuous workflow — if a student lands on LevelTransition, advance to nextLevel immediately
   useEffect(() => {
     if (!student || !lastResult) { navigate('/'); return; }
-    if (!lastResult.passed)      { navigate('/results'); return; }
+    if (lastResult.nextLevel) {
+      navigate(`/quiz/${lastResult.nextLevel}`);
+    } else {
+      navigate('/results');
+    }
   }, [student, lastResult, navigate]);
 
   if (!student || !lastResult) return null;

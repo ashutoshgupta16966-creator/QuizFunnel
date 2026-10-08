@@ -76,6 +76,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [adminError, setAdminError] = useState('');
   // Per-level timer: { 1: minutes, 2: minutes, 3: minutes, 4: minutes }
   const [adminLevelTimerMins, setAdminLevelTimerMins] = useState({ 1: 15, 2: 12, 3: 10, 4: 8 });
+  const [adminLevelTimerSecs, setAdminLevelTimerSecs] = useState({ 1: 0, 2: 0, 3: 0, 4: 0 });
 
   // ── Admin Rejoin form state ──────────────────────────────────────────────────
   const [rejoinForm, setRejoinForm] = useState({
@@ -166,6 +167,15 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [answerSavingIdx, setAnswerSavingIdx] = useState(null);
   // Per-level timer for AI room: { 1: minutes, 2: minutes, 3: minutes, 4: minutes }
   const [aiLevelTimerMins, setAiLevelTimerMins] = useState({ 1: 15, 2: 12, 3: 10, 4: 8 });
+  const [aiLevelTimerSecs, setAiLevelTimerSecs] = useState({ 1: 0, 2: 0, 3: 0, 4: 0 });
+  const [editingQuestionIdxs, setEditingQuestionIdxs] = useState({});
+  const [confirmedQuestionIdxs, setConfirmedQuestionIdxs] = useState({});
+
+  const aiActualLevels = useMemo(() => {
+    if (!aiResult.questions || aiResult.questions.length === 0) return [1, 2, 3, 4];
+    const maxL = Math.max(...aiResult.questions.map((q) => Number(q.level) || 1), 1);
+    return Array.from({ length: maxL }, (_, i) => i + 1);
+  }, [aiResult.questions]);
 
   // ── Scroll lock while modal is open and safely release when closed ──────────
   useEffect(() => {
@@ -589,6 +599,49 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     }
   };
 
+  const handleToggleEditQuestion = (qIdx) => {
+    setEditingQuestionIdxs((prev) => ({
+      ...prev,
+      [qIdx]: !prev[qIdx],
+    }));
+  };
+
+  const handleConfirmQuestionAnswer = async (qIdx) => {
+    const q = aiResult.questions[qIdx];
+    if (!q) return;
+
+    if (q.questionType === 'direct') {
+      if (!q.directAnswer?.trim()) {
+        alert('Please specify a valid direct answer before confirming.');
+        return;
+      }
+    } else {
+      if (typeof q.correctAnswerIndex !== 'number' || q.correctAnswerIndex < 0 || q.correctAnswerIndex > 3) {
+        alert('Please select a designated correct option (A, B, C, or D).');
+        return;
+      }
+      const selectedText = (q.options && q.options[q.correctAnswerIndex]) || '';
+      if (!selectedText.trim()) {
+        alert(`Option ${['A', 'B', 'C', 'D'][q.correctAnswerIndex]} cannot be blank.`);
+        return;
+      }
+    }
+
+    const finalDirect = q.questionType === 'direct'
+      ? q.directAnswer.trim()
+      : ((q.options && q.options[q.correctAnswerIndex]) || '').trim();
+
+    setConfirmedQuestionIdxs((prev) => ({ ...prev, [qIdx]: true }));
+    setEditingQuestionIdxs((prev) => ({ ...prev, [qIdx]: false }));
+
+    await persistQuestionAnswer(qIdx, {
+      correctAnswerIndex: q.correctAnswerIndex,
+      directAnswer: finalDirect,
+      options: q.options,
+      questionText: q.questionText,
+    });
+  };
+
   const handleAiQuestionChange = (qIdx, field, value) => {
     let updatedDirect;
     setAiResult((prev) => {
@@ -861,11 +914,21 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
     try {
       const code = aiForm.roomCode.trim().toUpperCase();
       const pwd = aiForm.roomPassword.trim();
-      const customTimeSecs = (parseInt(aiForm.timerMinutes, 10) || 15) * 60 + (parseInt(aiForm.timerSeconds, 10) || 0);
-      const levelTimers = [1, 2, 3, 4].map((lvl) => ({
+      const levelTimers = aiActualLevels.map((lvl) => ({
         level: lvl,
-        seconds: (parseInt(aiLevelTimerMins[lvl], 10) || 15) * 60,
+        seconds: ((parseInt(aiLevelTimerMins[lvl], 10) || 15) * 60) + (parseInt(aiLevelTimerSecs[lvl], 10) || 0),
       }));
+
+      // Ensure all questions carry finalized confirmed correct answers
+      const finalizedQuestions = aiResult.questions.map((q) => {
+        const direct = q.questionType === 'direct'
+          ? (q.directAnswer || '').trim()
+          : ((q.options && q.options[q.correctAnswerIndex]) || '').trim();
+        return {
+          ...q,
+          directAnswer: direct,
+        };
+      });
 
       await createAiRoom({
         adminName: aiForm.adminName.trim(),
@@ -876,9 +939,10 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         subject: aiResult.subject.trim(),
         unit: aiResult.unit.trim(),
         progressionMode: aiForm.progressionMode || 'level_gated',
-        customTimeSeconds: customTimeSecs > 0 ? customTimeSecs : 900,
+        maxLevel: aiActualLevels.length,
+        customTimeSeconds: levelTimers[0]?.seconds || 900,
         levelTimers,
-        questions: aiResult.questions,
+        questions: finalizedQuestions,
       });
 
       // Save admin credentials to sessionStorage for live dashboard authentication
@@ -937,10 +1001,10 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         roomPassword: pwd,
         quizTitle: adminForm.quizTitle.trim(),
         progressionMode: adminForm.progressionMode || 'level_gated',
-        customTimeSeconds: (parseInt(adminForm.timerMinutes, 10) || 15) * 60 + (parseInt(adminForm.timerSeconds, 10) || 0),
+        customTimeSeconds: ((parseInt(adminLevelTimerMins[1], 10) || 15) * 60) + (parseInt(adminLevelTimerSecs[1], 10) || 0),
         levelTimers: [1, 2, 3, 4].map((lvl) => ({
           level: lvl,
-          seconds: (parseInt(adminLevelTimerMins[lvl], 10) || 15) * 60,
+          seconds: ((parseInt(adminLevelTimerMins[lvl], 10) || 15) * 60) + (parseInt(adminLevelTimerSecs[lvl], 10) || 0),
         })),
       });
 
@@ -1768,88 +1832,107 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
               </div>
             </div>
 
-            {/* AI Room Custom Timer Setting */}
+            {/* ── Authoritative Level Countdown Timers (Single Source of Truth) ── */}
             <div className="ai-timer-config-card" style={{
-              background: 'rgba(99,102,241,0.08)',
-              border: '1px solid rgba(139,92,246,0.25)',
+              background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.08))',
+              border: '1px solid rgba(139,92,246,0.3)',
               borderRadius: '12px',
               padding: '1rem 1.25rem',
               marginBottom: '1.25rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.6rem',
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    ⏱️ Custom Quiz Level Timer
-                  </span>
-                  <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                    Set custom countdown time allowed for this quiz level before participants start.
-                  </span>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <span>⏱️</span> Level Countdown Timers
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                    Authoritative countdown time for each level. Single source of truth applied uniformly to all students.
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      max="180"
-                      className="form-input"
-                      style={{ width: '65px', textAlign: 'center', fontWeight: 700, padding: '4px 6px' }}
-                      value={aiForm.timerMinutes ?? 15}
-                      onChange={(e) => setAiForm({ ...aiForm, timerMinutes: Math.max(1, Math.min(180, parseInt(e.target.value) || 1)) })}
-                    />
-                    <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>min</span>
-                  </div>
-                  <span style={{ color: '#818cf8', fontWeight: 800 }}>:</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <input
-                      type="number"
-                      min="0"
-                      max="59"
-                      className="form-input"
-                      style={{ width: '60px', textAlign: 'center', fontWeight: 700, padding: '4px 6px' }}
-                      value={aiForm.timerSeconds ?? 0}
-                      onChange={(e) => setAiForm({ ...aiForm, timerSeconds: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })}
-                    />
-                    <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>sec</span>
-                  </div>
+                {/* Quick Presets */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>⚡ Presets:</span>
+                  {[5, 10, 15, 20, 30].map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      className="btn btn-sm"
+                      style={{
+                        padding: '3px 8px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        background: 'rgba(99,102,241,0.18)',
+                        border: '1px solid rgba(139,92,246,0.4)',
+                        color: '#c4b5fd',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => {
+                        const newMins = {};
+                        const newSecs = {};
+                        aiActualLevels.forEach((lvl) => {
+                          newMins[lvl] = mins;
+                          newSecs[lvl] = 0;
+                        });
+                        setAiLevelTimerMins((prev) => ({ ...prev, ...newMins }));
+                        setAiLevelTimerSecs((prev) => ({ ...prev, ...newSecs }));
+                      }}
+                    >
+                      All {mins}m
+                    </button>
+                  ))}
                 </div>
               </div>
-            </div>
 
-            {/* ── Per-Level Timer Override ── */}
-            <div style={{
-              background: 'rgba(99,102,241,0.08)',
-              border: '1px solid rgba(99,102,241,0.2)',
-              borderRadius: '12px',
-              padding: '0.85rem 1rem',
-              marginBottom: '0.75rem',
-            }}>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  🎯 Per-Level Timer Overrides
-                </span>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                  Set individual countdown (minutes) per level — applies uniformly to ALL students.
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                {[1, 2, 3, 4].map((lvl) => (
-                  <div key={lvl} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-                    <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>L{lvl}</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+              {/* Dynamic Level Inputs (reflects actual levels in questions, e.g. L1, L2, L3) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '0.75rem' }}>
+                {aiActualLevels.map((lvl) => (
+                  <div
+                    key={lvl}
+                    style={{
+                      background: 'rgba(15,23,42,0.6)',
+                      border: '1px solid rgba(148,163,184,0.15)',
+                      borderRadius: '8px',
+                      padding: '0.6rem 0.75rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Level {lvl}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                       <input
                         type="number"
                         min="1"
                         max="180"
                         className="form-input"
-                        style={{ width: '55px', textAlign: 'center', fontWeight: 700, padding: '4px 4px', fontSize: '0.85rem' }}
+                        style={{ width: '52px', textAlign: 'center', fontWeight: 700, padding: '4px 4px', fontSize: '0.85rem' }}
                         value={aiLevelTimerMins[lvl] ?? 15}
-                        onChange={(e) => setAiLevelTimerMins((prev) => ({ ...prev, [lvl]: Math.max(1, Math.min(180, parseInt(e.target.value) || 1)) }))}
-                        title={`Timer for Level ${lvl} in minutes`}
+                        onChange={(e) => {
+                          const val = Math.max(1, Math.min(180, parseInt(e.target.value, 10) || 1));
+                          setAiLevelTimerMins((prev) => ({ ...prev, [lvl]: val }));
+                        }}
+                        title={`Minutes for Level ${lvl}`}
                       />
-                      <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>min</span>
+                      <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>m</span>
+                      <span style={{ color: '#64748b', fontWeight: 700 }}>:</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        className="form-input"
+                        style={{ width: '50px', textAlign: 'center', fontWeight: 700, padding: '4px 4px', fontSize: '0.85rem' }}
+                        value={aiLevelTimerSecs[lvl] ?? 0}
+                        onChange={(e) => {
+                          const val = Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0));
+                          setAiLevelTimerSecs((prev) => ({ ...prev, [lvl]: val }));
+                        }}
+                        title={`Seconds for Level ${lvl}`}
+                      />
+                      <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>s</span>
                     </div>
                   </div>
                 ))}
@@ -1903,298 +1986,418 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
 
             {/* Questions Scrollable Editor */}
             <div className="ai-questions-editor-list">
-              {aiResult.questions.map((q, qIdx) => (
-                <div key={qIdx} className="ai-question-edit-card">
-                  <div className="ai-q-header">
-                    <div className="ai-q-title-group">
-                      <span className="ai-q-badge">Q{qIdx + 1}</span>
-                      <div className="ai-q-selects">
-                        <select
-                          className="ai-select-mini"
-                          value={q.level || 1}
-                          onChange={(e) => handleAiQuestionChange(qIdx, 'level', parseInt(e.target.value, 10))}
-                          title="Level (1–4)"
-                        >
-                          <option value={1}>Level 1 (Foundation)</option>
-                          <option value={2}>Level 2 (Intermediate)</option>
-                          <option value={3}>Level 3 (Advanced)</option>
-                          <option value={4}>Level 4 (Final Round)</option>
-                        </select>
+              {aiResult.questions.map((q, qIdx) => {
+                const isEditing = Boolean(editingQuestionIdxs[qIdx]);
+                const isConfirmed = Boolean(confirmedQuestionIdxs[qIdx]);
+                const correctLetter = ['A', 'B', 'C', 'D'][q.correctAnswerIndex ?? 0];
+                const correctText = q.questionType === 'direct'
+                  ? (q.directAnswer || 'None set')
+                  : `${correctLetter}. ${(q.options && q.options[q.correctAnswerIndex]) || ''}`;
 
-                        <select
-                          className="ai-select-mini"
-                          value={q.section || 'Technical'}
-                          onChange={(e) => handleAiQuestionChange(qIdx, 'section', e.target.value)}
-                          title="Section"
-                        >
-                          <option value="Technical">Technical</option>
-                          <option value="GK">GK</option>
-                          <option value="Reasoning">Reasoning</option>
-                          <option value="Aptitude">Aptitude</option>
-                          <option value="Mixed">Mixed</option>
-                        </select>
+                return (
+                  <div
+                    key={q._id || qIdx}
+                    className="ai-question-edit-card"
+                    style={{
+                      border: isConfirmed ? '1px solid rgba(34,197,94,0.4)' : '1px solid rgba(139,92,246,0.2)',
+                      background: isConfirmed ? 'rgba(34,197,94,0.03)' : undefined,
+                    }}
+                  >
+                    <div className="ai-q-header">
+                      <div className="ai-q-title-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span className="ai-q-badge">Q{qIdx + 1}</span>
+
+                        {/* Confirmation Badge */}
+                        {isConfirmed ? (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            background: 'rgba(34,197,94,0.2)',
+                            border: '1px solid rgba(34,197,94,0.4)',
+                            color: '#86efac',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                          }}>
+                            ✅ Confirmed
+                          </span>
+                        ) : (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            background: 'rgba(234,179,8,0.15)',
+                            border: '1px solid rgba(234,179,8,0.35)',
+                            color: '#fde047',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                          }}>
+                            ⏳ Pending Confirmation
+                          </span>
+                        )}
+
+                        <div className="ai-q-selects">
+                          <select
+                            className="ai-select-mini"
+                            value={q.level || 1}
+                            onChange={(e) => handleAiQuestionChange(qIdx, 'level', parseInt(e.target.value, 10))}
+                            title="Level (1–4)"
+                          >
+                            <option value={1}>Level 1 (Foundation)</option>
+                            <option value={2}>Level 2 (Intermediate)</option>
+                            <option value={3}>Level 3 (Advanced)</option>
+                            <option value={4}>Level 4 (Final Round)</option>
+                          </select>
+
+                          <select
+                            className="ai-select-mini"
+                            value={q.section || 'Technical'}
+                            onChange={(e) => handleAiQuestionChange(qIdx, 'section', e.target.value)}
+                            title="Section"
+                          >
+                            <option value="Technical">Technical</option>
+                            <option value="GK">GK</option>
+                            <option value="Reasoning">Reasoning</option>
+                            <option value="Aptitude">Aptitude</option>
+                            <option value="Mixed">Mixed</option>
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    <button
-                      type="button"
-                      className="ai-q-delete-btn"
-                      onClick={() => handleAiRemoveQuestion(qIdx)}
-                      title="Delete this question"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-
-                  {/* Question Format Toggle */}
-                  <div className="ai-format-toggle-bar">
-                    <span className="ai-format-label">Question Format:</span>
-                    <div className="ai-format-pill-group">
-                      <button
-                        type="button"
-                        className={`ai-format-pill ${q.questionType !== 'direct' ? 'is-active' : ''}`}
-                        onClick={() => {
-                          handleAiQuestionChange(qIdx, 'questionType', 'mcq');
-                          if (!q.options || q.options.length < 4) {
-                            handleAiQuestionChange(qIdx, 'options', ['', '', '', '']);
-                          }
-                        }}
-                      >
-                        🔘 Multiple Choice (MCQ)
-                      </button>
-                      <button
-                        type="button"
-                        className={`ai-format-pill ${q.questionType === 'direct' ? 'is-active' : ''}`}
-                        onClick={() => {
-                          handleAiQuestionChange(qIdx, 'questionType', 'direct');
-                          if (!q.directAnswer && q.options && q.options[q.correctAnswerIndex]) {
-                            handleAiQuestionChange(qIdx, 'directAnswer', q.options[q.correctAnswerIndex]);
-                          }
-                        }}
-                      >
-                        ✏️ Direct Fill-in Answer
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Question Text</label>
-                    <textarea
-                      className="form-input ai-q-textarea"
-                      rows={2}
-                      value={q.questionText}
-                      onChange={(e) => handleAiQuestionChange(qIdx, 'questionText', e.target.value)}
-                      placeholder="Enter question text..."
-                    />
-                  </div>
-
-                  {q.questionType === 'direct' ? (
-                    <div className="ai-direct-answer-row">
-                      <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>
-                        Correct Answer (Direct Text / Numerical):
-                      </label>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <input
-                          type="text"
-                          className="form-input ai-direct-ans-input"
-                          value={q.directAnswer || ''}
-                          onChange={(e) => handleAiQuestionChange(qIdx, 'directAnswer', e.target.value)}
-                          onBlur={() => persistQuestionAnswer(qIdx, { directAnswer: q.directAnswer })}
-                          placeholder="e.g. 42, O(log n), Mitochondria, True, etc."
-                        />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                         <button
                           type="button"
-                          className="btn btn-sm btn-outline-primary"
-                          onClick={() => persistQuestionAnswer(qIdx, { directAnswer: q.directAnswer })}
-                          disabled={answerSavingIdx === qIdx || !q.directAnswer?.trim()}
-                          title="Save this answer to the database"
+                          className="btn btn-sm btn-secondary"
+                          style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                          onClick={() => handleToggleEditQuestion(qIdx)}
                         >
-                          {answerSavingIdx === qIdx ? 'Saving…' : '💾 Save Answer'}
+                          {isEditing ? '👁️ View' : '✏️ Edit'}
+                        </button>
+                        <button
+                          type="button"
+                          className="ai-q-delete-btn"
+                          onClick={() => handleAiRemoveQuestion(qIdx)}
+                          title="Delete this question"
+                        >
+                          🗑️
                         </button>
                       </div>
-                      {answerSavedStatus[qIdx] && (
-                        <div style={{ marginTop: '0.4rem', padding: '0.35rem 0.65rem', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', fontSize: '0.78rem', color: '#86efac' }}>
-                          {answerSavedStatus[qIdx]}
-                        </div>
-                      )}
-                      <p className="ai-direct-hint">
-                        💡 Students will see a direct text box. Scoring uses trimmed, case-insensitive evaluation.
-                      </p>
                     </div>
-                  ) : (
-                    <div className="ai-options-editor">
-                      {/* MCQ Sub-toggle: [ 🪄 AI Auto-Generate Options | ✏️ Custom Manual Options ] */}
-                      <div className="ai-optmode-toggle-bar">
-                        <span className="ai-optmode-label">Options Setup:</span>
-                        <div className="ai-optmode-pill-group">
+
+                    {/* EDIT MODE */}
+                    {isEditing ? (
+                      <div style={{ marginTop: '0.75rem' }}>
+                        {/* Question Format Toggle */}
+                        <div className="ai-format-toggle-bar">
+                          <span className="ai-format-label">Question Format:</span>
+                          <div className="ai-format-pill-group">
+                            <button
+                              type="button"
+                              className={`ai-format-pill ${q.questionType !== 'direct' ? 'is-active' : ''}`}
+                              onClick={() => {
+                                handleAiQuestionChange(qIdx, 'questionType', 'mcq');
+                                if (!q.options || q.options.length < 4) {
+                                  handleAiQuestionChange(qIdx, 'options', ['', '', '', '']);
+                                }
+                              }}
+                            >
+                              🔘 Multiple Choice (MCQ)
+                            </button>
+                            <button
+                              type="button"
+                              className={`ai-format-pill ${q.questionType === 'direct' ? 'is-active' : ''}`}
+                              onClick={() => {
+                                handleAiQuestionChange(qIdx, 'questionType', 'direct');
+                                if (!q.directAnswer && q.options && q.options[q.correctAnswerIndex]) {
+                                  handleAiQuestionChange(qIdx, 'directAnswer', q.options[q.correctAnswerIndex]);
+                                }
+                              }}
+                            >
+                              ✏️ Direct Fill-in Answer
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                          <label className="form-label" style={{ fontSize: '0.75rem' }}>Question Text</label>
+                          <textarea
+                            className="form-input ai-q-textarea"
+                            rows={2}
+                            value={q.questionText}
+                            onChange={(e) => handleAiQuestionChange(qIdx, 'questionText', e.target.value)}
+                            placeholder="Enter question text..."
+                          />
+                        </div>
+
+                        {q.questionType === 'direct' ? (
+                          <div className="ai-direct-answer-row">
+                            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>
+                              Correct Answer (Direct Text / Numerical):
+                            </label>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <input
+                                type="text"
+                                className="form-input ai-direct-ans-input"
+                                value={q.directAnswer || ''}
+                                onChange={(e) => handleAiQuestionChange(qIdx, 'directAnswer', e.target.value)}
+                                placeholder="e.g. 42, O(log n), Mitochondria, True, etc."
+                              />
+                            </div>
+                            <p className="ai-direct-hint">
+                              💡 Students will see a direct text box. Scoring uses trimmed, case-insensitive evaluation.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="ai-options-editor">
+                            {/* MCQ Sub-toggle */}
+                            <div className="ai-optmode-toggle-bar">
+                              <span className="ai-optmode-label">Options Setup:</span>
+                              <div className="ai-optmode-pill-group">
+                                <button
+                                  type="button"
+                                  className={`ai-optmode-pill ${(q.optionMode || 'manual') === 'auto' ? 'is-active' : ''}`}
+                                  onClick={() => {
+                                    handleAiQuestionChange(qIdx, 'optionMode', 'auto');
+                                    const isEmpty = !q.options || q.options.every((opt) => !opt || !opt.trim());
+                                    if (isEmpty && q.questionText?.trim()) {
+                                      handleGenerateOptions(qIdx);
+                                    }
+                                  }}
+                                >
+                                  🪄 AI Auto-Generate Options
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`ai-optmode-pill ${(q.optionMode || 'manual') === 'manual' ? 'is-active' : ''}`}
+                                  onClick={() => handleAiQuestionChange(qIdx, 'optionMode', 'manual')}
+                                >
+                                  ✏️ Custom Manual Options
+                                </button>
+                              </div>
+                            </div>
+
+                            {(q.optionMode || 'manual') === 'auto' ? (
+                              <div className="ai-auto-options-container">
+                                <div className="ai-auto-options-actions">
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-primary ai-gen-action-btn"
+                                    onClick={() => handleGenerateOptions(qIdx)}
+                                    disabled={generatingOptionsIdx === qIdx || generatingOptionsIdx === 'all'}
+                                  >
+                                    {generatingOptionsIdx === qIdx || generatingOptionsIdx === 'all' ? (
+                                      <><span className="btn-spinner" />Generating Options…</>
+                                    ) : (
+                                      '🪄 Generate / Re-generate Options with AI'
+                                    )}
+                                  </button>
+                                </div>
+
+                                {optGenErrors[qIdx] && (
+                                  <div className="server-error" style={{ margin: '0.5rem 0', fontSize: '0.78rem' }}>
+                                    ⚠️ {optGenErrors[qIdx]}
+                                  </div>
+                                )}
+
+                                <span className="ai-options-label" style={{ marginTop: '0.6rem' }}>
+                                  Options (click radio to set designated correct answer):
+                                </span>
+                                {(q.options || []).map((opt, optIdx) => (
+                                  <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`}>
+                                    <label className="ai-correct-radio-label" title={`Mark Option ${['A', 'B', 'C', 'D'][optIdx]} as correct`}>
+                                      <input
+                                        type="radio"
+                                        name={`correct_auto_${qIdx}`}
+                                        checked={q.correctAnswerIndex === optIdx}
+                                        onChange={() => handleAiQuestionChange(qIdx, 'correctAnswerIndex', optIdx)}
+                                      />
+                                      <span className="ai-opt-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="form-input ai-opt-input"
+                                      value={opt}
+                                      onChange={(e) => handleAiOptionChange(qIdx, optIdx, e.target.value)}
+                                      placeholder={`Option ${['A', 'B', 'C', 'D'][optIdx]}`}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="ai-manual-options-container">
+                                <span className="ai-options-label">Custom Manual Options (click radio to select correct answer):</span>
+                                {(q.options || []).map((opt, optIdx) => (
+                                  <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`}>
+                                    <label className="ai-correct-radio-label" title={`Mark Option ${['A', 'B', 'C', 'D'][optIdx]} as correct`}>
+                                      <input
+                                        type="radio"
+                                        name={`correct_${qIdx}`}
+                                        checked={q.correctAnswerIndex === optIdx}
+                                        onChange={() => handleAiQuestionChange(qIdx, 'correctAnswerIndex', optIdx)}
+                                      />
+                                      <span className="ai-opt-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="form-input ai-opt-input"
+                                      value={opt}
+                                      onChange={(e) => handleAiOptionChange(qIdx, optIdx, e.target.value)}
+                                      placeholder={`Option ${['A', 'B', 'C', 'D'][optIdx]}`}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Explicit Confirm Button in Edit Mode */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.85rem' }}>
                           <button
                             type="button"
-                            className={`ai-optmode-pill ${(q.optionMode || 'manual') === 'auto' ? 'is-active' : ''}`}
-                            onClick={() => {
-                              handleAiQuestionChange(qIdx, 'optionMode', 'auto');
-                              const isEmpty = !q.options || q.options.every((opt) => !opt || !opt.trim());
-                              if (isEmpty && q.questionText?.trim()) {
-                                handleGenerateOptions(qIdx);
-                              }
-                            }}
+                            className="btn btn-sm btn-secondary"
+                            onClick={() => handleToggleEditQuestion(qIdx)}
                           >
-                            🪄 AI Auto-Generate Options
+                            Close Edit
                           </button>
                           <button
                             type="button"
-                            className={`ai-optmode-pill ${(q.optionMode || 'manual') === 'manual' ? 'is-active' : ''}`}
-                            onClick={() => handleAiQuestionChange(qIdx, 'optionMode', 'manual')}
+                            className="btn btn-sm"
+                            style={{
+                              background: '#16a34a',
+                              borderColor: '#15803d',
+                              color: '#fff',
+                              fontWeight: 700,
+                              padding: '0.4rem 1rem',
+                            }}
+                            onClick={() => handleConfirmQuestionAnswer(qIdx)}
+                            disabled={answerSavingIdx === qIdx}
                           >
-                            ✏️ Custom Manual Options
+                            {answerSavingIdx === qIdx ? 'Saving…' : '✅ Confirm Answer'}
                           </button>
                         </div>
                       </div>
-
-                      {(q.optionMode || 'manual') === 'auto' ? (
-                        <div className="ai-auto-options-container">
-                          <div className="ai-auto-options-actions">
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-primary ai-gen-action-btn"
-                              onClick={() => handleGenerateOptions(qIdx)}
-                              disabled={generatingOptionsIdx === qIdx || generatingOptionsIdx === 'all'}
-                            >
-                              {generatingOptionsIdx === qIdx || generatingOptionsIdx === 'all' ? (
-                                <><span className="btn-spinner" />Generating Options…</>
-                              ) : (
-                                '🪄 Generate / Re-generate Options with AI'
-                              )}
-                            </button>
-                            <span className="ai-auto-action-hint">
-                              Auto-crafts 4 plausible options with 1 designated correct answer.
-                            </span>
-                          </div>
-
-                          {optGenErrors[qIdx] && (
-                            <div className="server-error" style={{ margin: '0.5rem 0', fontSize: '0.78rem' }}>
-                              ⚠️ {optGenErrors[qIdx]}
-                            </div>
-                          )}
-
-                          <span className="ai-options-label" style={{ marginTop: '0.6rem' }}>
-                            Options Preview (Designated Correct Answer selected):
-                          </span>
-                          {(q.options || []).map((opt, optIdx) => (
-                            <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`}>
-                              <label className="ai-correct-radio-label" title={`Mark Option ${['A', 'B', 'C', 'D'][optIdx]} as correct`}>
-                                <input
-                                  type="radio"
-                                  name={`correct_auto_${qIdx}`}
-                                  checked={q.correctAnswerIndex === optIdx}
-                                  onChange={() => handleAiQuestionChange(qIdx, 'correctAnswerIndex', optIdx)}
-                                />
-                                <span className="ai-opt-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
-                              </label>
-                              <input
-                                type="text"
-                                className="form-input ai-opt-input"
-                                value={opt}
-                                onChange={(e) => handleAiOptionChange(qIdx, optIdx, e.target.value)}
-                                placeholder={`Option ${['A', 'B', 'C', 'D'][optIdx]} (auto-generated)`}
-                              />
-                            </div>
-                          ))}
-
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.6rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-primary"
-                                onClick={() => persistQuestionAnswer(qIdx, {
-                                  correctAnswerIndex: q.correctAnswerIndex,
-                                  directAnswer: (q.options || [])[q.correctAnswerIndex],
-                                  options: q.options,
-                                })}
-                                disabled={answerSavingIdx === qIdx}
-                                title="Explicitly save and verify this question's correct answer in the database"
-                              >
-                                {answerSavingIdx === qIdx ? 'Saving…' : '💾 Save Answer to DB'}
-                              </button>
-                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                (Auto-saved on radio selection)
-                              </span>
-                            </div>
-
-                            {q.correctAnswerIndex >= 0 && (q.options || [])[q.correctAnswerIndex] && (
-                              <div style={{ padding: '0.3rem 0.65rem', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '6px', fontSize: '0.75rem', color: '#86efac' }}>
-                                Target Correct: <strong>{['A', 'B', 'C', 'D'][q.correctAnswerIndex]}. {(q.options || [])[q.correctAnswerIndex]}</strong>
-                              </div>
-                            )}
-                          </div>
-
-                          {answerSavedStatus[qIdx] && (
-                            <div style={{ marginTop: '0.4rem', padding: '0.35rem 0.65rem', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', fontSize: '0.78rem', color: '#86efac', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              {answerSavedStatus[qIdx]}
-                            </div>
-                          )}
+                    ) : (
+                      /* LOCKED REVIEW MODE */
+                      <div style={{ marginTop: '0.65rem' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f8fafc', marginBottom: '0.65rem', lineHeight: 1.45 }}>
+                          {q.questionText || <span style={{ color: '#ef4444', fontStyle: 'italic' }}>Missing question text</span>}
                         </div>
-                      ) : (
-                        <div className="ai-manual-options-container">
-                          <span className="ai-options-label">Custom Manual Options (click radio to select correct answer):</span>
-                          {(q.options || []).map((opt, optIdx) => (
-                            <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`}>
-                              <label className="ai-correct-radio-label" title={`Mark Option ${['A', 'B', 'C', 'D'][optIdx]} as correct`}>
-                                <input
-                                  type="radio"
-                                  name={`correct_${qIdx}`}
-                                  checked={q.correctAnswerIndex === optIdx}
-                                  onChange={() => handleAiQuestionChange(qIdx, 'correctAnswerIndex', optIdx)}
-                                />
-                                <span className="ai-opt-letter">{['A', 'B', 'C', 'D'][optIdx]}</span>
-                              </label>
-                              <input
-                                type="text"
-                                className="form-input ai-opt-input"
-                                value={opt}
-                                onChange={(e) => handleAiOptionChange(qIdx, optIdx, e.target.value)}
-                                placeholder={`Option ${['A', 'B', 'C', 'D'][optIdx]}`}
-                              />
-                            </div>
-                          ))}
 
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.6rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-primary"
-                                onClick={() => persistQuestionAnswer(qIdx, {
-                                  correctAnswerIndex: q.correctAnswerIndex,
-                                  directAnswer: (q.options || [])[q.correctAnswerIndex],
-                                  options: q.options,
-                                })}
-                                disabled={answerSavingIdx === qIdx}
-                                title="Explicitly save and verify this question's correct answer in the database"
-                              >
-                                {answerSavingIdx === qIdx ? 'Saving…' : '💾 Save Answer to DB'}
-                              </button>
-                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                (Auto-saved on radio selection)
-                              </span>
-                            </div>
-
-                            {q.correctAnswerIndex >= 0 && (q.options || [])[q.correctAnswerIndex] && (
-                              <div style={{ padding: '0.3rem 0.65rem', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '6px', fontSize: '0.75rem', color: '#86efac' }}>
-                                Target Correct: <strong>{['A', 'B', 'C', 'D'][q.correctAnswerIndex]}. {(q.options || [])[q.correctAnswerIndex]}</strong>
-                              </div>
-                            )}
+                        {q.questionType === 'direct' ? (
+                          <div style={{
+                            background: 'rgba(34,197,94,0.08)',
+                            border: '1px solid rgba(34,197,94,0.3)',
+                            borderRadius: '8px',
+                            padding: '0.55rem 0.85rem',
+                            fontSize: '0.82rem',
+                            color: '#86efac',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                          }}>
+                            <span>🎯</span>
+                            <span>Direct Answer: <strong>{q.directAnswer || <span style={{ color: '#ef4444' }}>Not specified</span>}</strong></span>
                           </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.45rem', marginBottom: '0.65rem' }}>
+                            {['A', 'B', 'C', 'D'].map((letter, optIdx) => {
+                              const isTarget = q.correctAnswerIndex === optIdx;
+                              const optVal = (q.options && q.options[optIdx]) || '';
+                              return (
+                                <div
+                                  key={optIdx}
+                                  style={{
+                                    padding: '0.45rem 0.65rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.8rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    background: isTarget ? 'rgba(34,197,94,0.14)' : 'rgba(15,23,42,0.4)',
+                                    border: isTarget ? '1px solid rgba(34,197,94,0.45)' : '1px solid rgba(148,163,184,0.15)',
+                                    color: isTarget ? '#86efac' : '#cbd5e1',
+                                    fontWeight: isTarget ? 700 : 400,
+                                  }}
+                                >
+                                  <span style={{
+                                    fontWeight: 800,
+                                    color: isTarget ? '#4ade80' : '#94a3b8',
+                                    fontSize: '0.75rem',
+                                  }}>
+                                    {letter}.
+                                  </span>
+                                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {optVal || <span style={{ color: '#ef4444' }}>(blank)</span>}
+                                  </span>
+                                  {isTarget && <span>✅</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
 
-                          {answerSavedStatus[qIdx] && (
-                            <div style={{ marginTop: '0.4rem', padding: '0.35rem 0.65rem', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', fontSize: '0.78rem', color: '#86efac', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              {answerSavedStatus[qIdx]}
-                            </div>
-                          )}
+                        {/* Confirmed Status Box */}
+                        {isConfirmed && (
+                          <div style={{
+                            marginTop: '0.5rem',
+                            padding: '0.4rem 0.75rem',
+                            background: 'rgba(34,197,94,0.12)',
+                            border: '1px solid rgba(34,197,94,0.35)',
+                            borderRadius: '6px',
+                            fontSize: '0.8rem',
+                            color: '#86efac',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.45rem',
+                          }}>
+                            <span>✅</span>
+                            <span>Confirmed Answer: <strong>{correctText}</strong></span>
+                          </div>
+                        )}
+
+                        {answerSavedStatus[qIdx] && (
+                          <div style={{ marginTop: '0.4rem', padding: '0.35rem 0.65rem', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '6px', fontSize: '0.78rem', color: '#86efac' }}>
+                            {answerSavedStatus[qIdx]}
+                          </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.75rem' }}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary"
+                            style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
+                            onClick={() => handleToggleEditQuestion(qIdx)}
+                          >
+                            ✏️ Edit Question &amp; Answer
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '0.3rem 0.85rem',
+                              background: isConfirmed ? 'rgba(34,197,94,0.2)' : '#16a34a',
+                              borderColor: '#15803d',
+                              color: '#fff',
+                              fontWeight: 700,
+                            }}
+                            onClick={() => handleConfirmQuestionAnswer(qIdx)}
+                            disabled={answerSavingIdx === qIdx}
+                          >
+                            {answerSavingIdx === qIdx ? 'Saving…' : (isConfirmed ? '✅ Confirmed' : '✅ Confirm Answer')}
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Footer buttons */}
@@ -2329,88 +2532,106 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                </div>
               </div>
 
-              {/* Room Timer Setting */}
+              {/* ── Authoritative Level Countdown Timers (Single Source of Truth) ── */}
               <div className="ai-timer-config-card" style={{
-                background: 'rgba(99,102,241,0.08)',
-                border: '1px solid rgba(139,92,246,0.25)',
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.08))',
+                border: '1px solid rgba(139,92,246,0.3)',
                 borderRadius: '12px',
                 padding: '1rem 1.25rem',
                 marginBottom: '1.25rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.6rem',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.85rem' }}>
                   <div>
-                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      ⏱️ Quiz Level Timer
-                    </span>
-                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                      Set the countdown time applied to all students for each quiz level.
-                    </span>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <span>⏱️</span> Level Countdown Timers
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                      Authoritative countdown time for each level. Single source of truth applied uniformly to all students.
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <input
-                        type="number"
-                        min="1"
-                        max="180"
-                        className="form-input"
-                        style={{ width: '65px', textAlign: 'center', fontWeight: 700, padding: '4px 6px' }}
-                        value={adminForm.timerMinutes ?? 15}
-                        onChange={(e) => setAdminForm({ ...adminForm, timerMinutes: Math.max(1, Math.min(180, parseInt(e.target.value) || 1)) })}
-                      />
-                      <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>min</span>
-                    </div>
-                    <span style={{ color: '#818cf8', fontWeight: 800 }}>:</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <input
-                        type="number"
-                        min="0"
-                        max="59"
-                        className="form-input"
-                        style={{ width: '60px', textAlign: 'center', fontWeight: 700, padding: '4px 6px' }}
-                        value={adminForm.timerSeconds ?? 0}
-                        onChange={(e) => setAdminForm({ ...adminForm, timerSeconds: Math.max(0, Math.min(59, parseInt(e.target.value) || 0)) })}
-                      />
-                      <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>sec</span>
-                    </div>
+                  {/* Quick Presets */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>⚡ Presets:</span>
+                    {[5, 10, 15, 20, 30].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        className="btn btn-sm"
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          background: 'rgba(99,102,241,0.18)',
+                          border: '1px solid rgba(139,92,246,0.4)',
+                          color: '#c4b5fd',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => {
+                          const newMins = {};
+                          const newSecs = {};
+                          [1, 2, 3, 4].forEach((lvl) => {
+                            newMins[lvl] = mins;
+                            newSecs[lvl] = 0;
+                          });
+                          setAdminLevelTimerMins((prev) => ({ ...prev, ...newMins }));
+                          setAdminLevelTimerSecs((prev) => ({ ...prev, ...newSecs }));
+                        }}
+                      >
+                        All {mins}m
+                      </button>
+                    ))}
                   </div>
                 </div>
-              </div>
 
-              {/* ── Per-Level Timer Override ── */}
-              <div style={{
-                background: 'rgba(99,102,241,0.08)',
-                border: '1px solid rgba(99,102,241,0.2)',
-                borderRadius: '12px',
-                padding: '0.85rem 1rem',
-                marginBottom: '0.75rem',
-              }}>
-                <div style={{ marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    🎯 Per-Level Timer Overrides
-                  </span>
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                    Set individual countdown (minutes) per level — applies uniformly to ALL students.
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '0.75rem' }}>
                   {[1, 2, 3, 4].map((lvl) => (
-                    <div key={lvl} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-                      <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>L{lvl}</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                    <div
+                      key={lvl}
+                      style={{
+                        background: 'rgba(15,23,42,0.6)',
+                        border: '1px solid rgba(148,163,184,0.15)',
+                        borderRadius: '8px',
+                        padding: '0.6rem 0.75rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Level {lvl}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         <input
                           type="number"
                           min="1"
                           max="180"
                           className="form-input"
-                          style={{ width: '55px', textAlign: 'center', fontWeight: 700, padding: '4px 4px', fontSize: '0.85rem' }}
+                          style={{ width: '52px', textAlign: 'center', fontWeight: 700, padding: '4px 4px', fontSize: '0.85rem' }}
                           value={adminLevelTimerMins[lvl] ?? 15}
-                          onChange={(e) => setAdminLevelTimerMins((prev) => ({ ...prev, [lvl]: Math.max(1, Math.min(180, parseInt(e.target.value) || 1)) }))}
-                          title={`Timer for Level ${lvl} in minutes`}
+                          onChange={(e) => {
+                            const val = Math.max(1, Math.min(180, parseInt(e.target.value, 10) || 1));
+                            setAdminLevelTimerMins((prev) => ({ ...prev, [lvl]: val }));
+                          }}
+                          title={`Minutes for Level ${lvl}`}
                         />
-                        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>min</span>
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>m</span>
+                        <span style={{ color: '#64748b', fontWeight: 700 }}>:</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="59"
+                          className="form-input"
+                          style={{ width: '50px', textAlign: 'center', fontWeight: 700, padding: '4px 4px', fontSize: '0.85rem' }}
+                          value={adminLevelTimerSecs[lvl] ?? 0}
+                          onChange={(e) => {
+                            const val = Math.max(0, Math.min(59, parseInt(e.target.value, 10) || 0));
+                            setAdminLevelTimerSecs((prev) => ({ ...prev, [lvl]: val }));
+                          }}
+                          title={`Seconds for Level ${lvl}`}
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>s</span>
                       </div>
                     </div>
                   ))}

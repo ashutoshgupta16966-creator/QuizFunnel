@@ -230,7 +230,7 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack, 
       <div className="detail-metrics-grid">
         <div className="detail-metric-card">
           <span className="detail-metric-label">{isPractice ? 'Type' : 'Level Reached'}</span>
-          <span className="detail-metric-val">{isPractice ? 'Self-Practice' : `Level ${attemptDetail.clearedLvl} of 4`}</span>
+          <span className="detail-metric-val">{isPractice ? 'Self-Practice' : `Level ${attemptDetail.clearedLvl} of ${attemptDetail.totalLevels || (attemptDetail.levelsSummary?.length > 0 ? Math.max(...attemptDetail.levelsSummary.map(l => l.level)) : attemptDetail.clearedLvl || 1)}`}</span>
         </div>
         <div className="detail-metric-card">
           <span className="detail-metric-label">Total Score</span>

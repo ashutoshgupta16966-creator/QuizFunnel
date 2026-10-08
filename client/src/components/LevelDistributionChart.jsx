@@ -8,7 +8,7 @@ const LEVEL_COLORS = [
   { stroke: '#10B981', fill: 'rgba(16, 185, 129, 0.15)', label: 'Level 5', name: 'Master' },
 ];
 
-export default function LevelDistributionChart({ participants = [] }) {
+export default function LevelDistributionChart({ participants = [], maxLevel: maxLevelProp }) {
   const [hoveredIdx, setHoveredIdx] = useState(null);
 
   const totalStudents = participants.length;
@@ -16,8 +16,8 @@ export default function LevelDistributionChart({ participants = [] }) {
   const levelData = useMemo(() => {
     if (totalStudents === 0) return [];
 
-    // Find all distinct levels present, minimum 1 to 4
-    let maxLevel = 4;
+    // Find all distinct levels present, dynamically honoring maxLevelProp
+    let maxLevel = maxLevelProp || 1;
     participants.forEach((p) => {
       const lvl = parseInt(p.level, 10);
       if (!isNaN(lvl) && lvl > maxLevel) maxLevel = lvl;

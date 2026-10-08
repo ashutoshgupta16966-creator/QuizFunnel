@@ -202,6 +202,8 @@ export default function StudentAiPracticeModal({
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const [bulkGenIdx, setBulkGenIdx] = useState(null); // index currently being generated
   const [bulkGenErrors, setBulkGenErrors] = useState({}); // { [qIdx]: errorString }
+  const [editingPracticeIdxs, setEditingPracticeIdxs] = useState({});
+  const [confirmedPracticeIdxs, setConfirmedPracticeIdxs] = useState({});
 
   // Custom Timer Setup State (timer_setup step)
   const [timerMins, setTimerMins] = useState(30);
@@ -453,6 +455,8 @@ export default function StudentAiPracticeModal({
       setBulkGenErrors({});
       setTimerMins(30);
       setTimerSecs(0);
+      setEditingPracticeIdxs({});
+      setConfirmedPracticeIdxs({});
       // Reset anti-cheat state
       setTabSwitchCount(0);
       setShowAntiCheatModal(false);
@@ -523,6 +527,8 @@ export default function StudentAiPracticeModal({
         setSubject(res.data.subject || 'Self Practice Assessment');
         setUnit(res.data.unit || '');
         setQuestions(formattedQs);
+        setEditingPracticeIdxs({});
+        setConfirmedPracticeIdxs({});
         setAnswers({});
         setBookmarks({});
         setCurrentIndex(0);
@@ -658,10 +664,69 @@ export default function StudentAiPracticeModal({
   const handlePracticeCorrectAnswerChange = (qIdx, correctIdx) => {
     setQuestions((prev) => {
       const next = [...prev];
+      const cur = next[qIdx];
+      const selectedText = (cur.options && cur.options[correctIdx]) || '';
       next[qIdx] = {
-        ...next[qIdx],
+        ...cur,
         correctAnswerIndex: correctIdx,
+        directAnswer: selectedText || cur.directAnswer,
       };
+      return next;
+    });
+  };
+
+  const handleToggleEditPractice = (qIdx) => {
+    setEditingPracticeIdxs((prev) => ({
+      ...prev,
+      [qIdx]: !prev[qIdx],
+    }));
+  };
+
+  const handleConfirmPracticeAnswer = (qIdx) => {
+    const q = questions[qIdx];
+    if (!q) return;
+
+    if (q.questionType === 'direct') {
+      if (!q.directAnswer?.trim()) {
+        alert('Please specify a valid direct answer before confirming.');
+        return;
+      }
+    } else {
+      if (typeof q.correctAnswerIndex !== 'number' || q.correctAnswerIndex < 0 || q.correctAnswerIndex > 3) {
+        alert('Please select a designated correct option (A, B, C, or D).');
+        return;
+      }
+      const selectedText = (q.options && q.options[q.correctAnswerIndex]) || '';
+      if (!selectedText.trim()) {
+        alert(`Option ${['A', 'B', 'C', 'D'][q.correctAnswerIndex]} cannot be blank.`);
+        return;
+      }
+    }
+
+    setConfirmedPracticeIdxs((prev) => ({ ...prev, [qIdx]: true }));
+    setEditingPracticeIdxs((prev) => ({ ...prev, [qIdx]: false }));
+  };
+
+  const handlePracticeQuestionTextChange = (qIdx, text) => {
+    setQuestions((prev) => {
+      const next = [...prev];
+      next[qIdx] = { ...next[qIdx], questionText: text };
+      return next;
+    });
+  };
+
+  const handlePracticeDirectAnswerChange = (qIdx, val) => {
+    setQuestions((prev) => {
+      const next = [...prev];
+      next[qIdx] = { ...next[qIdx], directAnswer: val };
+      return next;
+    });
+  };
+
+  const handlePracticeLevelChange = (qIdx, lvl) => {
+    setQuestions((prev) => {
+      const next = [...prev];
+      next[qIdx] = { ...next[qIdx], level: parseInt(lvl, 10) || 1 };
       return next;
     });
   };
@@ -808,6 +873,7 @@ export default function StudentAiPracticeModal({
     // ── Dual Persistence: Save to LocalStorage & MongoDB ────────────────────
     const studentMobile = candidateMobile.trim();
     const studentName = candidateName.trim() || 'Student';
+    const calculatedTotalLevels = Math.max(...questions.map((q) => Number(q.level) || 1), 1);
 
     const attemptId = `practice_${studentMobile || 'guest'}_${Date.now()}`;
     const newRecord = {
@@ -816,7 +882,8 @@ export default function StudentAiPracticeModal({
       studentName,
       mobile: studentMobile,
       branch: candidateBranch,
-      levelReached: 1,
+      levelReached: calculatedTotalLevels,
+      totalLevels: calculatedTotalLevels,
       totalScore: score,
       maxPossible: totalQuestions,
       accuracyPct: accuracy,
@@ -857,6 +924,8 @@ export default function StudentAiPracticeModal({
           unit,
           score,
           totalQuestions,
+          totalLevels: calculatedTotalLevels,
+          levelReached: calculatedTotalLevels,
           accuracy,
           totalTimeTaken: elapsedSecs,
           practiceQuestions: questions,
@@ -1158,88 +1227,308 @@ export default function StudentAiPracticeModal({
               </span>
             </div>
 
-            {/* Masked Question List */}
+            {/* Questions Review & Edit List */}
             <div className="ai-review-questions-list" style={{ maxHeight: '42vh', overflowY: 'auto', paddingRight: '0.35rem' }}>
-              {questions.map((q, qIdx) => (
-                <div key={q.id || qIdx} className="ai-review-q-card" style={{ marginBottom: '0.85rem' }}>
-                  <div className="ai-review-q-header">
-                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                      <span className="q-num-pill">Q{qIdx + 1}</span>
-                      <span className={`ai-level-tag lvl-${q.level || 1}`}>Level {q.level || 1}</span>
-                      <span className="ai-section-tag">{q.questionType === 'direct' ? 'Direct / Numerical' : 'MCQ'}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => handleToggleSingleFormat(qIdx)}
-                        title="Toggle between MCQ and Direct answer"
-                        style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-                      >
-                        {q.questionType === 'direct' ? 'Switch to MCQ' : 'Switch to Direct'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-danger-subtle btn-sm"
-                        onClick={() => handleRemoveQuestion(qIdx)}
-                        title="Remove question"
-                        style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
+              {questions.map((q, qIdx) => {
+                const isEditing = Boolean(editingPracticeIdxs[qIdx]);
+                const isConfirmed = Boolean(confirmedPracticeIdxs[qIdx]);
+                const correctLetter = ['A', 'B', 'C', 'D'][q.correctAnswerIndex ?? 0];
+                const correctText = q.questionType === 'direct'
+                  ? (q.directAnswer || 'None set')
+                  : `${correctLetter}. ${(q.options && q.options[q.correctAnswerIndex]) || ''}`;
 
-                  <p className="ai-review-q-text" style={{ marginTop: '0.4rem', fontWeight: 600, color: '#f8fafc', fontSize: '0.9rem' }}>
-                    {q.questionText}
-                  </p>
+                return (
+                  <div
+                    key={q.id || qIdx}
+                    className="ai-review-q-card"
+                    style={{
+                      marginBottom: '0.85rem',
+                      border: isConfirmed ? '1px solid rgba(34,197,94,0.4)' : '1px solid rgba(139,92,246,0.25)',
+                      background: isConfirmed ? 'rgba(34,197,94,0.03)' : undefined,
+                      borderRadius: '10px',
+                      padding: '0.85rem 1rem',
+                    }}
+                  >
+                    <div className="ai-review-q-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span className="q-num-pill">Q{qIdx + 1}</span>
 
-                  {/* Answer Preview or Manual Options Setup */}
-                  {q.questionType === 'direct' ? (
-                    <div className="masked-anti-spoil-box">
-                      <div className="masked-hint">
-                        🔒 <strong>Direct / Numerical Entry:</strong> Type your exact answer during the test. Correct key is hidden.
+                        {/* Confirmation Badge */}
+                        {isConfirmed ? (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            background: 'rgba(34,197,94,0.2)',
+                            border: '1px solid rgba(34,197,94,0.4)',
+                            color: '#86efac',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                          }}>
+                            ✅ Confirmed
+                          </span>
+                        ) : (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            background: 'rgba(234,179,8,0.15)',
+                            border: '1px solid rgba(234,179,8,0.35)',
+                            color: '#fde047',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                          }}>
+                            ⏳ Pending Confirmation
+                          </span>
+                        )}
+
+                        <span className={`ai-level-tag lvl-${q.level || 1}`}>Level {q.level || 1}</span>
+                        <span className="ai-section-tag">{q.questionType === 'direct' ? 'Direct / Numerical' : 'MCQ'}</span>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleToggleEditPractice(qIdx)}
+                          title="Edit question text, options and designated answer"
+                          style={{ fontSize: '0.72rem', padding: '0.2rem 0.55rem' }}
+                        >
+                          {isEditing ? '👁️ View' : '✏️ Edit'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleToggleSingleFormat(qIdx)}
+                          title="Toggle between MCQ and Direct answer"
+                          style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                        >
+                          {q.questionType === 'direct' ? 'Switch to MCQ' : 'Switch to Direct'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-danger-subtle btn-sm"
+                          onClick={() => handleRemoveQuestion(qIdx)}
+                          title="Remove question"
+                          style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                        >
+                          ✕
+                        </button>
                       </div>
                     </div>
-                  ) : q.optionMode === 'manual' ? (
-                    <div className="ai-manual-options-container" style={{ marginTop: '0.65rem' }}>
-                      <span className="ai-options-label" style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem' }}>
-                        ✏️ Custom Options (click radio to select designated correct answer):
-                      </span>
-                      {['A', 'B', 'C', 'D'].map((letter, optIdx) => (
-                        <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`} style={{ marginBottom: '0.35rem' }}>
-                          <label className="ai-correct-radio-label" title={`Mark Option ${letter} as correct`}>
-                            <input
-                              type="radio"
-                              name={`practice_correct_${qIdx}`}
-                              checked={q.correctAnswerIndex === optIdx}
-                              onChange={() => handlePracticeCorrectAnswerChange(qIdx, optIdx)}
-                            />
-                            <span className="ai-opt-letter">{letter}</span>
-                          </label>
-                          <input
-                            type="text"
-                            className="form-input ai-opt-input"
-                            value={(q.options && q.options[optIdx]) || ''}
-                            onChange={(e) => handlePracticeOptionChange(qIdx, optIdx, e.target.value)}
-                            placeholder={`Option ${letter}`}
-                            style={{ fontSize: '0.82rem', padding: '4px 6px' }}
+
+                    {/* EDIT MODE */}
+                    {isEditing ? (
+                      <div style={{ marginTop: '0.75rem' }}>
+                        <div className="form-group" style={{ marginBottom: '0.65rem' }}>
+                          <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Question Text</label>
+                          <textarea
+                            className="form-input"
+                            rows={2}
+                            value={q.questionText}
+                            onChange={(e) => handlePracticeQuestionTextChange(qIdx, e.target.value)}
+                            placeholder="Enter question text..."
+                            style={{ fontSize: '0.85rem' }}
                           />
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="masked-anti-spoil-box">
-                      <div className="masked-options-grid">
-                        <div className="masked-option-pill">Option A: 🔒 Hidden (Choices revealed during test)</div>
-                        <div className="masked-option-pill">Option B: 🔒 Hidden</div>
-                        <div className="masked-option-pill">Option C: 🔒 Hidden</div>
-                        <div className="masked-option-pill">Option D: 🔒 Hidden</div>
+
+                        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginBottom: '0.65rem' }}>
+                          <label style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>Level:</label>
+                          <select
+                            className="form-input"
+                            value={q.level || 1}
+                            onChange={(e) => handlePracticeLevelChange(qIdx, e.target.value)}
+                            style={{ width: '100px', fontSize: '0.8rem', padding: '3px 6px' }}
+                          >
+                            <option value={1}>Level 1</option>
+                            <option value={2}>Level 2</option>
+                            <option value={3}>Level 3</option>
+                            <option value={4}>Level 4</option>
+                          </select>
+                        </div>
+
+                        {q.questionType === 'direct' ? (
+                          <div style={{ marginBottom: '0.65rem' }}>
+                            <label className="form-label" style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                              Designated Direct Answer:
+                            </label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={q.directAnswer || ''}
+                              onChange={(e) => handlePracticeDirectAnswerChange(qIdx, e.target.value)}
+                              placeholder="e.g. 42, O(n), Mitochondria, True"
+                              style={{ fontSize: '0.85rem' }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="ai-manual-options-container" style={{ marginTop: '0.5rem', marginBottom: '0.65rem' }}>
+                            <span className="ai-options-label" style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: '0.4rem' }}>
+                              Options (click radio to select designated correct answer):
+                            </span>
+                            {['A', 'B', 'C', 'D'].map((letter, optIdx) => (
+                              <div key={optIdx} className={`ai-option-input-row ${q.correctAnswerIndex === optIdx ? 'is-correct-row' : ''}`} style={{ marginBottom: '0.35rem' }}>
+                                <label className="ai-correct-radio-label" title={`Mark Option ${letter} as correct`}>
+                                  <input
+                                    type="radio"
+                                    name={`practice_correct_edit_${qIdx}`}
+                                    checked={q.correctAnswerIndex === optIdx}
+                                    onChange={() => handlePracticeCorrectAnswerChange(qIdx, optIdx)}
+                                  />
+                                  <span className="ai-opt-letter">{letter}</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  className="form-input ai-opt-input"
+                                  value={(q.options && q.options[optIdx]) || ''}
+                                  onChange={(e) => handlePracticeOptionChange(qIdx, optIdx, e.target.value)}
+                                  placeholder={`Option ${letter}`}
+                                  style={{ fontSize: '0.82rem', padding: '4px 6px' }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.65rem' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleToggleEditPractice(qIdx)}
+                          >
+                            Close Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            style={{
+                              background: '#16a34a',
+                              borderColor: '#15803d',
+                              color: '#fff',
+                              fontWeight: 700,
+                              padding: '0.35rem 0.95rem',
+                            }}
+                            onClick={() => handleConfirmPracticeAnswer(qIdx)}
+                          >
+                            ✅ Confirm Answer
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    ) : (
+                      /* LOCKED REVIEW MODE */
+                      <div style={{ marginTop: '0.65rem' }}>
+                        <p className="ai-review-q-text" style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.9rem', marginBottom: '0.65rem', lineHeight: 1.45 }}>
+                          {q.questionText}
+                        </p>
+
+                        {q.questionType === 'direct' ? (
+                          <div style={{
+                            background: 'rgba(34,197,94,0.08)',
+                            border: '1px solid rgba(34,197,94,0.3)',
+                            borderRadius: '8px',
+                            padding: '0.55rem 0.85rem',
+                            fontSize: '0.82rem',
+                            color: '#86efac',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            marginBottom: '0.65rem',
+                          }}>
+                            <span>🎯</span>
+                            <span>Designated Direct Answer: <strong>{q.directAnswer || <span style={{ color: '#ef4444' }}>Not specified</span>}</strong></span>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.45rem', marginBottom: '0.65rem' }}>
+                            {['A', 'B', 'C', 'D'].map((letter, optIdx) => {
+                              const isTarget = q.correctAnswerIndex === optIdx;
+                              const optVal = (q.options && q.options[optIdx]) || '';
+                              return (
+                                <div
+                                  key={optIdx}
+                                  style={{
+                                    padding: '0.45rem 0.65rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.8rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    background: isTarget ? 'rgba(34,197,94,0.14)' : 'rgba(15,23,42,0.4)',
+                                    border: isTarget ? '1px solid rgba(34,197,94,0.45)' : '1px solid rgba(148,163,184,0.15)',
+                                    color: isTarget ? '#86efac' : '#cbd5e1',
+                                    fontWeight: isTarget ? 700 : 400,
+                                  }}
+                                >
+                                  <span style={{
+                                    fontWeight: 800,
+                                    color: isTarget ? '#4ade80' : '#94a3b8',
+                                    fontSize: '0.75rem',
+                                  }}>
+                                    {letter}.
+                                  </span>
+                                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {optVal || <span style={{ color: '#ef4444' }}>(blank)</span>}
+                                  </span>
+                                  {isTarget && <span>✅</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Confirmed Banner */}
+                        {isConfirmed && (
+                          <div style={{
+                            marginTop: '0.45rem',
+                            padding: '0.4rem 0.75rem',
+                            background: 'rgba(34,197,94,0.12)',
+                            border: '1px solid rgba(34,197,94,0.35)',
+                            borderRadius: '6px',
+                            fontSize: '0.8rem',
+                            color: '#86efac',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.45rem',
+                          }}>
+                            <span>✅</span>
+                            <span>Confirmed Answer: <strong>{correctText}</strong></span>
+                          </div>
+                        )}
+
+                        {/* Actions */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.65rem' }}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary"
+                            style={{ fontSize: '0.75rem', padding: '0.25rem 0.7rem' }}
+                            onClick={() => handleToggleEditPractice(qIdx)}
+                          >
+                            ✏️ Edit Question &amp; Answer
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '0.25rem 0.8rem',
+                              background: isConfirmed ? 'rgba(34,197,94,0.2)' : '#16a34a',
+                              borderColor: '#15803d',
+                              color: '#fff',
+                              fontWeight: 700,
+                            }}
+                            onClick={() => handleConfirmPracticeAnswer(qIdx)}
+                          >
+                            {isConfirmed ? '✅ Confirmed' : '✅ Confirm Answer'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Bulk AI generation progress banner */}

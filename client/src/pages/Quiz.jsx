@@ -312,6 +312,8 @@ export default function Quiz() {
 
       const { questions: qs, startedAt: sAt, subject: resSub, unit: resUn, customTimeSeconds: resCustomTime, timeSeconds: resTime, totalLevels: apiTotalLevels } = resData.data;
       setQuestions(qs);
+      setAnswers({});
+      setCurrentIndex(0);
       if (resSub) setQuizSubject(resSub);
       if (resUn) setQuizUnit(resUn);
       // Set dynamic total levels from API if provided (overrides config default)
@@ -461,8 +463,12 @@ export default function Quiz() {
         });
       }
 
-      if (result.passed && result.nextLevel && !isDisqualified) {
-        navigate('/level-up');
+      if (result.nextLevel && !isDisqualified) {
+        hasSubmitted.current = false;
+        setSubmitting(false);
+        setAnswers({});
+        setCurrentIndex(0);
+        navigate(`/quiz/${result.nextLevel}`);
       } else {
         navigate('/results');
       }

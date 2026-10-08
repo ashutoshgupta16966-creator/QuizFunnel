@@ -115,16 +115,30 @@ function ResultsContent() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Guard: if there's no student in context at all, go home
+  // Guard: if there's no student in context at all, go home.
+  // FIX 1: Lock student into quiz until ALL levels are complete.
   useEffect(() => {
     if (!student) {
       navigate('/');
+      return;
     }
-  }, [student, navigate]);
+    const isCompleted = student.status === 'completed';
+    const isDisqualified = student.status === 'disqualified' || lastResult?.isDisqualified;
+    if (!isCompleted && !isDisqualified) {
+      // Still in progress — redirect back to active quiz level
+      const targetLevel = student.currentLevel || 1;
+      navigate(`/quiz/${targetLevel}`);
+    }
+  }, [student, lastResult, navigate]);
 
+  const totalLevels = Number(
+    lastResult?.totalLevels ||
+    student?.totalLevels ||
+    (Array.isArray(student?.levels) && student.levels.length > 0 ? Math.max(...student.levels.map((l) => l.level || 1)) : 1)
+  );
   const levelNum = Number(lastResult?.level || student?.currentLevel || 1);
   const clearedLevel = isCompleted
-    ? (lastResult?.level || student?.currentLevel || (Array.isArray(student?.levels) && student.levels.length > 0 ? student.levels[student.levels.length - 1]?.level : (lastResult?.totalLevels || 4)))
+    ? (lastResult?.level || student?.currentLevel || (Array.isArray(student?.levels) && student.levels.length > 0 ? student.levels[student.levels.length - 1]?.level : totalLevels))
     : (levelNum > 0 ? levelNum : 1);
   const levelConfig = LEVELS[clearedLevel] || LEVELS[1];
 
@@ -149,9 +163,8 @@ function ResultsContent() {
     lastResult?.quizTotalQuestions ||
     lastResult?.maxPossible ||
     student?.maxPossible ||
-    (isCompleted ? (lastResult?.quizTotalQuestions || attemptedQuestionsCount || 50) : attemptedQuestionsCount) ||
-    CUMULATIVE_MAX[clearedLevel] ||
-    50
+    attemptedQuestionsCount ||
+    total
   );
   const accuracyPct = maxPossible > 0
     ? Math.min(100, Math.max(0, Math.round(((totalScore || 0) / maxPossible) * 100)))
@@ -306,14 +319,14 @@ function ResultsContent() {
         <div className="results-icon win-trophy-pop" role="img" aria-label="Trophy">🏆</div>
         <h1 className="results-title completed win-title-glow">Congratulations! You completed the quiz</h1>
         <p className="results-message">
-          Exceptional performance, <strong>{student.name || 'Champion'}</strong>! You cleared all {clearedLevel} level{clearedLevel > 1 ? 's' : ''} of the Quiz Funnel.
+          Exceptional performance, <strong>{student.name || 'Champion'}</strong>! You cleared all {totalLevels} level{totalLevels > 1 ? 's' : ''} of the Quiz Funnel.
           Your score has been registered for the final leaderboard rankings.
         </p>
 
         <div className="score-card win-score-card">
           <p className="score-card-title">🏆 Champion Performance Summary</p>
           <div className="score-row">
-            <span className="score-label">Level {clearedLevel} Final Score</span>
+            <span className="score-label">{totalLevels > 1 ? `Level ${clearedLevel} Final Score` : 'Final Quiz Score'}</span>
             <span className="score-value">{score} / {total}</span>
           </div>
           <div className="score-row">
@@ -371,9 +384,9 @@ function ResultsContent() {
       </p>
 
       <div className="score-card">
-        <p className="score-card-title">Performance Summary — Level {clearedLevel}</p>
+        <p className="score-card-title">Performance Summary — {totalLevels > 1 ? `Level ${clearedLevel} of ${totalLevels}` : 'Quiz Attempt'}</p>
         <div className="score-row">
-          <span className="score-label">Level {clearedLevel} Score</span>
+          <span className="score-label">{totalLevels > 1 ? `Level ${clearedLevel} Score` : 'Quiz Score'}</span>
           <span className="score-value">{score} / {total}</span>
         </div>
         <div className="score-row">

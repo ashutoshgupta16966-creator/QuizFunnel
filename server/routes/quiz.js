@@ -138,17 +138,29 @@ router.get('/questions/:level', async (req, res, next) => {
         : LEVELS[level].cutoff;
 
       const configTotalLvls = Math.max(...Object.keys(LEVELS).map(Number));
-      const resumedTotalLevels = (activeRoom?.maxLevel && activeRoom.maxLevel >= 1)
+      let resumedTotalLevels = (activeRoom?.maxLevel && activeRoom.maxLevel >= 1)
         ? activeRoom.maxLevel
         : configTotalLvls;
+      if (activeRoom && Array.isArray(activeRoom.questions) && activeRoom.questions.length > 0) {
+        const maxQ = Math.max(...activeRoom.questions.map((q) => q.level || 1), 1);
+        resumedTotalLevels = Math.min(resumedTotalLevels, maxQ);
+      }
+
+      // Single source of truth for timer: level-wise timer from room configuration
+      const resumedLevelTimer = Array.isArray(activeRoom?.levelTimers)
+        ? activeRoom.levelTimers.find((t) => t.level === level)
+        : null;
+      const resumedTimeSeconds = (resumedLevelTimer && resumedLevelTimer.seconds > 0)
+        ? resumedLevelTimer.seconds
+        : (activeRoom?.customTimeSeconds || LEVELS[level].timeSeconds);
 
       return res.json({
         success: true,
         data: {
           questions: clientQuestions,
           level,
-          timeSeconds: activeRoom?.customTimeSeconds || LEVELS[level].timeSeconds,
-          customTimeSeconds: activeRoom?.customTimeSeconds || 0,
+          timeSeconds: resumedTimeSeconds,
+          customTimeSeconds: resumedTimeSeconds,
           cutoff: resumedCutoff,
           subject: roomSubject,
           unit: roomUnit,
@@ -297,17 +309,29 @@ router.get('/questions/:level', async (req, res, next) => {
 
     // Dynamic total level count: from room config or LEVELS config keys
     const configTotalLevels = Math.max(...Object.keys(LEVELS).map(Number));
-    const totalLevels = (activeRoom?.maxLevel && activeRoom.maxLevel >= 1)
+    let totalLevels = (activeRoom?.maxLevel && activeRoom.maxLevel >= 1)
       ? activeRoom.maxLevel
       : configTotalLevels;
+    if (activeRoom && Array.isArray(activeRoom.questions) && activeRoom.questions.length > 0) {
+      const maxQ = Math.max(...activeRoom.questions.map((q) => q.level || 1), 1);
+      totalLevels = Math.min(totalLevels, maxQ);
+    }
+
+    // Single source of truth for timer: level-wise timer from room configuration
+    const activeLevelTimer = Array.isArray(activeRoom?.levelTimers)
+      ? activeRoom.levelTimers.find((t) => t.level === level)
+      : null;
+    const resolvedTimeSeconds = (activeLevelTimer && activeLevelTimer.seconds > 0)
+      ? activeLevelTimer.seconds
+      : (activeRoom?.customTimeSeconds || levelConfig.timeSeconds);
 
     res.json({
       success: true,
       data: {
         questions: clientQuestions,
         level,
-        timeSeconds: activeRoom?.customTimeSeconds || levelConfig.timeSeconds,
-        customTimeSeconds: activeRoom?.customTimeSeconds || 0,
+        timeSeconds: resolvedTimeSeconds,
+        customTimeSeconds: resolvedTimeSeconds,
         cutoff: effectiveCutoff,
         subject: roomSubject,
         unit: roomUnit,
@@ -483,36 +507,23 @@ router.post('/submit', async (req, res, next) => {
         roomDoc = await Room.findOne({ roomCode: normalizedRoomCode }).select('maxLevel questions progressionMode').lean();
         if (roomDoc) {
           const embeddedQs = Array.isArray(roomDoc.questions) ? roomDoc.questions : [];
+          let maxRoomQLevel = embeddedQs.length > 0 ? Math.max(...embeddedQs.map((q) => q.level || 1), 1) : 0;
 
-          // Use the room's explicit maxLevel as the authoritative source.
-          // Fall back to deriving from question data ONLY if maxLevel is missing/unset.
-          if (roomDoc.maxLevel && roomDoc.maxLevel >= 1 && roomDoc.maxLevel <= TOTAL_LEVELS) {
-            effectiveMaxLevel = roomDoc.maxLevel;
-          } else if (embeddedQs.length > 0) {
-            // Secondary: derive from question levels (kept as legacy fallback)
-            effectiveMaxLevel = Math.min(TOTAL_LEVELS, Math.max(...embeddedQs.map((q) => q.level || 1), 1));
+          if (maxRoomQLevel === 0) {
+            const roomQs = await Question.find({ roomCode: normalizedRoomCode }).select('level').lean();
+            if (roomQs.length > 0) {
+              maxRoomQLevel = Math.max(...roomQs.map((q) => q.level || 1), 1);
+            }
           }
 
-          // Primary termination: did we reach the configured max level?
+          if (roomDoc.maxLevel && roomDoc.maxLevel >= 1) {
+            effectiveMaxLevel = maxRoomQLevel > 0 ? Math.min(roomDoc.maxLevel, maxRoomQLevel) : roomDoc.maxLevel;
+          } else if (maxRoomQLevel > 0) {
+            effectiveMaxLevel = Math.min(TOTAL_LEVELS, maxRoomQLevel);
+          }
+
           if (level >= effectiveMaxLevel) {
             isLastLevel = true;
-          } else {
-            // Secondary: if there genuinely are no more questions at level+1 AND no embedded ones,
-            // only then treat this as the last level. This handles edge cases where a room
-            // was intentionally created with fewer levels than maxLevel implies.
-            const nextLevelQs = await Question.find({ roomCode: normalizedRoomCode, level: level + 1 }).lean();
-            const unattemptedNextQs = nextLevelQs; // All next-level Qs count, no filtering needed
-            const embeddedNextQs = embeddedQs.filter((q) => (q.level || 1) === level + 1);
-
-            // Only force isLastLevel if BOTH sources have zero Level N+1 questions AND
-            // the room was clearly not set up to have more levels (maxLevel === level).
-            // When maxLevel > level, trust the maxLevel even with no next-level questions
-            // so the student still advances (they'll see an empty level or skip gracefully).
-            if (unattemptedNextQs.length === 0 && embeddedNextQs.length === 0 && effectiveMaxLevel <= level + 1) {
-              isLastLevel = true;
-            }
-            // If maxLevel > level+1 but no questions exist, leave isLastLevel=false
-            // so progression continues — getQuestions endpoint will handle empty level gracefully.
           }
         }
       } catch (rErr) {
@@ -525,13 +536,10 @@ router.post('/submit', async (req, res, next) => {
       ? Math.max(1, Math.ceil(sessionCount * 0.7))
       : levelConfig.cutoff;
 
-    // Cutoff check: Levels with cutoff 0 (like final round) have no cutoff requirement. Other levels require meeting dynamicCutoff unless open_attempt mode is active.
-    let passed = isDisqualified ? false : (levelConfig?.cutoff === 0 ? true : score >= dynamicCutoff);
-
-    // Open Attempt Mode: Unconditionally allow progression/completion across all levels
-    if (roomDoc?.progressionMode === 'open_attempt' && !isDisqualified) {
-      passed = true;
-    }
+    // FIX 1 & 3: Continuous Sequential Progression through ALL levels.
+    // Results screen must only appear after ALL levels are complete.
+    // Students advance continuously without mid-quiz elimination.
+    const passed = !isDisqualified;
 
     let newStatus, newCurrentLevel;
     let completedAt;
@@ -539,16 +547,13 @@ router.post('/submit', async (req, res, next) => {
     if (isDisqualified) {
       newStatus = 'disqualified';
       newCurrentLevel = student.currentLevel;
-    } else if (isLastLevel && passed) {
+    } else if (isLastLevel) {
       newStatus = 'completed';
       newCurrentLevel = level;
       completedAt = new Date();
-    } else if (passed) {
+    } else {
       newStatus = 'advanced';
       newCurrentLevel = level + 1;
-    } else {
-      newStatus = 'eliminated';
-      newCurrentLevel = student.currentLevel;
     }
 
     const elapsed = Number.isFinite(timeTaken) ? timeTaken : levelConfig.timeSeconds;

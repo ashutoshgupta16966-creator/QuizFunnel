@@ -342,6 +342,9 @@ export default function RoomAdminDashboard() {
       });
   }, [participants, filterStatus, searchQuery]);
 
+  const maxRoomLevel = room?.maxLevel || (Array.isArray(room?.questions) && room.questions.length > 0 ? Math.max(...room.questions.map((q) => q.level || 1), 1) : 4);
+  const availableRoomLevels = Array.from({ length: maxRoomLevel }, (_, i) => i + 1);
+
   return (
     <div className="admin-room-dashboard-page">
       {/* Top Navbar */}
@@ -610,7 +613,7 @@ export default function RoomAdminDashboard() {
             )}
 
             {/* ── Level Distribution Pie Chart ── */}
-            <LevelDistributionChart participants={participants} />
+            <LevelDistributionChart participants={participants} maxLevel={maxRoomLevel} />
 
             {/* ── Control Action Strip ── */}
             <div className="dashboard-control-strip">
@@ -880,7 +883,7 @@ export default function RoomAdminDashboard() {
                                           </tr>
                                         </thead>
                                         <tbody>
-                                          {[1, 2, 3, 4].map((lvlNum) => {
+                                          {availableRoomLevels.map((lvlNum) => {
                                             const lvlData = studentLevels.find((l) => l.level === lvlNum);
                                             const isCurrentPlaying =
                                               !isPreviousView &&

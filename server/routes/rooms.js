@@ -52,8 +52,6 @@ router.post('/create', async (req, res, next) => {
       });
     }
 
-    const roomCustomTime = req.body.customTimeSeconds ? Math.max(0, parseInt(req.body.customTimeSeconds, 10)) : 0;
-
     // Parse per-level timer overrides: [{ level, seconds }, ...]
     let roomLevelTimers = [];
     if (Array.isArray(req.body.levelTimers)) {
@@ -61,6 +59,12 @@ router.post('/create', async (req, res, next) => {
         .filter((t) => t && typeof t.level === 'number' && typeof t.seconds === 'number')
         .map((t) => ({ level: Math.min(4, Math.max(1, t.level)), seconds: Math.max(0, t.seconds) }));
     }
+
+    const targetMaxLevel = req.body.maxLevel
+      ? Math.min(4, Math.max(1, parseInt(req.body.maxLevel, 10)))
+      : (roomLevelTimers.length > 0 ? roomLevelTimers.length : 4);
+
+    const roomCustomTime = roomLevelTimers[0]?.seconds || (req.body.customTimeSeconds ? Math.max(0, parseInt(req.body.customTimeSeconds, 10)) : 0);
 
     const room = await Room.create({
       roomCode: normalizedCode,
@@ -71,7 +75,7 @@ router.post('/create', async (req, res, next) => {
       maxCapacity: 60,
       status: 'active',
       progressionMode: req.body.progressionMode === 'open_attempt' ? 'open_attempt' : 'level_gated',
-      maxLevel: req.body.maxLevel ? Math.min(4, Math.max(1, parseInt(req.body.maxLevel, 10))) : 4,
+      maxLevel: targetMaxLevel,
       customTimeSeconds: roomCustomTime,
       levelTimers: roomLevelTimers,
       participants: [],
@@ -307,19 +311,20 @@ router.post('/create-ai', async (req, res, next) => {
 
     // Insert questions strictly isolated to this room
     const inserted = await Question.insertMany(questionDocs);
-    // maxLevel: default to 4 (all 4 levels) for AI rooms so progression works even when
-    // all extracted questions happen to be Level 1. Admin can override via req.body.maxLevel.
+    // FIX 3: Dynamic level count based on actual questions extracted/provided
+    const maxQuestionLevel = questionDocs.length > 0 ? Math.max(...questionDocs.map((q) => q.level || 1), 1) : 1;
     const explicitMaxLevel = req.body.maxLevel ? Math.min(4, Math.max(1, parseInt(req.body.maxLevel, 10))) : null;
-    const calculatedMaxLevel = explicitMaxLevel || 4;
-    const roomCustomTime = parseInt(req.body.customTimeSeconds, 10) || 0;
+    const calculatedMaxLevel = explicitMaxLevel ? Math.min(explicitMaxLevel, maxQuestionLevel) : maxQuestionLevel;
 
     // Parse per-level timer overrides: [{ level, seconds }, ...]
     let roomLevelTimers = [];
     if (Array.isArray(req.body.levelTimers)) {
       roomLevelTimers = req.body.levelTimers
-        .filter((t) => t && typeof t.level === 'number' && typeof t.seconds === 'number')
-        .map((t) => ({ level: Math.min(4, Math.max(1, t.level)), seconds: Math.max(0, t.seconds) }));
+        .filter((t) => t && typeof t.level === 'number' && typeof t.seconds === 'number' && t.level <= calculatedMaxLevel)
+        .map((t) => ({ level: Math.min(calculatedMaxLevel, Math.max(1, t.level)), seconds: Math.max(0, t.seconds) }));
     }
+
+    const roomCustomTime = roomLevelTimers[0]?.seconds || parseInt(req.body.customTimeSeconds, 10) || 0;
 
     const room = await Room.create({
       roomCode: normalizedCode,
@@ -1555,6 +1560,13 @@ router.get('/:roomCode/questions', async (req, res, next) => {
       ).catch((e) => console.warn('[syncSession Error]:', e.message));
     }
 
+    const activeLevelTimer = Array.isArray(room.levelTimers)
+      ? room.levelTimers.find((t) => t.level === targetLevel)
+      : null;
+    const resolvedTimer = (activeLevelTimer && activeLevelTimer.seconds > 0)
+      ? activeLevelTimer.seconds
+      : (room.customTimeSeconds || 0);
+
     res.json({
       success: true,
       data: {
@@ -1563,7 +1575,8 @@ router.get('/:roomCode/questions', async (req, res, next) => {
         subject: room.subject || '',
         unit: room.unit || '',
         isAiGenerated: Boolean(room.isAiGenerated),
-        customTimeSeconds: room.customTimeSeconds || 0,
+        timeSeconds: resolvedTimer,
+        customTimeSeconds: resolvedTimer,
         totalLevels: maxLvl,
         questions: clientQuestions,
         total: clientQuestions.length,
