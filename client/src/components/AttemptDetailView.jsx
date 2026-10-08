@@ -34,14 +34,21 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack, 
   useEffect(() => {
     if (!mobile) return;
     let isMounted = true;
+    let retryTimer = null;
 
-    const loadReview = async () => {
+    const loadReview = async (isRetry = false) => {
       try {
-        setReviewLoading(true);
+        if (!isRetry) setReviewLoading(true);
         setReviewError('');
         const res = await getQuizReview(mobile);
+        const data = res.data.data || [];
         if (isMounted) {
-          setReviewData(res.data.data || []);
+          setReviewData(data);
+          if (!isRetry && data.length === 0) {
+            retryTimer = setTimeout(() => {
+              if (isMounted) loadReview(true);
+            }, 2000);
+          }
         }
       } catch (err) {
         if (isMounted) {
@@ -53,7 +60,10 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack, 
     };
 
     loadReview();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [mobile]);
 
   // ── Feedback State (Immutable) ───────────────────────────────────────────
@@ -110,13 +120,10 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack, 
   const isRoomAttempt = Boolean(attemptDetail.isRoom || attemptDetail.quizType === 'room');
   const roomCode = attemptDetail.roomCode || '';
 
-  // Map review data by level for fast lookup (filtering only attempted questions)
+  // Map review data by level for fast lookup
   const reviewMapByLevel = {};
   reviewData.forEach((lvl) => {
-    const attemptedQs = (lvl.questions || []).filter(
-      (q) => !q.isUnattempted && q.selectedOptionIndex !== null && q.selectedOptionIndex !== undefined && q.selectedOptionIndex !== -1
-    );
-    reviewMapByLevel[lvl.level] = attemptedQs;
+    reviewMapByLevel[lvl.level] = lvl.questions || [];
   });
 
   // For practice attempts: inject practice questions directly into level 1 of the review map

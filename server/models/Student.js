@@ -10,6 +10,8 @@ const AnswerSchema = new mongoose.Schema({
   questionId:    { type: mongoose.Schema.Types.Mixed },
   questionType:  { type: String, enum: ['mcq', 'direct'], default: 'mcq' },
   selectedIndex: Number,
+  originalIndex: Number,
+  selectedText:  { type: String, default: '' },
   directAnswer:  { type: String, default: '' },
   shuffleMap:    [Number],
   isCorrect:     Boolean,

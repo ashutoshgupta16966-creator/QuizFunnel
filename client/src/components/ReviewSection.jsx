@@ -11,14 +11,23 @@ export default function ReviewSection({ mobile, totalQuestions }) {
   useEffect(() => {
     if (!mobile) return;
     let isMounted = true;
+    let retryTimer = null;
 
-    const fetchReview = async () => {
+    const fetchReview = async (isRetry = false) => {
       try {
-        setLoading(true);
+        if (!isRetry) setLoading(true);
         setError('');
         const res = await getQuizReview(mobile);
+        const data = res.data.data || [];
         if (isMounted) {
-          setReviewData(res.data.data || []);
+          setReviewData(data);
+          // If first fetch returned no data (possible race: submit DB write still in progress),
+          // schedule one retry after 2 seconds.
+          if (!isRetry && data.length === 0) {
+            retryTimer = setTimeout(() => {
+              if (isMounted) fetchReview(true);
+            }, 2000);
+          }
         }
       } catch (err) {
         if (isMounted) {
@@ -29,34 +38,49 @@ export default function ReviewSection({ mobile, totalQuestions }) {
       }
     };
 
-    fetchReview();
-    return () => { isMounted = false; };
+    // Small initial delay: the Results page renders immediately after navigation from /submit,
+    // but the MongoDB write (Student.updateOne) may not yet be fully persisted.
+    // A 1-second delay ensures the review endpoint reads the committed data.
+    const initialTimer = setTimeout(() => {
+      if (isMounted) fetchReview();
+    }, 1000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(initialTimer);
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [mobile]);
 
   if (!mobile) return null;
 
-  // Filter out unattempted questions and unreached levels with 0 attempted questions
-  const attemptedLevels = (reviewData || [])
-    .map((lvl) => ({
-      ...lvl,
-      questions: (lvl.questions || []).filter(
-        (q) => !q.isUnattempted && q.selectedOptionIndex !== null && q.selectedOptionIndex !== undefined && q.selectedOptionIndex !== -1
-      ),
-    }))
-    .filter((lvl) => lvl.questions.length > 0);
+  // Only include levels that actually have questions recorded for this candidate
+  const attemptedLevels = (reviewData || []).filter(
+    (lvl) => Array.isArray(lvl.questions) && lvl.questions.length > 0
+  );
 
   const filteredLevels = activeLevelTab === 'all'
     ? attemptedLevels
     : attemptedLevels.filter((l) => l.level === Number(activeLevelTab));
 
   const allQuestions = attemptedLevels.flatMap((lvl) =>
-    lvl.questions.map((q) => ({ ...q, levelNum: lvl.level }))
+    (lvl.questions || []).map((q) => ({ ...q, levelNum: lvl.level }))
   );
 
-  const totalAttempted = allQuestions.length;
+  const isQuestionAttempted = (q) => {
+    if (q.questionType === 'direct') {
+      return Boolean(q.directUserAnswer || q.selectedOptionText);
+    }
+    return !q.isUnattempted && (
+      (q.selectedOptionIndex !== null && q.selectedOptionIndex !== undefined && q.selectedOptionIndex !== -1) ||
+      Boolean(q.selectedOptionText)
+    );
+  };
+
+  const totalAttempted = allQuestions.filter(isQuestionAttempted).length;
   const totalCorrect = allQuestions.filter((q) => q.isCorrect).length;
-  const totalIncorrect = allQuestions.filter((q) => !q.isCorrect).length;
-  const overallTotal = Number(totalQuestions) > 0 ? Number(totalQuestions) : totalAttempted;
+  const totalIncorrect = allQuestions.filter((q) => !q.isCorrect && isQuestionAttempted(q)).length;
+  const overallTotal = Number(totalQuestions) > 0 ? Number(totalQuestions) : allQuestions.length;
 
   return (
     <div className="review-section-wrapper">
@@ -191,46 +215,73 @@ export default function ReviewSection({ mobile, totalQuestions }) {
                         {/* Question Text */}
                         <p className="review-q-text">{q.questionText || 'Question'}</p>
 
-                        {/* 4 Options Grid */}
-                        <div className="review-options-grid">
-                          {(q.options || []).map((optText, optIdx) => {
-                            const cleanNorm = (str) => String(str || '').toLowerCase().replace(/^([a-d1-4][.:)]|\([a-d1-4]\))\s*/i, '').trim();
-                            const isMatchByText = Boolean(q.selectedOptionText && optText && cleanNorm(optText) === cleanNorm(q.selectedOptionText));
-                            const isChosenOpt = optIdx === q.selectedOptionIndex || isMatchByText;
-
-                            const isCorrectByText = Boolean(q.correctAnswerText && optText && cleanNorm(optText) === cleanNorm(q.correctAnswerText));
-                            const isCorrectOpt = optIdx === q.correctAnswerIndex || isCorrectByText;
-
-                            let optionStateClass = 'option-neutral';
-                            let badgeLabel = null;
-
-                            if (isCorrectOpt && isChosenOpt) {
-                              optionStateClass = 'option-correct-chosen';
-                              badgeLabel = '✅ Your Answer (Correct)';
-                            } else if (isCorrectOpt) {
-                              optionStateClass = 'option-correct-answer';
-                              badgeLabel = '✅ Correct Answer';
-                            } else if (isChosenOpt) {
-                              optionStateClass = 'option-wrong-chosen';
-                              badgeLabel = '❌ Your Choice (Incorrect)';
-                            }
-
-                            return (
-                              <div
-                                key={optIdx}
-                                className={`review-option-item ${optionStateClass}`}
-                              >
-                                <span className="option-prefix">
-                                  {String.fromCharCode(65 + optIdx)}.
-                                </span>
-                                <span className="option-content-text">{optText}</span>
-                                {badgeLabel && (
-                                  <span className="option-indicator-tag">{badgeLabel}</span>
-                                )}
+                        {/* Options Grid (MCQ) or Direct Answer Display */}
+                        {q.questionType === 'direct' ? (
+                          <div className="review-direct-answer-block" style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.86rem' }}>
+                            <div>
+                              <strong style={{ color: '#94a3b8' }}>Your Answer: </strong>
+                              <span style={{ color: q.isCorrect ? '#34d399' : (q.isUnattempted ? '#94a3b8' : '#f87171') }}>
+                                {q.directUserAnswer || q.selectedOptionText || '(not answered)'}
+                              </span>
+                            </div>
+                            {!q.isCorrect && (
+                              <div>
+                                <strong style={{ color: '#34d399' }}>Correct Answer: </strong>
+                                <span style={{ color: '#34d399' }}>{q.directAnswer || q.correctAnswerText || '—'}</span>
                               </div>
-                            );
-                          })}
-                        </div>
+                            )}
+                            {q.explanation && (
+                              <div style={{ marginTop: '0.35rem', padding: '0.45rem 0.65rem', background: 'rgba(99,102,241,0.1)', borderRadius: '6px', color: '#a5b4fc', fontSize: '0.8rem' }}>
+                                💡 {q.explanation}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="review-options-grid">
+                            {(q.options || []).map((optText, optIdx) => {
+                              const cleanNorm = (str) => String(str || '').toLowerCase().replace(/^([a-d1-4][.:)]|\([a-d1-4]\))\s*/i, '').trim();
+                              const isMatchByText = Boolean(q.selectedOptionText && optText && cleanNorm(optText) === cleanNorm(q.selectedOptionText));
+                              const isChosenOpt = optIdx === q.selectedOptionIndex || isMatchByText;
+
+                              const isCorrectByText = Boolean(q.correctAnswerText && optText && cleanNorm(optText) === cleanNorm(q.correctAnswerText));
+                              const isCorrectOpt = optIdx === q.correctAnswerIndex || isCorrectByText;
+
+                              let optionStateClass = 'option-neutral';
+                              let badgeLabel = null;
+
+                              if (isCorrectOpt && isChosenOpt) {
+                                optionStateClass = 'option-correct-chosen';
+                                badgeLabel = '✅ Your Answer (Correct)';
+                              } else if (isCorrectOpt) {
+                                optionStateClass = 'option-correct-answer';
+                                badgeLabel = '✅ Correct Answer';
+                              } else if (isChosenOpt) {
+                                optionStateClass = 'option-wrong-chosen';
+                                badgeLabel = '❌ Your Choice (Incorrect)';
+                              }
+
+                              return (
+                                <div
+                                  key={optIdx}
+                                  className={`review-option-item ${optionStateClass}`}
+                                >
+                                  <span className="option-prefix">
+                                    {String.fromCharCode(65 + optIdx)}.
+                                  </span>
+                                  <span className="option-content-text">{optText}</span>
+                                  {badgeLabel && (
+                                    <span className="option-indicator-tag">{badgeLabel}</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {q.explanation && (
+                              <div style={{ marginTop: '0.45rem', padding: '0.45rem 0.65rem', background: 'rgba(99,102,241,0.1)', borderRadius: '6px', color: '#a5b4fc', fontSize: '0.8rem', gridColumn: '1 / -1' }}>
+                                💡 {q.explanation}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

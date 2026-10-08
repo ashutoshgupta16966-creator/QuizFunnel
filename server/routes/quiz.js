@@ -827,7 +827,13 @@ router.get('/review/:mobile', async (req, res, next) => {
 
     // Room questions fallback: check room questions if some were embedded directly on the room
     if (dbQuestions.length < allQIds.length) {
-      const roomCodes = (student.attemptHistory || []).map((h) => h.roomCode).filter(Boolean);
+      let roomCodes = (student.attemptHistory || []).map((h) => h.roomCode).filter(Boolean);
+      try {
+        const participantRooms = await Room.find({ 'participants.mobile': mobile }).select('roomCode').lean();
+        const pCodes = participantRooms.map((r) => r.roomCode).filter(Boolean);
+        roomCodes = Array.from(new Set([...roomCodes, ...pCodes]));
+      } catch { /* noop */ }
+
       if (roomCodes.length > 0) {
         try {
           const rooms = await Room.find({ roomCode: { $in: roomCodes } }).lean();
@@ -864,7 +870,8 @@ router.get('/review/:mobile', async (req, res, next) => {
           correctAnswerText = targetAns;
         } else {
           // Map student's chosen option back to original index using exact text match and originalIndex
-          let originalSelected = null;
+          // NOTE: Do NOT re-declare with `let` here — we assign into the outer `originalSelected` (line 852)
+          // so it is visible at the return statement below.
           if (ans.originalIndex !== undefined && Number.isInteger(ans.originalIndex) && ans.originalIndex >= 0) {
             originalSelected = ans.originalIndex;
           } else if (ans.selectedText && Array.isArray(q.options)) {
@@ -905,6 +912,8 @@ router.get('/review/:mobile', async (req, res, next) => {
           options: q.options || [],
           correctAnswerIndex: q.correctAnswerIndex,
           correctAnswerText,
+          directAnswer: isDirect ? (q.directAnswer || '') : '',       // correct answer for direct questions
+          directUserAnswer: isDirect ? (selectedOptionText || '') : '', // student's typed answer for direct questions
           selectedOptionIndex: originalSelected,
           selectedOptionText,
           isCorrect,
