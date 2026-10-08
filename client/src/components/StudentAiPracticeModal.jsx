@@ -1428,12 +1428,14 @@ export default function StudentAiPracticeModal({
                           </div>
                         ) : (
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.45rem', marginBottom: '0.65rem' }}>
+                            {/* FIX 1: One-tap radio selectors in locked review mode */}
                             {['A', 'B', 'C', 'D'].map((letter, optIdx) => {
                               const isTarget = q.correctAnswerIndex === optIdx;
                               const optVal = (q.options && q.options[optIdx]) || '';
                               return (
-                                <div
+                                <label
                                   key={optIdx}
+                                  title={`Mark Option ${letter} as correct answer`}
                                   style={{
                                     padding: '0.45rem 0.65rem',
                                     borderRadius: '6px',
@@ -1445,8 +1447,16 @@ export default function StudentAiPracticeModal({
                                     border: isTarget ? '1px solid rgba(34,197,94,0.45)' : '1px solid rgba(148,163,184,0.15)',
                                     color: isTarget ? '#86efac' : '#cbd5e1',
                                     fontWeight: isTarget ? 700 : 400,
+                                    cursor: 'pointer',
                                   }}
                                 >
+                                  <input
+                                    type="radio"
+                                    name={`practice_review_correct_${qIdx}`}
+                                    checked={isTarget}
+                                    onChange={() => handlePracticeCorrectAnswerChange(qIdx, optIdx)}
+                                    style={{ accentColor: '#4ade80', cursor: 'pointer', flexShrink: 0 }}
+                                  />
                                   <span style={{
                                     fontWeight: 800,
                                     color: isTarget ? '#4ade80' : '#94a3b8',
@@ -1458,7 +1468,7 @@ export default function StudentAiPracticeModal({
                                     {optVal || <span style={{ color: '#ef4444' }}>(blank)</span>}
                                   </span>
                                   {isTarget && <span>✅</span>}
-                                </div>
+                                </label>
                               );
                             })}
                           </div>

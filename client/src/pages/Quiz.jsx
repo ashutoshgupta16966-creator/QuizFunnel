@@ -49,7 +49,7 @@ export default function Quiz() {
   // The Admin sets the room timer, which applies uniformly to all students.
   const defaultLevelTime = levelConfig?.timeSeconds || 900;
   const [customTimeSeconds, setCustomTimeSeconds] = useState(defaultLevelTime);
-  const [showTimerSetup, setShowTimerSetup] = useState(!isRoomQuiz);
+  const [showTimerSetup, setShowTimerSetup] = useState(false); // FIX 2: never show timer setup for default home-screen quiz
   const [timerSetupMins, setTimerSetupMins] = useState(Math.floor(defaultLevelTime / 60));
   const [timerSetupSecs, setTimerSetupSecs] = useState(defaultLevelTime % 60);
 
