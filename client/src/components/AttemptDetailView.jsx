@@ -404,8 +404,12 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack, 
                               ) : (
                                 <div className="qcard-options-grid">
                                   {(q.options || []).map((optText, optIdx) => {
-                                    const isCorrectOpt = optIdx === q.correctAnswerIndex;
-                                    const isChosenOpt = optIdx === q.selectedOptionIndex;
+                                    const cleanNorm = (str) => String(str || '').toLowerCase().replace(/^([a-d1-4][.:)]|\([a-d1-4]\))\s*/i, '').trim();
+                                    const isMatchByText = Boolean(q.selectedOptionText && optText && cleanNorm(optText) === cleanNorm(q.selectedOptionText));
+                                    const isChosenOpt = optIdx === q.selectedOptionIndex || isMatchByText;
+
+                                    const isCorrectByText = Boolean(q.correctAnswerText && optText && cleanNorm(optText) === cleanNorm(q.correctAnswerText));
+                                    const isCorrectOpt = optIdx === q.correctAnswerIndex || isCorrectByText;
 
                                     let optClass = 'opt-neutral';
                                     let tagText = null;

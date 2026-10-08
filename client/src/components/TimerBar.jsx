@@ -8,9 +8,19 @@ import { useState, useEffect, useRef } from 'react';
  *   onTimeUp     — callback when timer reaches 0
  */
 export default function TimerBar({ totalSeconds, startedAt, onTimeUp, isPaused = false }) {
-  const [remaining, setRemaining] = useState(totalSeconds);
+  const [remaining, setRemaining] = useState(() => {
+    const elapsed = startedAt ? Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000) : 0;
+    return Math.max(0, totalSeconds - elapsed);
+  });
   const calledRef = useRef(false);
   const intervalRef = useRef(null);
+
+  // Sync remaining state and reset calledRef whenever totalSeconds or startedAt changes
+  useEffect(() => {
+    calledRef.current = false;
+    const elapsed = startedAt ? Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000) : 0;
+    setRemaining(Math.max(0, totalSeconds - elapsed));
+  }, [totalSeconds, startedAt]);
 
   useEffect(() => {
     if (!startedAt || isPaused) {
@@ -25,7 +35,7 @@ export default function TimerBar({ totalSeconds, startedAt, onTimeUp, isPaused =
 
       if (left === 0 && !calledRef.current) {
         calledRef.current = true;
-        clearInterval(intervalRef.current);
+        if (intervalRef.current) clearInterval(intervalRef.current);
         onTimeUp?.();
       }
     };

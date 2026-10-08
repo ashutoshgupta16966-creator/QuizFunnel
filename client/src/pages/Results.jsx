@@ -123,8 +123,9 @@ function ResultsContent() {
       return;
     }
     const isCompleted = student.status === 'completed';
+    const isEliminated = student.status === 'eliminated' || lastResult?.status === 'eliminated' || (!lastResult?.passed && !lastResult?.nextLevel);
     const isDisqualified = student.status === 'disqualified' || lastResult?.isDisqualified;
-    if (!isCompleted && !isDisqualified) {
+    if (!isCompleted && !isEliminated && !isDisqualified) {
       // Still in progress — redirect back to active quiz level
       const targetLevel = student.currentLevel || 1;
       navigate(`/quiz/${targetLevel}`);
@@ -373,6 +374,23 @@ function ResultsContent() {
     <div className="results-page">
       <div className="results-top-bar">
         <ThemeToggle />
+      </div>
+
+      {/* Prominent bold RED ELIMINATED indicator */}
+      <div
+        className="results-eliminated-banner"
+        style={{
+          fontSize: 'clamp(2.5rem, 6vw, 3.8rem)',
+          fontWeight: 900,
+          color: '#ef4444',
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          lineHeight: 1,
+          margin: '0.5rem 0 0.75rem',
+          textShadow: '0 0 25px rgba(239, 68, 68, 0.45)',
+        }}
+      >
+        ELIMINATED
       </div>
 
       <div className="results-icon" role="img" aria-label="Thank you">🙏</div>

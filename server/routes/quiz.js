@@ -152,7 +152,7 @@ router.get('/questions/:level', async (req, res, next) => {
         : null;
       const resumedTimeSeconds = (resumedLevelTimer && resumedLevelTimer.seconds > 0)
         ? resumedLevelTimer.seconds
-        : (activeRoom?.customTimeSeconds || LEVELS[level].timeSeconds);
+        : (LEVELS[level]?.timeSeconds || 600);
 
       return res.json({
         success: true,
@@ -323,7 +323,7 @@ router.get('/questions/:level', async (req, res, next) => {
       : null;
     const resolvedTimeSeconds = (activeLevelTimer && activeLevelTimer.seconds > 0)
       ? activeLevelTimer.seconds
-      : (activeRoom?.customTimeSeconds || levelConfig.timeSeconds);
+      : (LEVELS[level]?.timeSeconds || levelConfig?.timeSeconds || 600);
 
     res.json({
       success: true,
@@ -461,24 +461,35 @@ router.post('/submit', async (req, res, next) => {
           isCorrect,
         });
       } else {
-        // selectedIndex is the SHUFFLED index → map back to original
-        // shuffleMap[shuffledPos] = originalPos
-        const originalIndex = Array.isArray(sessionQ.shuffleMap) && sessionQ.shuffleMap[answer.selectedIndex] !== undefined
+        // 1. Shuffled index mapped back via session shuffleMap
+        const mappedOriginalIndex = Array.isArray(sessionQ.shuffleMap) && sessionQ.shuffleMap[answer.selectedIndex] !== undefined
           ? sessionQ.shuffleMap[answer.selectedIndex]
           : answer.selectedIndex;
+
+        // 2. Direct Content-based Matching Safeguard:
+        // Compare answer.selectedText with dbQ.options to eliminate any shuffling/index corruption
+        const rawStudentText = String(answer.selectedText || (dbQ.options && Number.isInteger(mappedOriginalIndex) ? dbQ.options[mappedOriginalIndex] : '')).trim();
+        const studentClean = rawStudentText.toLowerCase().replace(/^([a-d1-4][.:)]|\([a-d1-4]\))\s*/i, '').trim();
+
+        let matchedDbOptionIndex = -1;
+        if (Array.isArray(dbQ.options)) {
+          matchedDbOptionIndex = dbQ.options.findIndex((opt) => {
+            const optClean = String(opt || '').toLowerCase().replace(/^([a-d1-4][.:)]|\([a-d1-4]\))\s*/i, '').trim();
+            return optClean && studentClean && optClean === studentClean;
+          });
+        }
+
+        // Authoritative originalIndex: prioritize matched text index from dbQ.options if found
+        const originalIndex = (matchedDbOptionIndex >= 0) ? matchedDbOptionIndex : mappedOriginalIndex;
 
         const isCorrectByIndex = Number.isInteger(originalIndex) &&
           originalIndex === dbQ.correctAnswerIndex;
 
-        // Content-based safeguard: verify by comparing student's selected option text
-        // against dbQ.options[dbQ.correctAnswerIndex] or dbQ.directAnswer
-        const rawStudentText = String(answer.selectedText || (dbQ.options && Number.isInteger(originalIndex) ? dbQ.options[originalIndex] : '')).trim();
-        const studentTextNorm = rawStudentText.toLowerCase();
         const correctTextNorm = String(
           (dbQ.options && dbQ.options[dbQ.correctAnswerIndex]) || dbQ.directAnswer || ''
-        ).trim().toLowerCase();
+        ).toLowerCase().replace(/^([a-d1-4][.:)]|\([a-d1-4]\))\s*/i, '').trim();
 
-        const isCorrectByText = Boolean(studentTextNorm && correctTextNorm && studentTextNorm === correctTextNorm);
+        const isCorrectByText = Boolean(studentClean && correctTextNorm && studentClean === correctTextNorm);
         const isCorrect = isCorrectByIndex || isCorrectByText;
 
         if (isCorrect) score++;
@@ -487,6 +498,7 @@ router.post('/submit', async (req, res, next) => {
           questionId: answer.questionId,
           questionType: 'mcq',
           selectedIndex: answer.selectedIndex,
+          originalIndex,
           selectedText: rawStudentText,
           shuffleMap: sessionQ.shuffleMap,
           isCorrect,
@@ -536,10 +548,12 @@ router.post('/submit', async (req, res, next) => {
       ? Math.max(1, Math.ceil(sessionCount * 0.7))
       : levelConfig.cutoff;
 
-    // FIX 1 & 3: Continuous Sequential Progression through ALL levels.
-    // Results screen must only appear after ALL levels are complete.
-    // Students advance continuously without mid-quiz elimination.
-    const passed = !isDisqualified;
+    // Progression Mode & Cutoff Evaluation:
+    // In Open Attempt mode: unconditional progression without mid-quiz elimination.
+    // In Level-Gated mode (Live Room level_gated & Standard Quiz):
+    // Student MUST clear the passing cutoff (score >= dynamicCutoff) to advance.
+    const isLevelGated = roomDoc?.progressionMode !== 'open_attempt';
+    let passed = isDisqualified ? false : (isLastLevel ? true : (isLevelGated ? (score >= dynamicCutoff) : true));
 
     let newStatus, newCurrentLevel;
     let completedAt;
@@ -547,6 +561,10 @@ router.post('/submit', async (req, res, next) => {
     if (isDisqualified) {
       newStatus = 'disqualified';
       newCurrentLevel = student.currentLevel;
+    } else if (!passed) {
+      newStatus = 'eliminated';
+      newCurrentLevel = level;
+      completedAt = new Date();
     } else if (isLastLevel) {
       newStatus = 'completed';
       newCurrentLevel = level;
@@ -845,11 +863,25 @@ router.get('/review/:mobile', async (req, res, next) => {
           selectedOptionText = studentAns || null;
           correctAnswerText = targetAns;
         } else {
-          // Map student's chosen shuffled index back to original index
-          if (Number.isInteger(ans.selectedIndex) && ans.selectedIndex >= 0 && Array.isArray(ans.shuffleMap)) {
-            originalSelected = ans.shuffleMap[ans.selectedIndex];
-          } else if (Number.isInteger(ans.selectedIndex) && ans.selectedIndex >= 0) {
-            originalSelected = ans.selectedIndex;
+          // Map student's chosen option back to original index using exact text match and originalIndex
+          let originalSelected = null;
+          if (ans.originalIndex !== undefined && Number.isInteger(ans.originalIndex) && ans.originalIndex >= 0) {
+            originalSelected = ans.originalIndex;
+          } else if (ans.selectedText && Array.isArray(q.options)) {
+            const cleanAns = String(ans.selectedText).toLowerCase().replace(/^([a-d1-4][.:)]|\([a-d1-4]\))\s*/i, '').trim();
+            const textMatchIdx = q.options.findIndex((opt) => {
+              const optClean = String(opt || '').toLowerCase().replace(/^([a-d1-4][.:)]|\([a-d1-4]\))\s*/i, '').trim();
+              return optClean && cleanAns && optClean === cleanAns;
+            });
+            if (textMatchIdx >= 0) originalSelected = textMatchIdx;
+          }
+
+          if (originalSelected === null) {
+            if (Number.isInteger(ans.selectedIndex) && ans.selectedIndex >= 0 && Array.isArray(ans.shuffleMap)) {
+              originalSelected = ans.shuffleMap[ans.selectedIndex];
+            } else if (Number.isInteger(ans.selectedIndex) && ans.selectedIndex >= 0) {
+              originalSelected = ans.selectedIndex;
+            }
           }
 
           isUnattempted = originalSelected === null || originalSelected === undefined || originalSelected === -1;

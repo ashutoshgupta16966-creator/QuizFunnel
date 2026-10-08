@@ -1565,7 +1565,7 @@ router.get('/:roomCode/questions', async (req, res, next) => {
       : null;
     const resolvedTimer = (activeLevelTimer && activeLevelTimer.seconds > 0)
       ? activeLevelTimer.seconds
-      : (room.customTimeSeconds || 0);
+      : (LEVELS[targetLevel]?.timeSeconds || 600);
 
     res.json({
       success: true,

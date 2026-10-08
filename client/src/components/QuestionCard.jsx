@@ -75,10 +75,12 @@ export default function QuestionCard({
     createRipple(e);
     // If clicking the currently selected option, toggle off / clear selection
     if (selectedIndex === idx) {
-      onAnswer(null);
+      console.log(`[QuestionCard Toggle Off] Q${questionNumber}: Deselected Option ${LETTER_LABELS[idx] || idx}`);
+      onAnswer(null, null);
     } else {
-      // Select or change choice
-      onAnswer(idx);
+      const rawText = question?.options?.[idx] || '';
+      console.log(`[QuestionCard Click] Q${questionNumber}: Option ${LETTER_LABELS[idx] || idx} ("${rawText}") [idx ${idx}]`);
+      onAnswer(idx, rawText);
     }
   };
 

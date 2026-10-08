@@ -23,7 +23,11 @@ export default function QuestionPalette({
         {questions.map((q, idx) => {
           const isCurrent = idx === currentIndex;
           const ansVal = answers[q._id];
-          const isAnswered = ansVal !== undefined && ansVal !== null && ansVal !== -1 && (typeof ansVal !== 'string' || ansVal.trim() !== '');
+          const isAnswered = ansVal !== undefined && ansVal !== null && ansVal !== -1 && (
+            typeof ansVal === 'object'
+              ? (ansVal.selectedIndex >= 0 || (typeof ansVal.selectedText === 'string' && ansVal.selectedText.trim() !== ''))
+              : (typeof ansVal !== 'string' || ansVal.trim() !== '')
+          );
           const isBookmarked = !!bookmarks[q._id];
 
           let statusClass = 'status-unanswered';

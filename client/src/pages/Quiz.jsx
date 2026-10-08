@@ -145,6 +145,19 @@ export default function Quiz() {
   // Prevent double-submit (timer + manual button race + tab switch)
   const hasSubmitted = useRef(false);
 
+  // ── Reset Timer and State on Level Change ────────────────────────────────
+  // Guarantees that each level starts with its own configured countdown time
+  // and prevents carrying over previous level's timer state.
+  useEffect(() => {
+    const configForLevel = LEVELS[levelNum] || LEVELS[1];
+    setCustomTimeSeconds(configForLevel.timeSeconds);
+    setTimerSetupMins(Math.floor(configForLevel.timeSeconds / 60));
+    setTimerSetupSecs(configForLevel.timeSeconds % 60);
+    setStartedAt(null);
+    hasSubmitted.current = false;
+    setSubmitting(false);
+  }, [levelNum]);
+
   // ── Guard: redirect if student isn't supposed to be here ─────────────────
   useEffect(() => {
     if (!student) { navigate('/'); return; }
@@ -228,7 +241,7 @@ export default function Quiz() {
             setShowTimerSetup(false);
           }
         }
-        if (typeof parsed?.customTimeSeconds === 'number' && parsed.customTimeSeconds > 0) {
+        if (!isRoomQuiz && typeof parsed?.customTimeSeconds === 'number' && parsed.customTimeSeconds > 0) {
           setCustomTimeSeconds(parsed.customTimeSeconds);
           setTimerSetupMins(Math.floor(parsed.customTimeSeconds / 60));
           setTimerSetupSecs(parsed.customTimeSeconds % 60);
@@ -362,14 +375,23 @@ export default function Quiz() {
   };
 
   // ── Answer selection & clearing ───────────────────────────────────────────
-  const handleAnswer = useCallback((questionId, val) => {
+  const handleAnswer = useCallback((questionId, val, optText = '') => {
     if (isRoomClosed || isAntiCheatTerminal || hasSubmitted.current) return;
     setAnswers((prev) => {
       const next = { ...prev };
       if (val === null || val === undefined || (typeof val === 'string' && val.trim() === '')) {
         delete next[questionId]; // deselect / clear choice
+      } else if (typeof val === 'number') {
+        next[questionId] = {
+          selectedIndex: val,
+          selectedText: optText || '',
+        };
       } else {
-        next[questionId] = val; // select or modify choice (number index or direct string)
+        // Direct answer text input
+        next[questionId] = {
+          selectedIndex: -1,
+          selectedText: String(val).trim(),
+        };
       }
       return next;
     });
@@ -380,6 +402,11 @@ export default function Quiz() {
     const a = answers[qId];
     if (a === undefined || a === null || a === -1) return false;
     if (typeof a === 'string' && a.trim() === '') return false;
+    if (typeof a === 'object') {
+      if (typeof a.selectedIndex === 'number' && a.selectedIndex >= 0) return true;
+      if (typeof a.selectedText === 'string' && a.selectedText.trim() !== '') return true;
+      return false;
+    }
     return true;
   }, [answers]);
 
@@ -401,29 +428,47 @@ export default function Quiz() {
     clearSavedProgress();
 
     const elapsed = startedAt
-      ? Math.floor((Date.now() - startedAt.getTime()) / 1000)
+      ? Math.max(1, Math.floor((Date.now() - startedAt.getTime()) / 1000))
       : (customTimeSeconds || levelConfig.timeSeconds);
 
     // Build answers array supporting both MCQ and Direct question formats
+    // Stores and sends BOTH selectedIndex AND selectedText for 100% scoring reliability
     const answersArray = questions.map((q) => {
       const val = answers[q._id];
       const isDirect = q.questionType === 'direct' || (!q.options || q.options.length === 0);
 
       if (isDirect) {
+        let directText = '';
+        if (typeof val === 'object' && val !== null) {
+          directText = val.selectedText || '';
+        } else if (val !== null && val !== undefined) {
+          directText = String(val).trim();
+        }
         return {
           questionId: q._id,
           questionType: 'direct',
-          directAnswer: typeof val === 'string' ? val.trim() : (val !== null && val !== undefined ? String(val).trim() : ''),
+          directAnswer: directText.trim(),
           selectedIndex: -1,
         };
       }
 
-      const selectedOptText = (typeof val === 'number' && q.options && q.options[val]) ? String(q.options[val]).trim() : '';
+      let selIdx = -1;
+      let selText = '';
+      if (typeof val === 'object' && val !== null) {
+        selIdx = typeof val.selectedIndex === 'number' ? val.selectedIndex : -1;
+        selText = val.selectedText || (selIdx >= 0 && q.options ? q.options[selIdx] : '');
+      } else if (typeof val === 'number') {
+        selIdx = val;
+        selText = (q.options && q.options[val]) ? String(q.options[val]).trim() : '';
+      }
+
+      console.log(`[Submit Payload] Q: "${q.questionText?.slice(0, 35)}..." -> Selected Index: ${selIdx}, Selected Text: "${selText}"`);
+
       return {
         questionId: q._id,
         questionType: 'mcq',
-        selectedIndex: typeof val === 'number' ? val : -1,
-        selectedText: selectedOptText,
+        selectedIndex: selIdx,
+        selectedText: String(selText || '').trim(),
       };
     });
 
@@ -462,14 +507,37 @@ export default function Quiz() {
         });
       }
 
-      if (result.nextLevel && !isDisqualified) {
-        hasSubmitted.current = false;
-        setSubmitting(false);
-        setAnswers({});
-        setCurrentIndex(0);
-        navigate(`/quiz/${result.nextLevel}`);
-      } else {
+      if (isDisqualified) {
         navigate('/results');
+        return;
+      }
+
+      // Check progression mode:
+      // In Quiz Room Open Attempt mode: Unconditional sequential progress through all levels without mid-quiz elimination
+      const isRoomOpenAttempt = Boolean(isRoomQuiz && (roomSession?.progressionMode === 'open_attempt' || result.progressionMode === 'open_attempt'));
+
+      if (isRoomOpenAttempt) {
+        if (result.nextLevel) {
+          hasSubmitted.current = false;
+          setSubmitting(false);
+          setAnswers({});
+          setCurrentIndex(0);
+          navigate(`/quiz/${result.nextLevel}`);
+        } else {
+          navigate('/results');
+        }
+      } else {
+        // Level-Gated mode (Live Room level_gated & Standard Quiz):
+        // Show Level Transition screen for all levels!
+        // If last level completed and passed -> go to /results
+        if (result.isLastLevel && result.passed) {
+          navigate('/results');
+        } else {
+          // Success (passed cutoff) or Fail (cutoff not cleared / eliminated) -> show LevelTransition
+          hasSubmitted.current = false;
+          setSubmitting(false);
+          navigate('/level-up');
+        }
       }
     } catch (err) {
       hasSubmitted.current = false;
@@ -485,7 +553,7 @@ export default function Quiz() {
       const errorMsg = err.response?.data?.error || err.message || 'Submission failed. Please try again.';
       setToast({ type: 'error', message: errorMsg, duration: 6000 });
     }
-  }, [answers, questions, startedAt, levelNum, student, navigate, setLastResult, updateStudent, levelConfig, isRoomQuiz, roomSession]);
+  }, [answers, questions, startedAt, levelNum, student, navigate, setLastResult, updateStudent, levelConfig, isRoomQuiz, roomSession, customTimeSeconds]);
 
   // ── Manual Submit Click (with Unattempted Questions Check) ───────────────
   const handleManualSubmit = () => {
@@ -515,9 +583,10 @@ export default function Quiz() {
 
   // Auto-submit when level timer fires
   const handleTimeUp = useCallback(() => {
-    setToast({ type: 'warning', message: "Time's up! Submitting your answers…", duration: 2000 });
-    setTimeout(() => executeSubmit(), 2000);
-  }, [executeSubmit]);
+    setShowUnattemptedModal(false);
+    setToast({ type: 'warning', message: "Time's up for Level " + levelNum + "! Submitting answers…", duration: 2000 });
+    setTimeout(() => executeSubmit(), 1200);
+  }, [executeSubmit, levelNum]);
 
   // ── Tab-Switching & Visibility Monitoring ───────────────────────────────
   // Shared 4.5-second cooldown hook prevents a single physical tab-switch from
@@ -1061,6 +1130,7 @@ export default function Quiz() {
         </button>
         {startedAt && (
           <TimerBar
+            key={`timer-bar-lvl-${levelNum}-${customTimeSeconds || levelConfig.timeSeconds}-${new Date(startedAt).getTime()}`}
             totalSeconds={customTimeSeconds || levelConfig.timeSeconds}
             startedAt={startedAt}
             onTimeUp={handleTimeUp}
@@ -1110,8 +1180,12 @@ export default function Quiz() {
         <QuestionCard
           key={currentQuestion._id}
           question={currentQuestion}
-          selectedIndex={answers[currentQuestion._id] ?? null}
-          onAnswer={(idx) => handleAnswer(currentQuestion._id, idx)}
+          selectedIndex={
+            typeof answers[currentQuestion._id] === 'object' && answers[currentQuestion._id] !== null
+              ? (answers[currentQuestion._id].selectedIndex >= 0 ? answers[currentQuestion._id].selectedIndex : answers[currentQuestion._id].selectedText)
+              : (answers[currentQuestion._id] ?? null)
+          }
+          onAnswer={(idx, optText) => handleAnswer(currentQuestion._id, idx, optText)}
           questionNumber={currentIndex + 1}
           isBookmarked={!!bookmarks[currentQuestion._id]}
           onToggleBookmark={handleToggleBookmark}
