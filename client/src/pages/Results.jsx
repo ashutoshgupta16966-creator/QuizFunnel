@@ -139,9 +139,20 @@ function ResultsContent() {
   );
   const levelNum = Number(lastResult?.level || student?.currentLevel || 1);
   const clearedLevel = isCompleted
-    ? (lastResult?.level || student?.currentLevel || (Array.isArray(student?.levels) && student.levels.length > 0 ? student.levels[student.levels.length - 1]?.level : totalLevels))
+    ? Math.max(
+        totalLevels,
+        Number(lastResult?.level) || 0,
+        Number(student?.currentLevel) || 0,
+        Array.isArray(student?.levels) && student.levels.length > 0 ? Math.max(...student.levels.map((l) => l.level || 1)) : 1
+      )
     : (levelNum > 0 ? levelNum : 1);
-  const levelConfig = LEVELS[clearedLevel] || LEVELS[1];
+  const levelConfig = LEVELS[clearedLevel] || {
+    questions: 10,
+    cutoff: 7,
+    timeSeconds: 600,
+    label: `Level ${clearedLevel}`,
+    sublabel: `Round ${clearedLevel}`,
+  };
 
   const score = Number(
     lastResult?.score ??
@@ -309,7 +320,7 @@ function ResultsContent() {
     );
   }
 
-  // ── Level 4 Completed (WINNER) ─────────────────────────────────────────────
+  // ── Quiz Completed (WINNER) ─────────────────────────────────────────────
   if (isCompleted) {
     return (
       <div className="results-page win-celebration-page">
@@ -320,14 +331,14 @@ function ResultsContent() {
         <div className="results-icon win-trophy-pop" role="img" aria-label="Trophy">🏆</div>
         <h1 className="results-title completed win-title-glow">Congratulations! You completed the quiz</h1>
         <p className="results-message">
-          Exceptional performance, <strong>{student.name || 'Champion'}</strong>! You cleared all {totalLevels} level{totalLevels > 1 ? 's' : ''} of the Quiz Funnel.
+          Exceptional performance, <strong>{student.name || 'Champion'}</strong>! You cleared all {totalLevels} level{totalLevels === 1 ? '' : 's'} of the Quiz Funnel.
           Your score has been registered for the final leaderboard rankings.
         </p>
 
         <div className="score-card win-score-card">
           <p className="score-card-title">🏆 Champion Performance Summary</p>
           <div className="score-row">
-            <span className="score-label">{totalLevels > 1 ? `Level ${clearedLevel} Final Score` : 'Final Quiz Score'}</span>
+            <span className="score-label">Level {clearedLevel} Final Score</span>
             <span className="score-value">{score} / {total}</span>
           </div>
           <div className="score-row">

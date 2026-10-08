@@ -21,7 +21,14 @@ export default function Quiz() {
   const isPlayRoute = !levelParam || levelParam === 'play';
   const { student, updateStudent, setLastResult, clearStudent, isRoomQuiz, roomSession, clearRoomSession } = useQuiz();
   const levelNum = isPlayRoute ? (student?.currentLevel || 1) : parseInt(levelParam, 10);
-  const levelConfig = LEVELS[levelNum] || LEVELS[1];
+  const levelConfig = LEVELS[levelNum] || {
+    questions: 10,
+    cutoff: 7,
+    timeSeconds: 600,
+    label: `Level ${levelNum}`,
+    sublabel: `Round ${levelNum}`,
+    sections: ['Mixed'],
+  };
   const navigate = useNavigate();
 
   const [questions, setQuestions]       = useState([]);
@@ -38,8 +45,15 @@ export default function Quiz() {
   const [quizSubject, setQuizSubject]   = useState('');
   const [quizUnit, setQuizUnit]         = useState('');
   const [showGuide, setShowGuide]       = useState(false);
-  // Dynamic total level count — set from API response, falls back to config default
-  const [totalLevels, setTotalLevels]   = useState(TOTAL_LEVELS);
+  // Dynamic total level count — initialized from session/student, updated from API response
+  const [totalLevels, setTotalLevels]   = useState(() => {
+    return Number(
+      roomSession?.maxLevel ||
+      roomSession?.totalLevels ||
+      student?.totalLevels ||
+      TOTAL_LEVELS
+    ) || TOTAL_LEVELS;
+  });
 
   const displaySubject = quizSubject || roomSession?.subject || '';
   const displayUnit    = quizUnit || roomSession?.unit || '';
@@ -492,6 +506,7 @@ export default function Quiz() {
         status:         isDisqualified ? 'disqualified' : result.status,
         totalScore:     result.totalScore,
         totalTimeTaken: result.totalTimeTaken,
+        totalLevels:    result.totalLevels ?? totalLevels,
       });
 
       // Emit real-time progress update to host if room session
@@ -1042,8 +1057,8 @@ export default function Quiz() {
         </div>
       </header>
 
-      {/* ── Dynamic Level Stepper: renders N steps from totalLevels, never hardcoded ── */}
-      {totalLevels > 1 && (
+      {/* ── Dynamic Level Stepper: renders N steps from totalLevels, matching exact total levels configured ── */}
+      {totalLevels >= 1 && (
         <div style={{
           display: 'flex',
           alignItems: 'center',
