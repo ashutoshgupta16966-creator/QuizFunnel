@@ -89,6 +89,17 @@ RoomSchema.index({ adminPhone: 1, createdAt: -1 });
 RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, roomCode) {
   if (!participants || participants.length === 0) return [];
   try {
+    // ── Deduplicate participants by unique normalized 10-digit mobile number ──
+    const seenMobiles = new Set();
+    const uniqueParticipants = [];
+    for (const p of participants) {
+      const cleanM = String(p.mobile || '').replace(/\D/g, '').slice(-10);
+      if (!cleanM || seenMobiles.has(cleanM)) continue;
+      seenMobiles.add(cleanM);
+      uniqueParticipants.push(p);
+    }
+    participants = uniqueParticipants;
+
     const Student = require('./Student');
     const mobiles = participants.map((p) => p.mobile).filter(Boolean);
     if (mobiles.length === 0) return participants;
@@ -194,6 +205,39 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
   } catch (err) {
     console.error('Error enriching participants with levels:', err.message);
     return participants;
+  }
+/**
+ * One-time / on-startup migration to sanitize duplicate participants in active rooms
+ * from past test sessions.
+ */
+RoomSchema.statics.cleanupDuplicateParticipants = async function () {
+  try {
+    const rooms = await this.find({ status: 'active' });
+    let totalCleaned = 0;
+    for (const room of rooms) {
+      if (!Array.isArray(room.participants) || room.participants.length === 0) continue;
+      const seen = new Set();
+      const unique = [];
+      let hasDups = false;
+      for (const p of room.participants) {
+        const m = String(p.mobile || '').replace(/\D/g, '').slice(-10);
+        if (!m || seen.has(m)) {
+          hasDups = true;
+          continue;
+        }
+        seen.add(m);
+        unique.push(p);
+      }
+      if (hasDups) {
+        await this.updateOne({ _id: room._id }, { $set: { participants: unique } });
+        totalCleaned++;
+      }
+    }
+    if (totalCleaned > 0) {
+      console.log(`[Database Migration] Cleaned duplicate participants in ${totalCleaned} active room(s).`);
+    }
+  } catch (err) {
+    console.warn('[Database Migration Warning]:', err.message);
   }
 };
 

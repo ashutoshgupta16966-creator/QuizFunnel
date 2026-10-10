@@ -87,7 +87,10 @@ export default function RoomAdminDashboard() {
           if (!prev) return data;
           const incoming = data?.participants || [];
           const merged = incoming.map((p) => {
-            const existing = (prev.participants || []).find((old) => old.mobile === p.mobile);
+            const pMobile = String(p.mobile || '').replace(/\D/g, '').slice(-10);
+            const existing = (prev.participants || []).find(
+              (old) => String(old.mobile || '').replace(/\D/g, '').slice(-10) === pMobile
+            );
             const hasLevels = Array.isArray(p.levels) && p.levels.length > 0;
             return {
               ...p,
@@ -108,11 +111,18 @@ export default function RoomAdminDashboard() {
         setRoom((prev) => {
           if (!prev) return prev;
           const existingList = prev.participants || [];
-          const exists = existingList.some((p) => p.mobile === newStudent.mobile);
+          const newM = String(newStudent.mobile || '').replace(/\D/g, '').slice(-10);
+          const exists = existingList.some(
+            (p) => String(p.mobile || '').replace(/\D/g, '').slice(-10) === newM
+          );
           if (exists) {
             return {
               ...prev,
-              participants: existingList.map((p) => (p.mobile === newStudent.mobile ? { ...p, ...newStudent } : p)),
+              participants: existingList.map((p) =>
+                String(p.mobile || '').replace(/\D/g, '').slice(-10) === newM
+                  ? { ...p, ...newStudent }
+                  : p
+              ),
             };
           }
           return {
@@ -124,10 +134,11 @@ export default function RoomAdminDashboard() {
       onStudentUpdated: (update) => {
         setRoom((prev) => {
           if (!prev) return prev;
+          const updateM = String(update.mobile || '').replace(/\D/g, '').slice(-10);
           return {
             ...prev,
             participants: (prev.participants || []).map((p) => {
-              if (p.mobile !== update.mobile) return p;
+              if (String(p.mobile || '').replace(/\D/g, '').slice(-10) !== updateM) return p;
               const hasLevels = Array.isArray(update.levels) && update.levels.length > 0;
               return {
                 ...p,
@@ -310,7 +321,20 @@ export default function RoomAdminDashboard() {
 
   // Filter and sort participants
 
-  const participants = room?.participants || [];
+  // Unique participants deduplicated by 10-digit mobile number
+  const participants = useMemo(() => {
+    const raw = room?.participants || [];
+    const seen = new Set();
+    const unique = [];
+    for (const p of raw) {
+      const m = String(p.mobile || '').replace(/\D/g, '').slice(-10);
+      if (!m || seen.has(m)) continue;
+      seen.add(m);
+      unique.push(p);
+    }
+    return unique;
+  }, [room?.participants]);
+
   const totalJoined = participants.length;
   const maxCapacity = room?.maxCapacity || 60;
   const capacityPct = Math.min(100, Math.round((totalJoined / maxCapacity) * 100));

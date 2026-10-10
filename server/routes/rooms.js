@@ -430,7 +430,7 @@ router.post('/join', async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Name, Mobile, Branch, and Password are required.' });
     }
 
-    const cleanMobile = mobile.trim();
+    const cleanMobile = String(mobile || '').trim().replace(/\D/g, '').slice(-10);
     if (!/^\d{10}$/.test(cleanMobile)) {
       return res.status(400).json({ success: false, error: 'Mobile number must be exactly 10 digits.' });
     }
@@ -442,21 +442,22 @@ router.post('/join', async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Room not found or has been closed by the host.' });
     }
 
+    // Room password verifies entry access credentials
     if (room.roomPassword !== roomPassword.trim()) {
       return res.status(401).json({ success: false, error: 'Incorrect Room Password.' });
     }
 
-    // ── Phone + Password Binding: prevent session/socket collisions ───────
-    const existingStudentInDB = await Student.findOne({ mobile: cleanMobile }).lean();
-    if (existingStudentInDB && existingStudentInDB.password !== password.trim()) {
-      return res.status(401).json({
-        success: false,
-        error: 'You have already attempted this quiz using this mobile number. Please enter your secret PIN to authenticate or request a re-attempt.',
-      });
-    }
+    // ── Student Identity Uniqueness ──────────────────────────────────────────
+    // In a Quiz Room, a student is uniquely identified by (ROOM CODE + PHONE NUMBER).
+    // The password is an entry access credential, NOT part of the student's identity key.
+    // When the admin changes the room password and a student re-enters with the same phone
+    // number, the system recognizes them as the SAME existing student and updates/reuses
+    // their existing record without creating duplicates or throwing false authentication errors.
+    const existingParticipant = (room.participants || []).find(
+      (p) => String(p.mobile || '').replace(/\D/g, '').slice(-10) === cleanMobile
+    );
 
     // ── Capacity Validation: Max 60 students ─────────────────────────────
-    const existingParticipant = (room.participants || []).find((p) => p.mobile === cleanMobile);
     if (!existingParticipant && (room.participants || []).length >= (room.maxCapacity || 60)) {
       return res.status(403).json({
         success: false,
@@ -465,7 +466,8 @@ router.post('/join', async (req, res, next) => {
     }
 
     // ── STRICT HOST-APPROVED RE-ATTEMPT GUARD ──────────────────────────
-    // Completed, failed, or disqualified students CANNOT directly log back into roomId.
+    // Only genuine duplicate attempt scenarios (student already completed, failed, or was disqualified)
+    // require host approval. Re-entering while in-progress or after a room password change is allowed.
     const isCompletedOrFailed = Boolean(
       existingParticipant && (
         existingParticipant.status === 'completed' ||
@@ -479,13 +481,13 @@ router.post('/join', async (req, res, next) => {
     if (isCompletedOrFailed) {
       // Check if an approval has been granted by host
       const approvedReq = (room.reattemptRequests || []).find(
-        (r) => r.mobile === cleanMobile && r.status === 'approved'
+        (r) => String(r.mobile || '').replace(/\D/g, '').slice(-10) === cleanMobile && r.status === 'approved'
       );
 
       if (!approvedReq) {
         // Enforce pending queue
         const existingReq = (room.reattemptRequests || []).find(
-          (r) => r.mobile === cleanMobile && r.status === 'pending'
+          (r) => String(r.mobile || '').replace(/\D/g, '').slice(-10) === cleanMobile && r.status === 'pending'
         );
 
         if (!existingReq) {
@@ -541,9 +543,12 @@ router.post('/join', async (req, res, next) => {
         levels: [],
       });
     } else {
-      // If student already exists, update their active round state
+      // If student already exists, update their record and active round state
       student.name = name.trim();
       student.branch = branch.trim();
+      if (password && password.trim().length >= 4) {
+        student.password = password.trim();
+      }
       student.status = 'in-progress';
       student.currentLevel = 1;
       student.levels = [];
@@ -551,62 +556,49 @@ router.post('/join', async (req, res, next) => {
       await student.save();
     }
 
-    // Add or update participant entry in room
+    // Add or update participant entry in room with strict deduplication
     const isReattemptStudent = Boolean(existingParticipant && (isCompletedOrFailed || existingParticipant.isReattempt));
+    const prevAttemptData = existingParticipant?.previousAttempt || (existingParticipant ? {
+      attemptNumber: 1,
+      score: existingParticipant.score || 0,
+      timeTaken: existingParticipant.timeTaken || 0,
+      level: existingParticipant.level || 1,
+      status: existingParticipant.status || 'eliminated',
+      isDisqualified: Boolean(existingParticipant.isDisqualified),
+      levels: existingParticipant.levels || [],
+      joinedAt: existingParticipant.joinedAt,
+    } : null);
+
+    const existingAttempts = Array.isArray(existingParticipant?.attempts) && existingParticipant.attempts.length > 0
+      ? existingParticipant.attempts
+      : (prevAttemptData ? [prevAttemptData] : []);
+
     const participantDoc = {
       mobile: cleanMobile,
-      name: name.trim(),
-      branch: branch.trim(),
+      name: name.trim() || existingParticipant?.name || 'Student',
+      branch: branch.trim() || existingParticipant?.branch || 'CSE',
       level: 1,
       score: 0,
       timeTaken: 0,
       status: 'in-progress',
       isDisqualified: false,
       isReattempt: isReattemptStudent,
+      previousAttempt: prevAttemptData,
+      attempts: existingAttempts,
       levels: [],
-      joinedAt: new Date(),
+      joinedAt: existingParticipant?.joinedAt || new Date(),
       lastActive: new Date(),
     };
 
-    if (existingParticipant) {
-      const prevAttemptData = existingParticipant.previousAttempt || {
-        attemptNumber: 1,
-        score: existingParticipant.score || 0,
-        timeTaken: existingParticipant.timeTaken || 0,
-        level: existingParticipant.level || 1,
-        status: existingParticipant.status || 'eliminated',
-        isDisqualified: Boolean(existingParticipant.isDisqualified),
-        levels: existingParticipant.levels || [],
-        joinedAt: existingParticipant.joinedAt,
-      };
+    // Filter out any duplicate entries for this phone number to guarantee exactly ONE record per unique student
+    const otherParticipants = (room.participants || []).filter(
+      (p) => String(p.mobile || '').replace(/\D/g, '').slice(-10) !== cleanMobile
+    );
 
-      const existingAttempts = Array.isArray(existingParticipant.attempts) && existingParticipant.attempts.length > 0
-        ? existingParticipant.attempts
-        : [prevAttemptData];
-
-      await Room.updateOne(
-        { roomCode: normalizedCode, 'participants.mobile': cleanMobile },
-        {
-          $set: {
-            'participants.$.status': 'in-progress',
-            'participants.$.level': 1,
-            'participants.$.score': 0,
-            'participants.$.timeTaken': 0,
-            'participants.$.levels': [],
-            'participants.$.isDisqualified': false,
-            'participants.$.isReattempt': isReattemptStudent,
-            'participants.$.previousAttempt': prevAttemptData,
-            'participants.$.attempts': existingAttempts,
-            'participants.$.lastActive': new Date(),
-          },
-        }
-      );
-    } else {
-      await Room.updateOne(
-        { roomCode: normalizedCode },
-        { $push: { participants: participantDoc } }
-      );
-    }
+    await Room.updateOne(
+      { roomCode: normalizedCode },
+      { $set: { participants: [...otherParticipants, participantDoc] } }
+    );
 
     // Broadcast live event to admin dashboard
     const io = req.app.get('io');

@@ -113,6 +113,8 @@ export default function Quiz() {
 
   // ── Anti-Cheating & Tab Switching State ──────────────────────────────────
   const [tabSwitchCount, setTabSwitchCount] = useState(() => {
+    // For live room quiz before start, tab switches MUST start at 0
+    if (isRoomQuiz) return 0;
     try {
       if (student?.mobile) {
         const stored = parseInt(localStorage.getItem(`quiz_tab_switches_${student.mobile}`) || '0', 10);
@@ -215,6 +217,14 @@ export default function Quiz() {
             setStartCountdown(0);
             setRoomQuizStarted(true);
             setStartedAt(new Date());
+            if (student?.mobile) {
+              try {
+                localStorage.removeItem(`quiz_tab_switches_${student.mobile}`);
+                localStorage.removeItem(`quiz_anti_cheated_${student.mobile}`);
+              } catch { /* noop */ }
+            }
+            setTabSwitchCount(0);
+            setIsAntiCheatTerminal(false);
           }, 3000);
           return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
         },
@@ -603,11 +613,26 @@ export default function Quiz() {
     setTimeout(() => executeSubmit(), 1200);
   }, [executeSubmit, levelNum]);
 
+  // ── Ensure tab switches stay at 0 while waiting for host or on countdown ──
+  useEffect(() => {
+    if (isRoomQuiz && (!roomQuizStarted || startCountdown > 0) && student?.mobile) {
+      try {
+        localStorage.removeItem(`quiz_tab_switches_${student.mobile}`);
+        localStorage.removeItem(`quiz_anti_cheated_${student.mobile}`);
+      } catch { /* noop */ }
+      setTabSwitchCount(0);
+      setIsAntiCheatTerminal(false);
+    }
+  }, [isRoomQuiz, roomQuizStarted, startCountdown, student?.mobile]);
+
   // ── Tab-Switching & Visibility Monitoring ───────────────────────────────
   // Shared 4.5-second cooldown hook prevents a single physical tab-switch from
   // being counted multiple times due to rapid-fire visibilitychange + blur events.
   const handleSwitchViolation = useCallback(() => {
     if (hasSubmitted.current || isAntiCheatTerminal) return;
+    // CRITICAL: NEVER count tab-switches while waiting for host, during countdown, or before questions load!
+    if (isRoomQuiz && (!roomQuizStarted || startCountdown > 0)) return;
+    if (loading || !questions || questions.length === 0) return;
 
     setTabSwitchCount((prev) => {
       const nextCount = prev + 1;
@@ -688,10 +713,25 @@ export default function Quiz() {
         return clampedCount;
       }
     });
-  }, [isAntiCheatTerminal, student?.mobile, levelNum, isRoomQuiz, roomSession, executeSubmit]);
+  }, [isAntiCheatTerminal, student?.mobile, levelNum, isRoomQuiz, roomQuizStarted, startCountdown, loading, questions, roomSession, executeSubmit]);
+
+  // ── Tab-Switch Monitoring Active State ─────────────────────────────────────
+  // Tab-switch monitoring must ONLY be active when Question 1 is fully loaded
+  // and actively presented to the student on-screen.
+  // In a live room quiz, students sitting in the waiting lobby ("Waiting for Host to Start")
+  // or on the 3-2-1 countdown overlay must NEVER have tab-switches counted.
+  const isQuestionsActive = !loading &&
+    !loadError &&
+    questions.length > 0 &&
+    (!isRoomQuiz || (roomQuizStarted && startCountdown === 0)) &&
+    !showTimerSetup &&
+    !submitting &&
+    !hasSubmitted.current &&
+    !isAntiCheatTerminal &&
+    !isRoomClosed;
 
   useTabSwitchMonitor({
-    enabled: !loading && !submitting && !hasSubmitted.current,
+    enabled: isQuestionsActive,
     onViolation: handleSwitchViolation,
   });
 

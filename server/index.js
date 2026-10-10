@@ -115,6 +115,10 @@ mongoose
   })
   .then(() => {
     console.log('✅  Connected to MongoDB');
+    // Sanitize any duplicate participants in active rooms from past test sessions
+    const Room = require('./models/Room');
+    Room.cleanupDuplicateParticipants();
+
     server.listen(PORT, () => {
       console.log(`🚀  Server listening on port ${PORT} with Socket.io enabled`);
       console.log(`    Health: http://localhost:${PORT}/health`);

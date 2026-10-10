@@ -1349,6 +1349,14 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       // 3. Connect student to room socket
       joinStudentRoomSocket(room.roomCode, student);
 
+      // Clean up any stale tab-switch or anti-cheat state before entering the room
+      if (student?.mobile) {
+        try {
+          localStorage.removeItem(`quiz_tab_switches_${student.mobile}`);
+          localStorage.removeItem(`quiz_anti_cheated_${student.mobile}`);
+        } catch { /* noop */ }
+      }
+
       onClose();
       // Start Room Quiz from Level 1
       navigate('/quiz/1');
