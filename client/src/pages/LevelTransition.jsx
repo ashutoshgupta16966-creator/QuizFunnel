@@ -132,7 +132,7 @@ export default function LevelTransition() {
             🚫
           </div>
 
-          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0.25rem 0 0.5rem', color: '#fff' }}>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0.25rem 0 0.5rem', color: 'var(--text)' }}>
             Thank You for Participating!
           </h2>
 
@@ -156,15 +156,15 @@ export default function LevelTransition() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
-              <span style={{ color: 'rgba(255,255,255,0.7)' }}>Level {currentLevelNum} Score:</span>
-              <strong style={{ color: '#fff' }}>{score} / {total}</strong>
+              <span style={{ color: 'var(--text-soft)' }}>Level {currentLevelNum} Score:</span>
+              <strong style={{ color: 'var(--text)' }}>{score} / {total}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
-              <span style={{ color: 'rgba(255,255,255,0.7)' }}>Cutoff Required:</span>
+              <span style={{ color: 'var(--text-soft)' }}>Cutoff Required:</span>
               <strong style={{ color: '#fca5a5' }}>{cutoff} / {total}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-              <span style={{ color: 'rgba(255,255,255,0.7)' }}>Status:</span>
+              <span style={{ color: 'var(--text-soft)' }}>Status:</span>
               <strong style={{ color: '#ef4444' }}>Cutoff Not Cleared</strong>
             </div>
           </div>
@@ -218,21 +218,21 @@ export default function LevelTransition() {
             const isNext = lvl === nextLevel;
             return (
               <div key={lvl} style={{ display: 'flex', alignItems: 'center' }}>
-                {i > 0 && <div style={{ width: '24px', height: '2px', background: done ? '#10b981' : 'rgba(255,255,255,0.15)' }} />}
+                {i > 0 && <div style={{ width: '24px', height: '2px', background: done ? '#10b981' : 'var(--border)' }} />}
                 <div style={{
                   width: isNext ? '28px' : '20px', height: isNext ? '28px' : '20px',
                   borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontWeight: 800, fontSize: isNext ? '0.78rem' : '0.65rem',
-                  color: done ? '#fff' : isNext ? '#fff' : 'rgba(255,255,255,0.35)',
-                  background: done ? 'linear-gradient(135deg,#10b981,#059669)' : isNext ? 'linear-gradient(135deg,#6366f1,#4f46e5)' : 'rgba(255,255,255,0.06)',
-                  border: done ? '2px solid #10b981' : isNext ? '2px solid #818cf8' : '2px solid rgba(255,255,255,0.12)',
+                  color: done ? '#fff' : isNext ? '#fff' : 'var(--text-dim)',
+                  background: done ? 'linear-gradient(135deg,#10b981,#059669)' : isNext ? 'linear-gradient(135deg,#6366f1,#4f46e5)' : 'var(--surface-2)',
+                  border: done ? '2px solid #10b981' : isNext ? '2px solid #818cf8' : '2px solid var(--border)',
                   boxShadow: isNext ? '0 0 10px rgba(99,102,241,0.5)' : 'none',
                   transition: 'all 0.3s',
                 }}>{done ? '✓' : lvl}</div>
               </div>
             );
           })}
-          <span style={{ marginLeft: '0.6rem', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>
+          <span style={{ marginLeft: '0.6rem', fontSize: '0.7rem', color: 'var(--text-dim)', fontWeight: 600 }}>
             {currentLevelNum} of {totalLevelsDisplay} done
           </span>
         </div>

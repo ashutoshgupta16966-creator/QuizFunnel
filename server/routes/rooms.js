@@ -681,6 +681,7 @@ router.post('/admin/rejoin', async (req, res, next) => {
         status: room.status,
         participants: enrichedParticipants,
         participantCount: enrichedParticipants.length,
+        roomPassword: room.roomPassword,
         createdAt: room.createdAt,
       },
     });
@@ -1599,6 +1600,7 @@ router.get('/:roomCode', async (req, res, next) => {
     if (password && room.roomPassword !== password.trim()) {
       return res.status(401).json({ success: false, error: 'Invalid room credentials.' });
     }
+    const isAuthorizedAdmin = Boolean(password && room.roomPassword === password.trim());
 
     const enrichedParticipants = await enrichParticipantsWithLevels(room.participants || [], normalizedCode);
 
@@ -1617,6 +1619,7 @@ router.get('/:roomCode', async (req, res, next) => {
         isAiGenerated: Boolean(room.isAiGenerated),
         subject: room.subject || '',
         unit: room.unit || '',
+        roomPassword: isAuthorizedAdmin ? room.roomPassword : undefined,
         createdAt: room.createdAt,
       },
     });

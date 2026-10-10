@@ -1850,16 +1850,16 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                     <span>⏱️</span> Level Countdown Timers
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-soft)', marginTop: '0.2rem' }}>
                     Authoritative countdown time for each level. Single source of truth applied uniformly to all students.
                   </div>
                 </div>
                 {/* Quick Presets */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>⚡ Presets:</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-soft)' }}>⚡ Presets:</span>
                   {[5, 10, 15, 20, 30].map((mins) => (
                     <button
                       key={mins}
@@ -2292,7 +2292,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                     ) : (
                       /* LOCKED REVIEW MODE */
                       <div style={{ marginTop: '0.65rem' }}>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f8fafc', marginBottom: '0.65rem', lineHeight: 1.45 }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)', marginBottom: '0.65rem', lineHeight: 1.45 }}>
                           {q.questionText || <span style={{ color: '#ef4444', fontStyle: 'italic' }}>Missing question text</span>}
                         </div>
 
@@ -2560,16 +2560,16 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.85rem' }}>
                   <div>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                       <span>⏱️</span> Level Countdown Timers
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-soft)', marginTop: '0.2rem' }}>
                       Authoritative countdown time for each level. Single source of truth applied uniformly to all students.
                     </div>
                   </div>
                   {/* Quick Presets */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>⚡ Presets:</span>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-soft)' }}>⚡ Presets:</span>
                     {[5, 10, 15, 20, 30].map((mins) => (
                       <button
                         key={mins}

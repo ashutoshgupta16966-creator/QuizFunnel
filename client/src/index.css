@@ -8576,7 +8576,7 @@ body.light-mode .guidance-drawer-backdrop { background: rgba(15, 23, 42, 0.5); }
   max-width: 480px;
   max-height: 90dvh;
   max-height: 90vh;
-  background: #1a2744;
+  background: var(--surface);
   border: 1.5px solid rgba(99, 102, 241, 0.4);
   border-radius: 20px;
   box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(99, 102, 241, 0.08);
@@ -8607,9 +8607,9 @@ body.light-mode .guidance-drawer-backdrop { background: rgba(15, 23, 42, 0.5); }
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(255, 255, 255, 0.04);
-  color: #94a3b8;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-soft);
   font-size: 1rem;
   display: flex;
   align-items: center;
@@ -8674,30 +8674,30 @@ body.light-mode .guidance-drawer-backdrop { background: rgba(15, 23, 42, 0.5); }
 .lobby-instruction-card-title {
   font-size: 0.9rem;
   font-weight: 800;
-  color: #f1f5f9;
+  color: var(--text);
   letter-spacing: 0.01em;
 }
 .lobby-instruction-card-text {
   font-size: 0.86rem;
-  color: #94a3b8;
+  color: var(--text-soft);
   line-height: 1.6;
   margin: 0;
 }
 .lobby-instruction-card-text strong {
-  color: #e2e8f0;
+  color: var(--text);
 }
 
 /* Quick tips section */
 .lobby-instruction-tips {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(100, 116, 139, 0.2);
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
   border-radius: 12px;
   padding: 0.9rem 1rem;
 }
 .lobby-instruction-tips-heading {
   font-size: 0.78rem;
   font-weight: 700;
-  color: #64748b;
+  color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin: 0 0 0.5rem;
@@ -8711,11 +8711,11 @@ body.light-mode .guidance-drawer-backdrop { background: rgba(15, 23, 42, 0.5); }
 }
 .lobby-instruction-tips-list li {
   font-size: 0.84rem;
-  color: #94a3b8;
+  color: var(--text-soft);
   line-height: 1.5;
 }
 .lobby-instruction-tips-list li strong {
-  color: #e2e8f0;
+  color: var(--text);
 }
 
 /* Modal footer */
@@ -8749,11 +8749,125 @@ body.light-mode .guidance-drawer-backdrop { background: rgba(15, 23, 42, 0.5); }
   transform: translateY(0);
 }
 
-/* ── Pull-to-Refresh: belt-and-suspenders CSS for the active question screen ──
-   The JS useEffect sets overscrollBehaviorY on documentElement directly.
-   This class rule reinforces that on the .quiz-page wrapper element itself,
-   scoped so it never affects the lobby, home, or results screens. */
+/* ── Pull-to-Refresh: CSS lock for active question screen container ───────── */
 .quiz-page {
   overscroll-behavior-y: contain;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT THEME CONTRAST OVERRIDES
+   Ensures crystal-clear readability and contrast in Light Mode across all views
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-theme="light"] .progression-pill {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+[data-theme="light"] .progression-pill-title {
+  color: var(--text);
+}
+[data-theme="light"] .progression-pill-desc {
+  color: var(--text-soft);
+}
+[data-theme="light"] .progression-pill.is-active {
+  background: #EEF2FF;
+  border-color: #6366F1;
+}
+[data-theme="light"] .progression-pill.is-active .progression-pill-title {
+  color: #4F46E5;
+}
+
+[data-theme="light"] .pin-reset-header {
+  color: var(--text);
+}
+[data-theme="light"] .pin-reset-desc {
+  color: var(--text-soft);
+}
+
+[data-theme="light"] .analytics-question-card {
+  background: #FFFFFF !important;
+  color: #0F172A;
+  border-color: var(--border);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+}
+[data-theme="light"] .analytics-q-text {
+  color: #0F172A !important;
+}
+[data-theme="light"] .analytics-option-item {
+  background: #F8FAFC;
+  border-color: #E2E8F0;
+  color: #1E293B;
+}
+[data-theme="light"] .analytics-option-item .opt-letter {
+  color: #475569;
+}
+[data-theme="light"] .analytics-option-item .opt-content {
+  color: #0F172A;
+}
+
+[data-theme="light"] .ai-stat-card {
+  background: var(--surface-2);
+  border-color: var(--border-2);
+}
+[data-theme="light"] .ai-stat-val {
+  color: var(--text);
+}
+[data-theme="light"] .ai-stat-lbl {
+  color: var(--text-soft);
+}
+
+[data-theme="light"] .ai-masked-q-num {
+  color: var(--text);
+}
+[data-theme="light"] .ai-masked-q-text {
+  color: var(--text);
+}
+[data-theme="light"] .ai-runner-subject {
+  color: var(--text);
+}
+[data-theme="light"] .ai-runner-progress {
+  color: var(--text-soft);
+}
+[data-theme="light"] .ai-runner-question-text {
+  color: var(--text);
+}
+[data-theme="light"] .ai-direct-play-input {
+  background: #FFFFFF;
+  color: #0F172A;
+  border-color: var(--border);
+}
+[data-theme="light"] .ai-option-play-btn {
+  background: #FFFFFF;
+  border-color: var(--border);
+  color: var(--text);
+}
+[data-theme="light"] .ai-option-play-btn .ai-option-letter {
+  background: #E2E8F0;
+  color: #0F172A;
+}
+[data-theme="light"] .ai-palette-container {
+  background: var(--surface-2);
+  border-color: var(--border-2);
+}
+[data-theme="light"] .ai-palette-cell {
+  background: #FFFFFF;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="light"] .room-hero-card {
+  background: #FFFFFF;
+  border-color: var(--border);
+}
+[data-theme="light"] .code-value {
+  background: rgba(67, 97, 238, 0.08);
+}
+[data-theme="light"] .copy-chip-btn {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+[data-theme="light"] .copy-chip-btn:hover {
+  background: var(--border-2);
 }
 

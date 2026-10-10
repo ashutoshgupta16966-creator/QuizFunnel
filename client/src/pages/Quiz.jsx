@@ -737,51 +737,22 @@ export default function Quiz() {
 
   // ── Pull-to-Refresh Lock (active question screen only) ────────────────────
   // Prevents accidental swipe-down refresh on mobile Chrome, Brave, Safari, WebView.
-  // Only applied while the question screen is active — NOT during lobby/results/home.
+  // ── Pull-to-Refresh Lock (active question screen only) ────────────────────
+  // Disables browser-level pull-to-refresh without blocking any in-page scrolling.
+  // Uses CSS overscroll-behavior-y: contain on root document elements.
+  // Only applied while question screen is active — NOT during lobby/results/home.
   useEffect(() => {
     if (!isQuestionsActive) return;
 
-    // CSS-level lock: overscroll-behavior-y: contain on the root document element
-    const prevOverscroll = document.documentElement.style.overscrollBehaviorY;
+    const prevHtmlOverscroll = document.documentElement.style.overscrollBehaviorY;
+    const prevBodyOverscroll = document.body.style.overscrollBehaviorY;
+
     document.documentElement.style.overscrollBehaviorY = 'contain';
-
-    // JS-level lock: prevent the native pull-down gesture (needed for Brave / iOS Safari)
-    const preventPullToRefresh = (e) => {
-      // Only block when scrolled to the very top and pulling downward
-      if (window.scrollY === 0 && e.touches && e.touches[0] && e.touches[0].clientY > 0) {
-        // Check if the swipe direction is downward (positive delta)
-        if (e._initialY !== undefined && e.touches[0].clientY > e._initialY) {
-          e.preventDefault();
-        }
-      }
-    };
-
-    const recordInitialTouch = (e) => {
-      if (e.touches && e.touches[0]) {
-        e._initialY = e.touches[0].clientY;
-        // Store on window so the move handler can access it
-        window._ptrInitialY = e.touches[0].clientY;
-      }
-    };
-
-    const blockPullDown = (e) => {
-      // If at top of scroll and dragging downward, block
-      if (window.scrollY <= 0) {
-        const currentY = e.touches && e.touches[0] ? e.touches[0].clientY : 0;
-        if (currentY > (window._ptrInitialY || 0)) {
-          e.preventDefault();
-        }
-      }
-    };
-
-    document.addEventListener('touchstart', recordInitialTouch, { passive: true });
-    document.addEventListener('touchmove', blockPullDown, { passive: false });
+    document.body.style.overscrollBehaviorY = 'contain';
 
     return () => {
-      document.documentElement.style.overscrollBehaviorY = prevOverscroll || '';
-      document.removeEventListener('touchstart', recordInitialTouch);
-      document.removeEventListener('touchmove', blockPullDown);
-      window._ptrInitialY = undefined;
+      document.documentElement.style.overscrollBehaviorY = prevHtmlOverscroll || '';
+      document.body.style.overscrollBehaviorY = prevBodyOverscroll || '';
     };
   }, [isQuestionsActive]);
 
@@ -844,7 +815,7 @@ export default function Quiz() {
           padding: '2.5rem 2rem',
           textAlign: 'center',
           borderRadius: '24px',
-          background: 'var(--surface-color, #1e293b)',
+          background: 'var(--surface)',
           border: '2px solid rgba(99,102,241,0.35)',
           boxShadow: '0 24px 60px -12px rgba(0,0,0,0.6)',
           position: 'relative',
@@ -869,11 +840,11 @@ export default function Quiz() {
               }} />
             </div>
 
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#f8fafc', margin: '0 0 0.5rem' }}>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)', margin: '0 0 0.5rem' }}>
               Waiting for Host to Start
             </h2>
-            <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 1.5rem', lineHeight: 1.5 }}>
-              You've joined <strong style={{ color: '#a5b4fc' }}>Room {roomSession?.roomCode}</strong>.<br />
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-soft)', margin: '0 0 1.5rem', lineHeight: 1.5 }}>
+              You've joined <strong style={{ color: 'var(--primary)' }}>Room {roomSession?.roomCode}</strong>.<br />
               Questions are ready — the quiz will start for everyone simultaneously when the host fires it.
             </p>
 
@@ -886,7 +857,7 @@ export default function Quiz() {
               borderRadius: '999px',
               background: 'rgba(99,102,241,0.15)',
               border: '1px solid rgba(99,102,241,0.3)',
-              color: '#a5b4fc',
+              color: 'var(--primary)',
               fontSize: '0.85rem',
               fontWeight: 700,
               marginBottom: '1.25rem',
@@ -914,7 +885,7 @@ export default function Quiz() {
                   borderRadius: '999px',
                   background: 'rgba(251,191,36,0.12)',
                   border: '1.5px solid rgba(251,191,36,0.45)',
-                  color: '#fbbf24',
+                  color: '#d97706',
                   fontSize: '0.85rem',
                   fontWeight: 700,
                   cursor: 'pointer',
@@ -936,11 +907,12 @@ export default function Quiz() {
 
             {/* Info strip */}
             <div style={{
-              background: 'rgba(255,255,255,0.04)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border-2)',
               borderRadius: '12px',
               padding: '0.75rem 1rem',
               fontSize: '0.8rem',
-              color: '#64748b',
+              color: 'var(--text-soft)',
               lineHeight: 1.5,
             }}>
               📌 {questions.length} question{questions.length !== 1 ? 's' : ''} loaded &nbsp;·&nbsp;
@@ -949,8 +921,8 @@ export default function Quiz() {
             </div>
 
             {/* Room info footer */}
-            <p style={{ fontSize: '0.75rem', color: '#475569', marginTop: '1rem', marginBottom: 0 }}>
-              <strong style={{ color: '#6366f1' }}>{roomSession?.roomCode}</strong> — Do not refresh the page
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '1rem', marginBottom: 0 }}>
+              <strong style={{ color: 'var(--primary)' }}>{roomSession?.roomCode}</strong> — Do not refresh the page
             </p>
           </div>
         </div>
@@ -982,7 +954,7 @@ export default function Quiz() {
               <div className="lobby-instructions-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <span style={{ fontSize: '1.4rem' }}>📋</span>
-                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#f8fafc' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)' }}>
                     Quiz Instructions
                   </h3>
                 </div>
@@ -1118,24 +1090,24 @@ export default function Quiz() {
   if (!isRoomQuiz && showTimerSetup && questions.length > 0) {
     return (
       <div className="quiz-page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-        <div className="room-modal-card" style={{ maxWidth: '440px', width: '100%', padding: '2rem 2.25rem', textAlign: 'center', borderRadius: '20px', background: 'var(--surface-color, #1e293b)', border: '1px solid rgba(139,92,246,0.3)', boxShadow: '0 20px 40px -15px rgba(0,0,0,0.5)' }}>
+        <div className="room-modal-card" style={{ maxWidth: '440px', width: '100%', padding: '2rem 2.25rem', textAlign: 'center', borderRadius: '20px', background: 'var(--surface)', border: '1px solid rgba(139,92,246,0.3)', boxShadow: '0 20px 40px -15px rgba(0,0,0,0.5)' }}>
           <div style={{ marginBottom: '1.25rem' }}>
             <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.5rem' }}>⏱️</span>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.25rem 0.75rem', borderRadius: '999px', background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.25rem 0.75rem', borderRadius: '999px', background: 'rgba(99,102,241,0.15)', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.5rem' }}>
               <span>{levelConfig.label}</span>
               {(displaySubject || displayUnit) && <span>• {displaySubject} {displayUnit ? `(${displayUnit})` : ''}</span>}
             </div>
-            <h2 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#f8fafc', margin: '0 0 0.4rem' }}>
+            <h2 style={{ fontSize: '1.45rem', fontWeight: 800, color: 'var(--text)', margin: '0 0 0.4rem' }}>
               Set Your Quiz Timer
             </h2>
-            <p style={{ fontSize: '0.86rem', color: '#94a3b8', margin: 0, lineHeight: 1.45 }}>
+            <p style={{ fontSize: '0.86rem', color: 'var(--text-soft)', margin: 0, lineHeight: 1.45 }}>
               Questions are ready ({questions.length} questions). Choose your countdown time for this level before starting.
             </p>
           </div>
 
           {/* Big Digital Countdown Time Inputs */}
           <div style={{
-            background: 'rgba(15,23,42,0.6)',
+            background: 'var(--surface-2)',
             border: '2px solid rgba(139,92,246,0.4)',
             borderRadius: '16px',
             padding: '1.25rem 1.5rem',
@@ -1143,7 +1115,7 @@ export default function Quiz() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-soft)', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>
                   MINUTES
                 </label>
                 <input
@@ -1157,10 +1129,10 @@ export default function Quiz() {
                     fontSize: '2.2rem',
                     fontWeight: 800,
                     textAlign: 'center',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1.5px solid rgba(139,92,246,0.5)',
+                    background: 'var(--surface)',
+                    border: '1.5px solid var(--border)',
                     borderRadius: '10px',
-                    color: '#f8fafc',
+                    color: 'var(--text)',
                     padding: '0.35rem',
                     outline: 'none',
                   }}
@@ -1168,7 +1140,7 @@ export default function Quiz() {
               </div>
               <span style={{ fontSize: '2.2rem', fontWeight: 800, color: '#818cf8', lineHeight: 1, marginTop: '1rem' }}>:</span>
               <div>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-soft)', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>
                   SECONDS
                 </label>
                 <input
@@ -1182,10 +1154,10 @@ export default function Quiz() {
                     fontSize: '2.2rem',
                     fontWeight: 800,
                     textAlign: 'center',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1.5px solid rgba(139,92,246,0.5)',
+                    background: 'var(--surface)',
+                    border: '1.5px solid var(--border)',
                     borderRadius: '10px',
-                    color: '#f8fafc',
+                    color: 'var(--text)',
                     padding: '0.35rem',
                     outline: 'none',
                   }}
@@ -1275,8 +1247,8 @@ export default function Quiz() {
           justifyContent: 'center',
           gap: 0,
           padding: '0.45rem 1rem',
-          background: 'rgba(15,23,42,0.55)',
-          borderBottom: '1px solid rgba(99,102,241,0.15)',
+          background: 'var(--surface-2)',
+          borderBottom: '1px solid var(--border-2)',
         }}>
           {Array.from({ length: totalLevels }, (_, i) => {
             const lvl = i + 1;
@@ -1290,8 +1262,8 @@ export default function Quiz() {
                     width: '32px',
                     height: '2px',
                     background: isCompleted || isCurrent
-                      ? 'rgba(99,102,241,0.7)'
-                      : 'rgba(99,102,241,0.18)',
+                      ? 'var(--primary)'
+                      : 'var(--border)',
                     transition: 'background 0.3s',
                   }} />
                 )}
@@ -1307,17 +1279,17 @@ export default function Quiz() {
                     justifyContent: 'center',
                     fontWeight: 800,
                     fontSize: isCurrent ? '0.8rem' : '0.68rem',
-                    color: isCompleted ? '#fff' : isCurrent ? '#fff' : '#475569',
+                    color: isCompleted ? '#fff' : isCurrent ? '#fff' : 'var(--text-dim)',
                     background: isCompleted
                       ? 'linear-gradient(135deg, #10b981, #059669)'
                       : isCurrent
                         ? 'linear-gradient(135deg, #6366f1, #4f46e5)'
-                        : 'rgba(99,102,241,0.08)',
+                        : 'var(--surface)',
                     border: isCompleted
                       ? '2px solid #10b981'
                       : isCurrent
                         ? '2px solid #818cf8'
-                        : '2px solid rgba(99,102,241,0.2)',
+                        : '2px solid var(--border)',
                     boxShadow: isCurrent ? '0 0 12px rgba(99,102,241,0.5)' : 'none',
                     transition: 'all 0.3s ease',
                     cursor: 'default',
@@ -1333,7 +1305,7 @@ export default function Quiz() {
           <span style={{
             marginLeft: '0.75rem',
             fontSize: '0.72rem',
-            color: '#64748b',
+            color: 'var(--text-dim)',
             fontWeight: 600,
             letterSpacing: '0.04em',
             whiteSpace: 'nowrap',

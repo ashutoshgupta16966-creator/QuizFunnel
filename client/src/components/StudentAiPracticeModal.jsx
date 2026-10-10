@@ -1406,7 +1406,7 @@ export default function StudentAiPracticeModal({
                     ) : (
                       /* LOCKED REVIEW MODE */
                       <div style={{ marginTop: '0.65rem' }}>
-                        <p className="ai-review-q-text" style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.9rem', marginBottom: '0.65rem', lineHeight: 1.45 }}>
+                        <p className="ai-review-q-text" style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.9rem', marginBottom: '0.65rem', lineHeight: 1.45 }}>
                           {q.questionText}
                         </p>
 
@@ -1608,14 +1608,14 @@ export default function StudentAiPracticeModal({
                     onChange={(e) => setTimerMins(Math.max(0, Math.min(180, parseInt(e.target.value) || 0)))}
                     style={{
                       width: '90px', fontSize: '2.4rem', fontWeight: 800, textAlign: 'center',
-                      background: 'rgba(255,255,255,0.06)', border: '2px solid rgba(139,92,246,0.5)',
-                      borderRadius: '10px', color: '#f8fafc', padding: '0.4rem', outline: 'none',
+                      background: 'var(--surface)', border: '2px solid var(--border)',
+                      borderRadius: '10px', color: 'var(--text)', padding: '0.4rem', outline: 'none',
                     }}
                   />
                 </div>
                 <span style={{ fontSize: '2.4rem', fontWeight: 800, color: '#6366f1', lineHeight: 1 }}>:</span>
                 <div style={{ textAlign: 'center' }}>
-                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600, marginBottom: '0.4rem', letterSpacing: '0.05em' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-soft)', fontWeight: 600, marginBottom: '0.4rem', letterSpacing: '0.05em' }}>
                     SECONDS
                   </label>
                   <input
@@ -1626,8 +1626,8 @@ export default function StudentAiPracticeModal({
                     onChange={(e) => setTimerSecs(Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
                     style={{
                       width: '90px', fontSize: '2.4rem', fontWeight: 800, textAlign: 'center',
-                      background: 'rgba(255,255,255,0.06)', border: '2px solid rgba(139,92,246,0.5)',
-                      borderRadius: '10px', color: '#f8fafc', padding: '0.4rem', outline: 'none',
+                      background: 'var(--surface)', border: '2px solid var(--border)',
+                      borderRadius: '10px', color: 'var(--text)', padding: '0.4rem', outline: 'none',
                     }}
                   />
                 </div>
@@ -1701,10 +1701,10 @@ export default function StudentAiPracticeModal({
             {/* Top Bar with Subject, Unit & Current Position */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
               <div>
-                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text)', margin: 0 }}>
                   {subject} {unit ? `· ${unit}` : ''}
                 </h3>
-                <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-soft)' }}>
                   Question {currentIndex + 1} of {questions.length} · {answeredCount} answered
                 </span>
               </div>
@@ -1898,7 +1898,7 @@ export default function StudentAiPracticeModal({
             </div>
 
             {/* Detailed Question Review List */}
-            <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f8fafc', margin: '1rem 0 0.5rem 0' }}>
+            <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text)', margin: '1rem 0 0.5rem 0' }}>
               📋 Detailed Review &amp; AI Explanations
             </h4>
             <div style={{ maxHeight: '38vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingRight: '0.35rem' }}>
@@ -1906,14 +1906,14 @@ export default function StudentAiPracticeModal({
                 <div
                   key={idx}
                   style={{
-                    background: 'rgba(255,255,255,0.03)',
+                    background: 'var(--surface-2)',
                     border: q.isCorrect ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
                     borderRadius: '10px',
                     padding: '0.85rem',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8' }}>Q{idx + 1}</span>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-soft)' }}>Q{idx + 1}</span>
                     <span
                       style={{
                         fontSize: '0.72rem',
@@ -1928,13 +1928,13 @@ export default function StudentAiPracticeModal({
                     </span>
                   </div>
 
-                  <p style={{ fontSize: '0.88rem', fontWeight: 600, color: '#f8fafc', margin: '0 0 0.5rem 0' }}>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)', margin: '0 0 0.5rem 0' }}>
                     {q.questionText}
                   </p>
 
-                  <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', color: '#cbd5e1' }}>
+                  <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', color: 'var(--text)' }}>
                     <div>
-                      <strong style={{ color: '#94a3b8' }}>Your Answer: </strong>
+                      <strong style={{ color: 'var(--text-soft)' }}>Your Answer: </strong>
                       {q.questionType === 'direct'
                         ? (q.userAnswer || 'Not answered')
                         : (q.options && q.userAnswer !== undefined ? q.options[q.userAnswer] : 'Not answered')}

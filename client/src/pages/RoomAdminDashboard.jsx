@@ -22,6 +22,7 @@ export default function RoomAdminDashboard() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedPassword, setCopiedPassword] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [closing, setClosing] = useState(false);
@@ -245,6 +246,17 @@ export default function RoomAdminDashboard() {
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
+  // ── Copy Room Password ──
+  const handleCopyPassword = () => {
+    const pwd = room?.roomPassword || adminPassword;
+    if (!pwd) return;
+    navigator.clipboard.writeText(pwd);
+    setCopiedPassword(true);
+    setTimeout(() => setCopiedPassword(false), 2000);
+  };
+
+  const displayPassword = room?.roomPassword || adminPassword || '';
+
   // ── Close Room Handler ──
   const handleCloseRoom = async () => {
     if (!window.confirm('Are you sure you want to close this room? Students will no longer be able to submit.')) {
@@ -453,6 +465,21 @@ export default function RoomAdminDashboard() {
                     {copiedLink ? '✅ Link Copied!' : '🔗 Copy Invite Link'}
                   </button>
                 </div>
+
+                {displayPassword && (
+                  <div className="room-code-tag room-password-tag" style={{ marginTop: '0.35rem' }}>
+                    <span className="code-label">ROOM PASSWORD:</span>
+                    <span className="code-value" style={{ letterSpacing: '0.04em' }}>{displayPassword}</span>
+                    <button
+                      type="button"
+                      className="copy-chip-btn"
+                      onClick={handleCopyPassword}
+                      title="Copy Room Password"
+                    >
+                      {copiedPassword ? '✅ Copied!' : '🔑 Copy Password'}
+                    </button>
+                  </div>
+                )}
 
                 {room.quizTitle && (
                   <div className="room-title-subhead">
