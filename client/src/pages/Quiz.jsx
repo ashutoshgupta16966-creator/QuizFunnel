@@ -735,6 +735,59 @@ export default function Quiz() {
     onViolation: handleSwitchViolation,
   });
 
+  // ── Pull-to-Refresh Lock (active question screen only) ────────────────────
+  // Prevents accidental swipe-down refresh on mobile Chrome, Brave, Safari, WebView.
+  // Only applied while the question screen is active — NOT during lobby/results/home.
+  useEffect(() => {
+    if (!isQuestionsActive) return;
+
+    // CSS-level lock: overscroll-behavior-y: contain on the root document element
+    const prevOverscroll = document.documentElement.style.overscrollBehaviorY;
+    document.documentElement.style.overscrollBehaviorY = 'contain';
+
+    // JS-level lock: prevent the native pull-down gesture (needed for Brave / iOS Safari)
+    const preventPullToRefresh = (e) => {
+      // Only block when scrolled to the very top and pulling downward
+      if (window.scrollY === 0 && e.touches && e.touches[0] && e.touches[0].clientY > 0) {
+        // Check if the swipe direction is downward (positive delta)
+        if (e._initialY !== undefined && e.touches[0].clientY > e._initialY) {
+          e.preventDefault();
+        }
+      }
+    };
+
+    const recordInitialTouch = (e) => {
+      if (e.touches && e.touches[0]) {
+        e._initialY = e.touches[0].clientY;
+        // Store on window so the move handler can access it
+        window._ptrInitialY = e.touches[0].clientY;
+      }
+    };
+
+    const blockPullDown = (e) => {
+      // If at top of scroll and dragging downward, block
+      if (window.scrollY <= 0) {
+        const currentY = e.touches && e.touches[0] ? e.touches[0].clientY : 0;
+        if (currentY > (window._ptrInitialY || 0)) {
+          e.preventDefault();
+        }
+      }
+    };
+
+    document.addEventListener('touchstart', recordInitialTouch, { passive: true });
+    document.addEventListener('touchmove', blockPullDown, { passive: false });
+
+    return () => {
+      document.documentElement.style.overscrollBehaviorY = prevOverscroll || '';
+      document.removeEventListener('touchstart', recordInitialTouch);
+      document.removeEventListener('touchmove', blockPullDown);
+      window._ptrInitialY = undefined;
+    };
+  }, [isQuestionsActive]);
+
+  // ── Waiting Lobby: Instructions Modal State ───────────────────────────────
+  const [showLobbyInstructions, setShowLobbyInstructions] = useState(false);
+
 
 
   // Handle confirmed exit
@@ -836,7 +889,7 @@ export default function Quiz() {
               color: '#a5b4fc',
               fontSize: '0.85rem',
               fontWeight: 700,
-              marginBottom: '1.5rem',
+              marginBottom: '1.25rem',
             }}>
               <span style={{
                 width: '8px', height: '8px', borderRadius: '50%',
@@ -846,6 +899,39 @@ export default function Quiz() {
                 animation: 'pulse-dot 1.4s ease-in-out infinite',
               }} />
               You're in! Waiting for the host to start…
+            </div>
+
+            {/* ── Instructions Button ── */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <button
+                type="button"
+                onClick={() => setShowLobbyInstructions(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  padding: '0.5rem 1.1rem',
+                  borderRadius: '999px',
+                  background: 'rgba(251,191,36,0.12)',
+                  border: '1.5px solid rgba(251,191,36,0.45)',
+                  color: '#fbbf24',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  letterSpacing: '0.02em',
+                  transition: 'all 0.18s ease',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(251,191,36,0.22)';
+                  e.currentTarget.style.borderColor = 'rgba(251,191,36,0.7)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(251,191,36,0.12)';
+                  e.currentTarget.style.borderColor = 'rgba(251,191,36,0.45)';
+                }}
+              >
+                📋 Read Instructions
+              </button>
             </div>
 
             {/* Info strip */}
@@ -881,9 +967,93 @@ export default function Quiz() {
             50% { opacity: 0.4; }
           }
         `}</style>
+
+        {/* ── Instructions Modal Overlay ── */}
+        {showLobbyInstructions && (
+          <div
+            className="lobby-instructions-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Quiz Instructions"
+            onClick={e => { if (e.target === e.currentTarget) setShowLobbyInstructions(false); }}
+          >
+            <div className="lobby-instructions-modal">
+              {/* Modal Header */}
+              <div className="lobby-instructions-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <span style={{ fontSize: '1.4rem' }}>📋</span>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#f8fafc' }}>
+                    Quiz Instructions
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  className="lobby-instructions-close"
+                  onClick={() => setShowLobbyInstructions(false)}
+                  aria-label="Close instructions"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="lobby-instructions-body">
+
+                {/* Rule 1 — Tab Switch Warning */}
+                <div className="lobby-instruction-card lobby-instruction-danger">
+                  <div className="lobby-instruction-card-header">
+                    <span className="lobby-instruction-card-icon">⚠️</span>
+                    <span className="lobby-instruction-card-title">Strict Rule — No Tab Switching</span>
+                  </div>
+                  <p className="lobby-instruction-card-text">
+                    <strong>Do NOT switch tabs, open other apps, or minimize the browser</strong> while solving questions.
+                    Tab switching is actively monitored. Exceeding the allowed limit will result in{' '}
+                    <strong style={{ color: '#f87171' }}>automatic disqualification</strong> — with no option to continue.
+                  </p>
+                </div>
+
+                {/* Rule 2 — Scoring System */}
+                <div className="lobby-instruction-card lobby-instruction-accent">
+                  <div className="lobby-instruction-card-header">
+                    <span className="lobby-instruction-card-icon">⚡</span>
+                    <span className="lobby-instruction-card-title">Scoring &amp; Rankings</span>
+                  </div>
+                  <p className="lobby-instruction-card-text">
+                    Rankings are determined by <strong>speed and accuracy</strong>. Answering correctly in the{' '}
+                    <strong style={{ color: '#34d399' }}>shortest time guarantees a higher rank</strong>. Two students
+                    with the same score are ranked by who finished faster — so answer quickly and correctly!
+                  </p>
+                </div>
+
+                {/* Additional quick tips */}
+                <div className="lobby-instruction-tips">
+                  <p className="lobby-instruction-tips-heading">Quick Reminders</p>
+                  <ul className="lobby-instruction-tips-list">
+                    <li>Stay on this tab until the host starts the quiz.</li>
+                    <li>Questions are the same for all participants — the quiz starts simultaneously.</li>
+                    <li>Each level has a timer — unanswered questions score zero when it expires.</li>
+                    <li>Do <strong>not refresh</strong> the page — your session will be preserved.</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="lobby-instructions-footer">
+                <button
+                  type="button"
+                  className="lobby-instructions-got-it"
+                  onClick={() => setShowLobbyInstructions(false)}
+                >
+                  Got it — I'm Ready! ✓
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
+
 
   // ── ROOM QUIZ: 3-2-1 Countdown Overlay (fires after admin starts, before questions show) ──
   if (isRoomQuiz && startCountdown > 0) {

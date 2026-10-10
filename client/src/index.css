@@ -8545,3 +8545,215 @@ body.light-mode .guidance-drawer-backdrop { background: rgba(15, 23, 42, 0.5); }
   transform: scale(1.1);
 }
 
+
+/* ============================================================
+   WAITING LOBBY — Instructions Modal
+   Dark neon design system — matches quiz-page surface tokens
+   ============================================================ */
+
+/* Full-screen modal backdrop */
+.lobby-instructions-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  backdrop-filter: blur(4px);
+  animation: lobby-backdrop-in 0.2s ease;
+}
+
+@keyframes lobby-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Modal panel */
+.lobby-instructions-modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90dvh;
+  max-height: 90vh;
+  background: #1a2744;
+  border: 1.5px solid rgba(99, 102, 241, 0.4);
+  border-radius: 20px;
+  box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(99, 102, 241, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: lobby-modal-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes lobby-modal-in {
+  from { opacity: 0; transform: translateY(20px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Modal header */
+.lobby-instructions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.25rem 0.85rem;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.18);
+  flex-shrink: 0;
+  background: rgba(99, 102, 241, 0.06);
+}
+
+/* Close button */
+.lobby-instructions-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.lobby-instructions-close:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+/* Scrollable body */
+.lobby-instructions-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  overscroll-behavior: contain;
+}
+.lobby-instructions-body::-webkit-scrollbar {
+  width: 5px;
+}
+.lobby-instructions-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.lobby-instructions-body::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 999px;
+}
+
+/* Instruction cards */
+.lobby-instruction-card {
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  border: 1px solid transparent;
+}
+
+.lobby-instruction-danger {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.lobby-instruction-accent {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.25);
+}
+
+.lobby-instruction-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.lobby-instruction-card-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.lobby-instruction-card-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #f1f5f9;
+  letter-spacing: 0.01em;
+}
+.lobby-instruction-card-text {
+  font-size: 0.86rem;
+  color: #94a3b8;
+  line-height: 1.6;
+  margin: 0;
+}
+.lobby-instruction-card-text strong {
+  color: #e2e8f0;
+}
+
+/* Quick tips section */
+.lobby-instruction-tips {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+}
+.lobby-instruction-tips-heading {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin: 0 0 0.5rem;
+}
+.lobby-instruction-tips-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.lobby-instruction-tips-list li {
+  font-size: 0.84rem;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+.lobby-instruction-tips-list li strong {
+  color: #e2e8f0;
+}
+
+/* Modal footer */
+.lobby-instructions-footer {
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid rgba(99, 102, 241, 0.18);
+  flex-shrink: 0;
+}
+
+/* "Got it" CTA button */
+.lobby-instructions-got-it {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: all 0.18s ease;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+}
+.lobby-instructions-got-it:hover {
+  background: linear-gradient(135deg, #818cf8, #6366f1);
+  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.5);
+  transform: translateY(-1px);
+}
+.lobby-instructions-got-it:active {
+  transform: translateY(0);
+}
+
+/* ── Pull-to-Refresh: belt-and-suspenders CSS for the active question screen ──
+   The JS useEffect sets overscrollBehaviorY on documentElement directly.
+   This class rule reinforces that on the .quiz-page wrapper element itself,
+   scoped so it never affects the lobby, home, or results screens. */
+.quiz-page {
+  overscroll-behavior-y: contain;
+}
+
