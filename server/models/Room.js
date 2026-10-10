@@ -206,6 +206,8 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
     console.error('Error enriching participants with levels:', err.message);
     return participants;
   }
+};
+
 /**
  * One-time / on-startup migration to sanitize duplicate participants in active rooms
  * from past test sessions.
