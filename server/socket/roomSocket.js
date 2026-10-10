@@ -80,7 +80,7 @@ function initRoomSocket(io) {
         socket.join(`room:${normalizedCode}`);
 
         // Check if quiz has already been started by admin (late joiner catch-up)
-        const room = await Room.findOne({ roomCode: normalizedCode }).select('quizStarted levelTimers status').lean();
+        const room = await Room.findOne({ roomCode: normalizedCode }).select('quizStarted levelTimers status participants').lean();
         if (room?.quizStarted) {
           // Immediately tell this student the quiz has started (they missed the broadcast)
           socket.emit('room:quiz-started', {
@@ -90,18 +90,23 @@ function initRoomSocket(io) {
           });
         }
 
-        // Notify admin in this room
+        const cleanMobile = String(student.mobile).replace(/\D/g, '').slice(-10);
+        const existingP = (room?.participants || []).find(
+          (p) => String(p.mobile || '').replace(/\D/g, '').slice(-10) === cleanMobile
+        );
+
+        // Notify admin in this room with current progress if rejoining
         io.to(`room:${normalizedCode}`).emit('student:joined', {
           mobile: student.mobile,
           name: student.name,
           branch: student.branch,
-          level: 1,
-          score: 0,
-          timeTaken: 0,
-          status: 'in-progress',
-          isDisqualified: false,
-          levels: [],
-          joinedAt: new Date(),
+          level: existingP?.level || student.currentLevel || 1,
+          score: existingP?.score || 0,
+          timeTaken: existingP?.timeTaken || 0,
+          status: existingP?.status || student.status || 'in-progress',
+          isDisqualified: Boolean(existingP?.isDisqualified),
+          levels: existingP?.levels || [],
+          joinedAt: existingP?.joinedAt || new Date(),
         });
       } catch (err) {
         console.error('Socket student:join-room error:', err.message);

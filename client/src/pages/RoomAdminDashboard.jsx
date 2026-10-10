@@ -119,11 +119,18 @@ export default function RoomAdminDashboard() {
           if (exists) {
             return {
               ...prev,
-              participants: existingList.map((p) =>
-                String(p.mobile || '').replace(/\D/g, '').slice(-10) === newM
-                  ? { ...p, ...newStudent }
-                  : p
-              ),
+              participants: existingList.map((p) => {
+                if (String(p.mobile || '').replace(/\D/g, '').slice(-10) !== newM) return p;
+                const hasLevels = Array.isArray(newStudent.levels) && newStudent.levels.length > 0;
+                return {
+                  ...p,
+                  ...newStudent,
+                  level: Math.max(p.level || 1, newStudent.level || 1),
+                  score: Math.max(p.score || 0, newStudent.score || 0),
+                  timeTaken: Math.max(p.timeTaken || 0, newStudent.timeTaken || 0),
+                  levels: hasLevels ? newStudent.levels : (p.levels || []),
+                };
+              }),
             };
           }
           return {
@@ -136,6 +143,15 @@ export default function RoomAdminDashboard() {
         setRoom((prev) => {
           if (!prev) return prev;
           const updateM = String(update.mobile || '').replace(/\D/g, '').slice(-10);
+          const exists = (prev.participants || []).some(
+            (p) => String(p.mobile || '').replace(/\D/g, '').slice(-10) === updateM
+          );
+          if (!exists) {
+            return {
+              ...prev,
+              participants: [update, ...(prev.participants || [])],
+            };
+          }
           return {
             ...prev,
             participants: (prev.participants || []).map((p) => {
@@ -336,15 +352,31 @@ export default function RoomAdminDashboard() {
   // Unique participants deduplicated by 10-digit mobile number
   const participants = useMemo(() => {
     const raw = room?.participants || [];
-    const seen = new Set();
-    const unique = [];
+    const map = new Map();
     for (const p of raw) {
       const m = String(p.mobile || '').replace(/\D/g, '').slice(-10);
-      if (!m || seen.has(m)) continue;
-      seen.add(m);
-      unique.push(p);
+      if (!m) continue;
+      if (!map.has(m)) {
+        map.set(m, p);
+      } else {
+        const existing = map.get(m);
+        const bestLevel = Math.max(existing.level || 1, p.level || 1);
+        const bestScore = Math.max(existing.score || 0, p.score || 0);
+        const bestTime = Math.max(existing.timeTaken || 0, p.timeTaken || 0);
+        const bestLevels = (Array.isArray(p.levels) && p.levels.length > 0) ? p.levels : (existing.levels || []);
+        map.set(m, {
+          ...existing,
+          ...p,
+          level: bestLevel,
+          score: bestScore,
+          timeTaken: bestTime,
+          levels: bestLevels,
+          status: (p.status === 'completed' || p.status === 'eliminated' || p.isDisqualified) ? p.status : (existing.status || p.status),
+          isDisqualified: Boolean(existing.isDisqualified || p.isDisqualified),
+        });
+      }
     }
-    return unique;
+    return Array.from(map.values());
   }, [room?.participants]);
 
   const totalJoined = participants.length;

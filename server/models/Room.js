@@ -90,15 +90,31 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
   if (!participants || participants.length === 0) return [];
   try {
     // ── Deduplicate participants by unique normalized 10-digit mobile number ──
-    const seenMobiles = new Set();
-    const uniqueParticipants = [];
+    const mobileMap = new Map();
     for (const p of participants) {
       const cleanM = String(p.mobile || '').replace(/\D/g, '').slice(-10);
-      if (!cleanM || seenMobiles.has(cleanM)) continue;
-      seenMobiles.add(cleanM);
-      uniqueParticipants.push(p);
+      if (!cleanM) continue;
+      if (!mobileMap.has(cleanM)) {
+        mobileMap.set(cleanM, p);
+      } else {
+        const existing = mobileMap.get(cleanM);
+        const bestLevel = Math.max(existing.level || 1, p.level || 1);
+        const bestScore = Math.max(existing.score || 0, p.score || 0);
+        const bestTime = Math.max(existing.timeTaken || 0, p.timeTaken || 0);
+        const bestLevels = (Array.isArray(p.levels) && p.levels.length > 0) ? p.levels : (existing.levels || []);
+        mobileMap.set(cleanM, {
+          ...existing,
+          ...p,
+          level: bestLevel,
+          score: bestScore,
+          timeTaken: bestTime,
+          levels: bestLevels,
+          status: (p.status === 'completed' || p.status === 'eliminated' || p.isDisqualified) ? p.status : (existing.status || p.status),
+          isDisqualified: Boolean(existing.isDisqualified || p.isDisqualified),
+        });
+      }
     }
-    participants = uniqueParticipants;
+    participants = Array.from(mobileMap.values());
 
     const Student = require('./Student');
     const mobiles = participants.map((p) => p.mobile).filter(Boolean);

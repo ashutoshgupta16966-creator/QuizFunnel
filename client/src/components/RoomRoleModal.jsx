@@ -351,6 +351,8 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
           }
           localStorage.removeItem(`quiz_tab_switches_${pendingData.mobile}`);
           localStorage.removeItem(`quiz_anti_cheated_${pendingData.mobile}`);
+          localStorage.removeItem(`${code}_${pendingData.mobile}`);
+          localStorage.removeItem(`quiz_session_${code}_${pendingData.mobile}`);
         } catch { /* noop */ }
       }
 
@@ -1357,9 +1359,23 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         } catch { /* noop */ }
       }
 
+      // Check if student has saved session progress for this room
+      const savedSessionRaw = localStorage.getItem(`${code}_${student.mobile}`) ||
+        localStorage.getItem(`quiz_session_${code}_${student.mobile}`);
+      let targetLevel = student.currentLevel || 1;
+      if (savedSessionRaw) {
+        try {
+          const parsedSession = JSON.parse(savedSessionRaw);
+          if (parsedSession?.currentLevel && parsedSession.currentLevel >= 1) {
+            targetLevel = parsedSession.currentLevel;
+          }
+        } catch { /* noop */ }
+      }
+      saveStudent({ ...student, currentLevel: targetLevel });
+
       onClose();
-      // Start Room Quiz from Level 1
-      navigate('/quiz/1');
+      // Resume Room Quiz at exact active level
+      navigate(`/quiz/${targetLevel}`);
     } catch (err) {
       setStudentError(err.response?.data?.error || 'Failed to join room. Please check your credentials.');
     } finally {

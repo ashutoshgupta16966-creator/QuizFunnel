@@ -472,9 +472,7 @@ router.post('/join', async (req, res, next) => {
       existingParticipant && (
         existingParticipant.status === 'completed' ||
         existingParticipant.status === 'eliminated' ||
-        existingParticipant.isDisqualified ||
-        existingParticipant.level > 1 ||
-        existingParticipant.score > 0
+        existingParticipant.isDisqualified
       )
     );
 
@@ -549,10 +547,17 @@ router.post('/join', async (req, res, next) => {
       if (password && password.trim().length >= 4) {
         student.password = password.trim();
       }
-      student.status = 'in-progress';
-      student.currentLevel = 1;
-      student.levels = [];
-      student.quizSession = null;
+      if (!isReattemptStudent && existingParticipant) {
+        // Active student rejoining: preserve level, status and level records
+        student.status = existingParticipant.status || 'in-progress';
+        student.currentLevel = existingParticipant.level || student.currentLevel || 1;
+        student.levels = existingParticipant.levels || student.levels || [];
+      } else {
+        student.status = 'in-progress';
+        student.currentLevel = 1;
+        student.levels = [];
+        student.quizSession = null;
+      }
       await student.save();
     }
 
@@ -577,15 +582,15 @@ router.post('/join', async (req, res, next) => {
       mobile: cleanMobile,
       name: name.trim() || existingParticipant?.name || 'Student',
       branch: branch.trim() || existingParticipant?.branch || 'CSE',
-      level: 1,
-      score: 0,
-      timeTaken: 0,
-      status: 'in-progress',
+      level: (!isReattemptStudent && existingParticipant) ? (existingParticipant.level || 1) : 1,
+      score: (!isReattemptStudent && existingParticipant) ? (existingParticipant.score || 0) : 0,
+      timeTaken: (!isReattemptStudent && existingParticipant) ? (existingParticipant.timeTaken || 0) : 0,
+      status: (!isReattemptStudent && existingParticipant) ? (existingParticipant.status || 'in-progress') : 'in-progress',
       isDisqualified: false,
       isReattempt: isReattemptStudent,
       previousAttempt: prevAttemptData,
       attempts: existingAttempts,
-      levels: [],
+      levels: (!isReattemptStudent && existingParticipant) ? (existingParticipant.levels || []) : [],
       joinedAt: existingParticipant?.joinedAt || new Date(),
       lastActive: new Date(),
     };

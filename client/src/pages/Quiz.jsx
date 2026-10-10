@@ -85,6 +85,9 @@ export default function Quiz() {
   // Storage keys for auto-saving progress & bookmarks
   const progressKey = student?.mobile ? `quiz_progress_${student.mobile}_${levelNum}` : null;
   const bookmarkKey = student?.mobile ? `quiz_bookmarks_${student.mobile}_${levelNum}` : null;
+  const roomSessionKey = isRoomQuiz && roomSession?.roomCode && student?.mobile
+    ? `${roomSession.roomCode}_${student.mobile}`
+    : null;
 
   // ── Question Bookmarks State ─────────────────────────────────────────────
   const [bookmarks, setBookmarks] = useState(() => {
@@ -251,44 +254,103 @@ export default function Quiz() {
     }
   }, [isRoomClosed]);
 
-  // ── Auto-save progress restoration ───────────────────────────────────────
-  const restoreSavedProgress = (qs) => {
-    if (!progressKey) return;
-    try {
-      const saved = localStorage.getItem(progressKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed?.answers && typeof parsed.answers === 'object') {
-          setAnswers(parsed.answers);
-          // If answers are already recorded, student is actively resuming; do not block with timer setup
-          if (Object.keys(parsed.answers).length > 0) {
-            setShowTimerSetup(false);
+  // ── Auto-Resume Level from Active Room Session State ──────────────────────
+  useEffect(() => {
+    if (isRoomQuiz && roomSessionKey) {
+      try {
+        const raw = localStorage.getItem(roomSessionKey) || localStorage.getItem(`quiz_session_${roomSessionKey}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.currentLevel && parsed.currentLevel !== levelNum && parsed.currentLevel <= totalLevels) {
+            updateStudent({ currentLevel: parsed.currentLevel });
+            navigate(`/quiz/${parsed.currentLevel}`);
           }
         }
-        if (!isRoomQuiz && typeof parsed?.customTimeSeconds === 'number' && parsed.customTimeSeconds > 0) {
-          setCustomTimeSeconds(parsed.customTimeSeconds);
-          setTimerSetupMins(Math.floor(parsed.customTimeSeconds / 60));
-          setTimerSetupSecs(parsed.customTimeSeconds % 60);
-        }
-        if (typeof parsed?.currentIndex === 'number' && parsed.currentIndex < qs.length) {
-          setCurrentIndex(parsed.currentIndex);
+      } catch { /* noop */ }
+    }
+  }, [isRoomQuiz, roomSessionKey, levelNum, totalLevels, updateStudent, navigate]);
+
+  // ── Auto-save progress restoration ───────────────────────────────────────
+  const restoreSavedProgress = (qs) => {
+    try {
+      let saved = null;
+      if (roomSessionKey) {
+        saved = localStorage.getItem(roomSessionKey) || localStorage.getItem(`quiz_session_${roomSessionKey}`);
+      }
+      if (!saved && progressKey) {
+        saved = localStorage.getItem(progressKey);
+      }
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Only restore if this saved state belongs to this level (or unassigned)
+        if (parsed?.currentLevel === undefined || parsed?.currentLevel === levelNum) {
+          if (parsed?.answers && typeof parsed.answers === 'object') {
+            setAnswers(parsed.answers);
+            if (Object.keys(parsed.answers).length > 0) {
+              setShowTimerSetup(false);
+            }
+          }
+          if (typeof parsed?.currentIndex === 'number' && parsed.currentIndex < qs.length) {
+            setCurrentIndex(parsed.currentIndex);
+          }
+          // Restore remaining timer seamlessly
+          if (typeof parsed?.remainingTimer === 'number' && parsed.remainingTimer > 0) {
+            const timePassed = parsed.updatedAt ? Math.floor((Date.now() - parsed.updatedAt) / 1000) : 0;
+            const left = Math.max(1, parsed.remainingTimer - timePassed);
+            setCustomTimeSeconds(left);
+            setTimerSetupMins(Math.floor(left / 60));
+            setTimerSetupSecs(left % 60);
+            setStartedAt(new Date());
+          } else if (!isRoomQuiz && typeof parsed?.customTimeSeconds === 'number' && parsed.customTimeSeconds > 0) {
+            setCustomTimeSeconds(parsed.customTimeSeconds);
+            setTimerSetupMins(Math.floor(parsed.customTimeSeconds / 60));
+            setTimerSetupSecs(parsed.customTimeSeconds % 60);
+          }
         }
       }
     } catch { /* noop */ }
   };
 
-  // ── Auto-save progress change listener ───────────────────────────────────
+  // ── Auto-save active session state ─────────────────────────────────────────
   useEffect(() => {
-    if (!progressKey || loading || questions.length === 0 || hasSubmitted.current) return;
-    try {
-      localStorage.setItem(progressKey, JSON.stringify({
-        currentIndex,
-        answers,
-        customTimeSeconds,
-        updatedAt: Date.now(),
-      }));
-    } catch { /* noop */ }
-  }, [answers, currentIndex, customTimeSeconds, progressKey, loading, questions]);
+    if (loading || questions.length === 0 || hasSubmitted.current) return;
+    const now = Date.now();
+    const elapsed = startedAt ? Math.floor((now - new Date(startedAt).getTime()) / 1000) : 0;
+    const totalTimeAllowed = customTimeSeconds || levelConfig?.timeSeconds || 900;
+    const remainingTimer = Math.max(0, totalTimeAllowed - elapsed);
+
+    const sessionState = {
+      roomCode: roomSession?.roomCode || '',
+      mobile: student?.mobile || '',
+      currentLevel: levelNum,
+      currentIndex,
+      answers,
+      remainingTimer,
+      remainingSeconds: remainingTimer,
+      customTimeSeconds: totalTimeAllowed,
+      startedAt: startedAt ? new Date(startedAt).toISOString() : null,
+      updatedAt: now,
+    };
+
+    if (progressKey) {
+      try {
+        localStorage.setItem(progressKey, JSON.stringify({
+          currentIndex,
+          answers,
+          customTimeSeconds: totalTimeAllowed,
+          remainingTimer,
+          updatedAt: now,
+        }));
+      } catch { /* noop */ }
+    }
+
+    if (roomSessionKey) {
+      try {
+        localStorage.setItem(roomSessionKey, JSON.stringify(sessionState));
+        localStorage.setItem(`quiz_session_${roomSessionKey}`, JSON.stringify(sessionState));
+      } catch { /* noop */ }
+    }
+  }, [answers, currentIndex, customTimeSeconds, progressKey, roomSessionKey, loading, questions, levelNum, startedAt, roomSession?.roomCode, student?.mobile, levelConfig?.timeSeconds]);
 
   // ── Browser unload / navigation protection ────────────────────────────────
   useEffect(() => {
@@ -441,6 +503,12 @@ export default function Quiz() {
     }
     if (bookmarkKey) {
       try { localStorage.removeItem(bookmarkKey); } catch { /* noop */ }
+    }
+    if (roomSessionKey) {
+      try {
+        localStorage.removeItem(roomSessionKey);
+        localStorage.removeItem(`quiz_session_${roomSessionKey}`);
+      } catch { /* noop */ }
     }
   };
 
@@ -735,26 +803,6 @@ export default function Quiz() {
     onViolation: handleSwitchViolation,
   });
 
-  // ── Pull-to-Refresh Lock (active question screen only) ────────────────────
-  // Prevents accidental swipe-down refresh on mobile Chrome, Brave, Safari, WebView.
-  // ── Pull-to-Refresh Lock (active question screen only) ────────────────────
-  // Disables browser-level pull-to-refresh without blocking any in-page scrolling.
-  // Uses CSS overscroll-behavior-y: contain on root document elements.
-  // Only applied while question screen is active — NOT during lobby/results/home.
-  useEffect(() => {
-    if (!isQuestionsActive) return;
-
-    const prevHtmlOverscroll = document.documentElement.style.overscrollBehaviorY;
-    const prevBodyOverscroll = document.body.style.overscrollBehaviorY;
-
-    document.documentElement.style.overscrollBehaviorY = 'contain';
-    document.body.style.overscrollBehaviorY = 'contain';
-
-    return () => {
-      document.documentElement.style.overscrollBehaviorY = prevHtmlOverscroll || '';
-      document.body.style.overscrollBehaviorY = prevBodyOverscroll || '';
-    };
-  }, [isQuestionsActive]);
 
   // ── Waiting Lobby: Instructions Modal State ───────────────────────────────
   const [showLobbyInstructions, setShowLobbyInstructions] = useState(false);
