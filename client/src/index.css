@@ -54,20 +54,25 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html {
   scroll-behavior: smooth;
-  overflow-x: hidden;
-  max-width: 100vw;
+  height: auto;
+  min-height: 100%;
 }
 body {
   font-family: 'Outfit', system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
-  min-height: 100svh;
-  min-height: 100vh;
+  min-height: 100%;
   -webkit-font-smoothing: antialiased;
   -webkit-overflow-scrolling: touch;
   overflow-x: hidden;
   overflow-y: auto;
   line-height: 1.65;
+}
+#root {
+  min-height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 button { font-family: inherit; cursor: pointer; border: none; }
 input, select { font-family: inherit; }
@@ -340,19 +345,15 @@ a { color: inherit; }
    QUIZ PAGE
    ============================================================ */
 .quiz-page {
-  min-height: 100svh;
-  min-height: 100dvh;
-  min-height: 100vh;
+  flex: 1;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  padding-bottom: 6rem;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
+  padding-bottom: 7rem;
   max-width: 100vw;
   box-sizing: border-box;
   width: 100%;
+  position: relative;
 }
 
 /* Sticky header: Level Badge, Room Tag, Student Name, Theme Toggle */
@@ -459,9 +460,7 @@ a { color: inherit; }
 .question-wrapper {
   flex: 1; padding: 1.5rem 1.25rem;
   max-width: 640px; margin: 0 auto; width: 100%;
-  touch-action: pan-y;
   animation: cardSlideInRight 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: transform, opacity;
 }
 @keyframes cardSlideInRight {
   0%   { opacity: 0; transform: translateX(28px) scale(0.98); }
@@ -544,8 +543,6 @@ a { color: inherit; }
               box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative; overflow: hidden;
   -webkit-tap-highlight-color: transparent;
-  touch-action: pan-y;
-  will-change: transform, border-color, box-shadow;
 }
 .option-btn:hover:not(.option-selected):not(:disabled) {
   border-color: var(--primary);

@@ -855,20 +855,34 @@ export default function Quiz() {
   // Guarantees document.body and document.documentElement never carry scroll/touch locks,
   // enabling effortless, smooth vertical scrolling across Chrome, Brave, Safari, and mobile WebViews.
   useEffect(() => {
+    document.documentElement.style.overflow = '';
     document.documentElement.style.overflowY = 'auto';
-    document.documentElement.style.overscrollBehaviorY = 'auto';
+    document.documentElement.style.overscrollBehavior = '';
+    document.documentElement.style.overscrollBehaviorY = '';
+    document.documentElement.style.touchAction = '';
+    document.body.style.overflow = '';
     document.body.style.overflowY = 'auto';
-    document.body.style.overscrollBehaviorY = 'auto';
-    document.body.style.touchAction = 'pan-y';
+    document.body.style.overscrollBehavior = '';
+    document.body.style.overscrollBehaviorY = '';
+    document.body.style.touchAction = '';
+    document.body.style.position = '';
+    document.body.style.height = '';
 
     return () => {
+      document.documentElement.style.overflow = '';
       document.documentElement.style.overflowY = '';
+      document.documentElement.style.overscrollBehavior = '';
       document.documentElement.style.overscrollBehaviorY = '';
+      document.documentElement.style.touchAction = '';
+      document.body.style.overflow = '';
       document.body.style.overflowY = '';
+      document.body.style.overscrollBehavior = '';
       document.body.style.overscrollBehaviorY = '';
       document.body.style.touchAction = '';
+      document.body.style.position = '';
+      document.body.style.height = '';
     };
-  }, []);
+  }, [isQuestionsActive]);
 
   // ── Waiting Lobby: Instructions Modal State ───────────────────────────────
   const [showLobbyInstructions, setShowLobbyInstructions] = useState(false);
@@ -1338,15 +1352,7 @@ export default function Quiz() {
   const allAnswered     = answeredCount === questions.length;
 
   return (
-    <div
-      className="quiz-page"
-      style={{
-        minHeight: '100dvh',
-        overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch',
-        touchAction: 'pan-y',
-      }}
-    >
+    <div className="quiz-page">
       {/* ── Sticky header: Level Badge, Room Tag, Student Name, Theme Toggle ── */}
       <header className="quiz-header">
         <div className="quiz-header-left">
