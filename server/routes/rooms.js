@@ -528,6 +528,9 @@ router.post('/join', async (req, res, next) => {
       );
     }
 
+    // Define isReattemptStudent before any student record updates to avoid temporal dead zone
+    const isReattemptStudent = Boolean(existingParticipant && (isCompletedOrFailed || existingParticipant.isReattempt));
+
     // Register / update student in main Student collection
     let student = await Student.findOne({ mobile: cleanMobile });
     if (!student) {
@@ -562,7 +565,6 @@ router.post('/join', async (req, res, next) => {
     }
 
     // Add or update participant entry in room with strict deduplication
-    const isReattemptStudent = Boolean(existingParticipant && (isCompletedOrFailed || existingParticipant.isReattempt));
     const prevAttemptData = existingParticipant?.previousAttempt || (existingParticipant ? {
       attemptNumber: 1,
       score: existingParticipant.score || 0,
