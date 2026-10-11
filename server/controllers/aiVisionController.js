@@ -1,4 +1,5 @@
 const { generateMultimodalWithFallback } = require('../services/aiProvider');
+const { distributeQuestionsAcrossLevels } = require('../config/levels');
 
 const ALLOWED_SECTIONS = ['GK', 'Technical', 'Reasoning', 'Aptitude', 'Mixed'];
 const ALLOWED_DIFFICULTIES = ['easy', 'medium', 'hard'];
@@ -574,7 +575,7 @@ CRITICAL RULES:
       ((!Array.isArray(q.options) || q.options.length === 0) && Boolean(q.directAnswer || q.correctAnswer));
 
     let lvl = parseInt(q.level, 10);
-    if (isNaN(lvl) || lvl < 1 || lvl > 4) lvl = 1;
+    if (isNaN(lvl) || lvl < 1) lvl = 1;
 
     let sec = ALLOWED_SECTIONS.includes(q.section) ? q.section : 'Technical';
     let diff = ALLOWED_DIFFICULTIES.includes(q.difficulty) ? q.difficulty : 'medium';
@@ -624,13 +625,16 @@ CRITICAL RULES:
     throw new Error('Found question text, but could not parse valid options or answers. Please ensure questions are clearly formatted.');
   }
 
-  console.log(`[AI Vision Controller]: Successfully parsed ${validatedQuestions.length} questions for "${subject}" (${unit})`);
+  // Automatically distribute questions across levels according to calculated quiz structure
+  const distributedQuestions = distributeQuestionsAcrossLevels(validatedQuestions);
+
+  console.log(`[AI Vision Controller]: Successfully parsed and distributed ${distributedQuestions.length} questions across levels for "${subject}" (${unit})`);
 
   return {
     success: true,
     subject,
     unit,
-    questions: validatedQuestions,
+    questions: distributedQuestions,
   };
 }
 

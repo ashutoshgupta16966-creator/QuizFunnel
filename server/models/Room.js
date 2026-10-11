@@ -43,7 +43,7 @@ const RoomQuestionSchema = new mongoose.Schema({
   options:            { type: [String], default: [] },
   correctAnswerIndex: { type: Number, default: 0 },
   directAnswer:       { type: String, trim: true, default: '' },
-  level:              { type: Number, default: 1, min: 1, max: 4 },
+  level:              { type: Number, default: 1, min: 1 },
   section:            { type: String, default: 'Technical', trim: true },
   difficulty:         { type: String, enum: ['easy', 'medium', 'hard'], default: 'medium' },
   explanation:        { type: String, trim: true, default: '' },
@@ -63,7 +63,7 @@ const RoomSchema = new mongoose.Schema({
   subject:      { type: String, trim: true, default: '' },
   unit:         { type: String, trim: true, default: '' },
   progressionMode: { type: String, enum: ['level_gated', 'open_attempt'], default: 'level_gated' },
-  maxLevel:     { type: Number, default: 4, min: 1, max: 4 },
+  maxLevel:     { type: Number, default: 4, min: 1 },
   customTimeSeconds: { type: Number, default: 0 },
   // Admin-controlled quiz start: flips to true when admin broadcasts "START QUIZ FOR ALL"
   quizStarted:  { type: Boolean, default: false },

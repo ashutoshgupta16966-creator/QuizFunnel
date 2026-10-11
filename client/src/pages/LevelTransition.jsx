@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
-import { LEVELS, TOTAL_LEVELS } from '../config';
+import { LEVELS, TOTAL_LEVELS, getGenericCutoff } from '../config';
 import ExitConfirmModal from '../components/ExitConfirmModal';
 
 // Simple CSS confetti burst for cleared levels
@@ -88,9 +88,8 @@ export default function LevelTransition() {
   const totalLevelsDisplay = resultTotalLevels || TOTAL_LEVELS;
   const currentLevelNum = nextLevel ? nextLevel - 1 : (student.currentLevel || 1);
   const nextConfig = nextLevel ? LEVELS[nextLevel] : null;
-  const dynamicNextQuestions = nextLevelQuestions || nextConfig?.questions || 15;
-  const dynamicNextCutoff = nextConfig?.cutoff
-    ? Math.min(nextConfig.cutoff, Math.max(1, Math.ceil(dynamicNextQuestions * 0.7)))
+  const dynamicNextCutoff = nextLevel
+    ? getGenericCutoff(dynamicNextQuestions, false)
     : 0;
 
   const handleContinue = () => {

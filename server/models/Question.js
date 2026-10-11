@@ -11,7 +11,6 @@ const QuestionSchema = new mongoose.Schema({
     type: Number,
     required: true,
     min: 1,
-    max: 4,
   },
   section: {
     type: String,

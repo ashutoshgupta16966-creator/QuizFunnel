@@ -4,7 +4,7 @@ const Question = require('../models/Question');
 const Student = require('../models/Student');
 const Room = require('../models/Room');
 const LEVELS = require('../config/levels');
-const { calculateDefaultCutoff } = LEVELS;
+const { calculateDefaultCutoff, getGenericCutoff, calculateQuizStructure, distributeQuestionsAcrossLevels } = LEVELS;
 const { sanitizeMcqOptions, isGenericPlaceholderOption } = require('../controllers/aiVisionController');
 const { checkDirectAnswerCorrectness } = require('../utils/scoringHelper');
 
@@ -51,7 +51,7 @@ router.get('/questions/:level', async (req, res, next) => {
     if (!mobile) {
       return res.status(400).json({ success: false, error: 'X-Student-Mobile header is required.' });
     }
-    if (!LEVELS[level]) {
+    if (isNaN(level) || level < 1) {
       return res.status(400).json({ success: false, error: `Invalid level: ${level}.` });
     }
 
@@ -133,17 +133,26 @@ router.get('/questions/:level', async (req, res, next) => {
         };
       }).filter(Boolean);
 
-      const qCount = clientQuestions.length;
-      const resumedCutoff = calculateDefaultCutoff(qCount);
-
-      const configTotalLvls = Math.max(...Object.keys(LEVELS).map(Number));
+      const configTotalLvls = Math.max(...Object.keys(LEVELS).filter((k) => !isNaN(Number(k))).map(Number));
       let resumedTotalLevels = (activeRoom?.maxLevel && activeRoom.maxLevel >= 1)
         ? activeRoom.maxLevel
-        : configTotalLvls;
-      if (activeRoom && Array.isArray(activeRoom.questions) && activeRoom.questions.length > 0) {
-        const maxQ = Math.max(...activeRoom.questions.map((q) => q.level || 1), 1);
-        resumedTotalLevels = Math.min(resumedTotalLevels, maxQ);
+        : null;
+      if (!resumedTotalLevels && activeRoom && Array.isArray(activeRoom.questions) && activeRoom.questions.length > 0) {
+        resumedTotalLevels = calculateQuizStructure(activeRoom.questions.length).totalLevels;
       }
+      if (!resumedTotalLevels && activeRoom?.roomCode) {
+        const count = await Question.countDocuments({ roomCode: activeRoom.roomCode });
+        if (count > 0) {
+          resumedTotalLevels = calculateQuizStructure(count).totalLevels;
+        }
+      }
+      if (!resumedTotalLevels) {
+        const totalSoloQs = await Question.countDocuments({ $or: [{ roomCode: null }, { roomCode: { $exists: false } }, { roomCode: '' }] });
+        resumedTotalLevels = totalSoloQs > 0 ? calculateQuizStructure(totalSoloQs).totalLevels : configTotalLvls;
+      }
+
+      const qCount = clientQuestions.length;
+      const resumedCutoff = getGenericCutoff(qCount, resumedTotalLevels === 1 && qCount === 5);
 
       // Single source of truth for timer: level-wise timer from room configuration
       const resumedLevelTimer = Array.isArray(activeRoom?.levelTimers)
@@ -195,24 +204,26 @@ router.get('/questions/:level', async (req, res, next) => {
       // STRICT ISOLATION: Only fetch questions where roomCode is null or does not exist.
       const defaultFilter = { $or: [{ roomCode: null }, { roomCode: { $exists: false } }] };
 
-      // Attempt section-wise fetching first
-      for (const section of levelConfig.sections) {
-        const qs = await Question.find({ level, section, ...defaultFilter }).lean();
-        const picked = qs
-          .filter((q) => !alreadyAttemptedQIds.has(String(q._id)))
-          .sort(() => Math.random() - 0.5)
-          .slice(0, levelConfig.questionsPerSection);
-        allQuestions.push(...picked);
+      // Attempt section-wise fetching first (only when levelConfig.sections is defined)
+      if (levelConfig && Array.isArray(levelConfig.sections)) {
+        for (const section of levelConfig.sections) {
+          const qs = await Question.find({ level, section, ...defaultFilter }).lean();
+          const picked = qs
+            .filter((q) => !alreadyAttemptedQIds.has(String(q._id)))
+            .sort(() => Math.random() - 0.5)
+            .slice(0, levelConfig.questionsPerSection);
+          allQuestions.push(...picked);
+        }
       }
 
       // Fallback: If section breakdown didn't yield exact required count (e.g. 20 for L1),
       // fetch all questions for this level directly from DB to guarantee exact count
-      if (allQuestions.length < levelConfig.questions) {
+      if (allQuestions.length < (levelConfig?.questions || 1)) {
         const allLevelQuestions = await Question.find({ level, ...defaultFilter }).lean();
         const available = allLevelQuestions.filter((q) => !alreadyAttemptedQIds.has(String(q._id)));
         allQuestions = available
           .sort(() => Math.random() - 0.5)
-          .slice(0, levelConfig.questions);
+          .slice(0, levelConfig?.questions || available.length);
       }
     }
 
@@ -220,7 +231,7 @@ router.get('/questions/:level', async (req, res, next) => {
       // For AI room quizzes: if no questions exist at this level, check if there are
       // questions at a later level we should skip to. If not, signal quiz completion.
       if (activeRoom && activeRoom.isAiGenerated && activeRoom.roomCode) {
-        const TOTAL_LEVELS_QS = Math.max(...Object.keys(LEVELS).map(Number));
+        const TOTAL_LEVELS_QS = activeRoom.maxLevel || 10;
         // Find the next level that has questions
         let nextLevelWithQs = null;
         for (let nextLvl = level + 1; nextLvl <= TOTAL_LEVELS_QS; nextLvl++) {
@@ -302,17 +313,27 @@ router.get('/questions/:level', async (req, res, next) => {
     );
 
     const actualCount = clientQuestions.length;
-    const effectiveCutoff = calculateDefaultCutoff(actualCount);
+    const configTotalLevels = Math.max(...Object.keys(LEVELS).filter((k) => !isNaN(Number(k))).map(Number));
 
-    // Dynamic total level count: from room config or LEVELS config keys
-    const configTotalLevels = Math.max(...Object.keys(LEVELS).map(Number));
-    let totalLevels = (activeRoom?.maxLevel && activeRoom.maxLevel >= 1)
-      ? activeRoom.maxLevel
-      : configTotalLevels;
-    if (activeRoom && Array.isArray(activeRoom.questions) && activeRoom.questions.length > 0) {
-      const maxQ = Math.max(...activeRoom.questions.map((q) => q.level || 1), 1);
-      totalLevels = Math.min(totalLevels, maxQ);
+    // Dynamic total level count: prefer room.maxLevel, then compute from question count, then fallback to config
+    let totalLevels = null;
+    if (activeRoom?.maxLevel && activeRoom.maxLevel >= 1) {
+      totalLevels = activeRoom.maxLevel;
+    } else if (activeRoom && Array.isArray(activeRoom.questions) && activeRoom.questions.length > 0) {
+      totalLevels = calculateQuizStructure(activeRoom.questions.length).totalLevels;
+    } else if (activeRoom?.roomCode) {
+      const roomQCount = await Question.countDocuments({ roomCode: activeRoom.roomCode });
+      if (roomQCount > 0) {
+        totalLevels = calculateQuizStructure(roomQCount).totalLevels;
+      }
     }
+    if (!totalLevels) {
+      const soloQCount = await Question.countDocuments({ $or: [{ roomCode: null }, { roomCode: { $exists: false } }, { roomCode: '' }] });
+      totalLevels = soloQCount > 0 ? calculateQuizStructure(soloQCount).totalLevels : configTotalLevels;
+    }
+
+    // Use exact cutoff from getGenericCutoff (5-q single level is handled here)
+    const effectiveCutoff = getGenericCutoff(actualCount, totalLevels === 1 && actualCount === 5);
 
     // Single source of truth for timer: level-wise timer from room configuration
     const activeLevelTimer = Array.isArray(activeRoom?.levelTimers)
@@ -320,7 +341,7 @@ router.get('/questions/:level', async (req, res, next) => {
       : null;
     const resolvedTimeSeconds = (activeLevelTimer && activeLevelTimer.seconds > 0)
       ? activeLevelTimer.seconds
-      : (LEVELS[level]?.timeSeconds || levelConfig?.timeSeconds || 600);
+      : (LEVELS[level]?.timeSeconds || levelConfig?.timeSeconds || Math.max(180, actualCount * 60));
 
     res.json({
       success: true,
@@ -504,10 +525,10 @@ router.post('/submit', async (req, res, next) => {
     }
 
     // ── DYNAMIC LEVEL TERMINATION & CUTOFF CHECK ─────────────────────────
-    // Derive total levels from config — never hardcode 4.
-    const TOTAL_LEVELS = Math.max(...Object.keys(LEVELS).map(Number));
-    let isLastLevel = level >= TOTAL_LEVELS;
-    let effectiveMaxLevel = TOTAL_LEVELS;
+    // Derive total levels from room config or question count — never hardcode 4.
+    const configLevelsMax = Math.max(...Object.keys(LEVELS).filter((k) => !isNaN(Number(k))).map(Number));
+    let isLastLevel = false;
+    let effectiveMaxLevel = configLevelsMax;
     let roomDoc = null;
 
     if (isRoom && roomCode) {
@@ -528,7 +549,10 @@ router.post('/submit', async (req, res, next) => {
           if (roomDoc.maxLevel && roomDoc.maxLevel >= 1) {
             effectiveMaxLevel = maxRoomQLevel > 0 ? Math.min(roomDoc.maxLevel, maxRoomQLevel) : roomDoc.maxLevel;
           } else if (maxRoomQLevel > 0) {
-            effectiveMaxLevel = Math.min(TOTAL_LEVELS, maxRoomQLevel);
+            // Compute structure from total room questions to determine effective level count
+            const allRoomQCount = embeddedQs.length || (await Question.countDocuments({ roomCode: normalizedRoomCode }));
+            const roomStruct = allRoomQCount > 0 ? calculateQuizStructure(allRoomQCount) : null;
+            effectiveMaxLevel = roomStruct ? Math.min(roomStruct.totalLevels, maxRoomQLevel) : maxRoomQLevel;
           }
 
           if (level >= effectiveMaxLevel) {
@@ -540,8 +564,12 @@ router.post('/submit', async (req, res, next) => {
       }
     }
 
-    const sessionCount = session.questions?.length || levelConfig.questions;
-    const dynamicCutoff = calculateDefaultCutoff(sessionCount);
+    if (!isLastLevel) {
+      isLastLevel = level >= effectiveMaxLevel;
+    }
+
+    const sessionCount = session.questions?.length || (levelConfig?.questions || 1);
+    const dynamicCutoff = getGenericCutoff(sessionCount, effectiveMaxLevel === 1 && sessionCount === 5);
 
     // Progression Mode & Cutoff Evaluation:
     // In Open Attempt mode: unconditional progression without mid-quiz elimination.

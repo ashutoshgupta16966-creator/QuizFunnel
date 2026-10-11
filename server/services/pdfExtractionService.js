@@ -16,6 +16,8 @@ try {
   console.warn('[pdfExtractionService]: pdf-parse package not loaded:', e.message);
 }
 
+const { distributeQuestionsAcrossLevels } = require('../config/levels');
+
 /**
  * Extracts raw textual content from an uploaded PDF file buffer.
  *
@@ -328,7 +330,7 @@ function parseQuestionsFromRawText(text) {
   return {
     subject,
     unit,
-    questions,
+    questions: distributeQuestionsAcrossLevels(questions),
   };
 }
 

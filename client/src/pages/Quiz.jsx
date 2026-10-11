@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
 import { getQuestions, getRoomQuestions, submitQuiz } from '../api';
 import { joinStudentRoomSocket, emitStudentProgress, emitStudentDisqualified } from '../utils/socket';
-import { LEVELS, TOTAL_LEVELS } from '../config';
+import { LEVELS, TOTAL_LEVELS, calculateQuizStructure } from '../config';
 import QuestionCard from '../components/QuestionCard';
 import TimerBar from '../components/TimerBar';
 import ProgressBar from '../components/ProgressBar';
@@ -47,12 +47,14 @@ export default function Quiz() {
   const [showGuide, setShowGuide]       = useState(false);
   // Dynamic total level count — initialized from session/student, updated from API response
   const [totalLevels, setTotalLevels]   = useState(() => {
-    return Number(
-      roomSession?.maxLevel ||
-      roomSession?.totalLevels ||
-      student?.totalLevels ||
-      TOTAL_LEVELS
-    ) || TOTAL_LEVELS;
+    if (roomSession?.maxLevel) return Number(roomSession.maxLevel);
+    if (roomSession?.totalLevels) return Number(roomSession.totalLevels);
+    if (Array.isArray(roomSession?.questions) && roomSession.questions.length > 0) {
+      const struct = calculateQuizStructure(roomSession.questions.length);
+      if (struct.totalLevels >= 1) return struct.totalLevels;
+    }
+    if (student?.totalLevels) return Number(student.totalLevels);
+    return TOTAL_LEVELS;
   });
 
   const displaySubject = quizSubject || roomSession?.subject || '';

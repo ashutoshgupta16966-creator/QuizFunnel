@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuiz } from '../context/QuizContext';
 import { createRoom, createAiRoom, parseAiQuizDocument, joinRoom, rejoinRoom, checkReattemptStatus, getAdminRooms, renameRoom, deleteRoom, sendAdminOtp, verifyAdminOtp, resetAdminPin, generateMcqOptions, sendSmsOtp, verifySmsOtp, resetPasswordWithOtp, updateAiQuestionAnswer } from '../api';
 import { joinStudentRoomSocket } from '../utils/socket';
-import { BRANCHES } from '../config';
+import { BRANCHES, calculateQuizStructure } from '../config';
 import ThemeToggle from './ThemeToggle';
 import GuidanceDrawer, { GUIDES } from './GuidanceDrawer';
 
@@ -171,11 +171,19 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
   const [editingQuestionIdxs, setEditingQuestionIdxs] = useState({});
   const [confirmedQuestionIdxs, setConfirmedQuestionIdxs] = useState({});
 
+  const aiStructure = useMemo(() => {
+    if (!aiResult.questions || aiResult.questions.length === 0) return null;
+    return calculateQuizStructure(aiResult.questions.length);
+  }, [aiResult.questions]);
+
   const aiActualLevels = useMemo(() => {
+    if (aiStructure && aiStructure.totalLevels >= 1) {
+      return Array.from({ length: aiStructure.totalLevels }, (_, i) => i + 1);
+    }
     if (!aiResult.questions || aiResult.questions.length === 0) return [1, 2, 3, 4];
     const maxL = Math.max(...aiResult.questions.map((q) => Number(q.level) || 1), 1);
     return Array.from({ length: maxL }, (_, i) => i + 1);
-  }, [aiResult.questions]);
+  }, [aiStructure, aiResult.questions]);
 
   // ── Scroll lock while modal is open and safely release when closed ──────────
   useEffect(() => {
@@ -1856,6 +1864,39 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
               </div>
             </div>
 
+            {/* ── Automatic Rule-Based Level Distribution & Cutoff Summary ── */}
+            {aiStructure && aiStructure.levels && aiStructure.levels.length > 0 && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.7))',
+                border: '1px solid rgba(99, 102, 241, 0.35)',
+                borderRadius: '12px',
+                padding: '0.9rem 1.15rem',
+                marginBottom: '1.25rem',
+              }}>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#a5b4fc', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <span>📊</span> Rule-Based Quiz Structure ({aiResult.questions.length} Questions → {aiStructure.totalLevels} {aiStructure.totalLevels === 1 ? 'Level' : 'Levels'})
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+                  {aiStructure.levels.map((lvl) => (
+                    <div key={lvl.level} style={{
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      border: '1px solid rgba(148, 163, 184, 0.25)',
+                      borderRadius: '8px',
+                      padding: '5px 12px',
+                      fontSize: '0.8rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                    }}>
+                      <span style={{ fontWeight: 700, color: '#818cf8' }}>Level {lvl.level}:</span>
+                      <span>{lvl.questions} Qs</span>
+                      <span style={{ color: '#34d399', fontWeight: 600 }}>Passing Cutoff: {lvl.cutoff}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ── Authoritative Level Countdown Timers (Single Source of Truth) ── */}
             <div className="ai-timer-config-card" style={{
               background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.08))',
@@ -2069,12 +2110,11 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                             className="ai-select-mini"
                             value={q.level || 1}
                             onChange={(e) => handleAiQuestionChange(qIdx, 'level', parseInt(e.target.value, 10))}
-                            title="Level (1–4)"
+                            title={`Level (1–${aiActualLevels.length})`}
                           >
-                            <option value={1}>Level 1 (Foundation)</option>
-                            <option value={2}>Level 2 (Intermediate)</option>
-                            <option value={3}>Level 3 (Advanced)</option>
-                            <option value={4}>Level 4 (Final Round)</option>
+                            {aiActualLevels.map((lvl) => (
+                              <option key={lvl} value={lvl}>Level {lvl}</option>
+                            ))}
                           </select>
 
                           <select

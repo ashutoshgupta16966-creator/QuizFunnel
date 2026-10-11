@@ -5,6 +5,7 @@ const Room = require('../models/Room');
 const Student = require('../models/Student');
 const Question = require('../models/Question');
 const LEVELS = require('../config/levels');
+const { calculateQuizStructure, distributeQuestionsAcrossLevels, getGenericCutoff } = LEVELS;
 const { parseQuizDocumentWithGemini, sanitizeMcqOptions, isGenericPlaceholderOption, cleanOptionPrefix } = require('../controllers/aiVisionController');
 const { generateMcqOptionsUnified } = require('../services/aiProvider');
 
@@ -57,11 +58,11 @@ router.post('/create', async (req, res, next) => {
     if (Array.isArray(req.body.levelTimers)) {
       roomLevelTimers = req.body.levelTimers
         .filter((t) => t && typeof t.level === 'number' && typeof t.seconds === 'number')
-        .map((t) => ({ level: Math.min(4, Math.max(1, t.level)), seconds: Math.max(0, t.seconds) }));
+        .map((t) => ({ level: Math.max(1, t.level), seconds: Math.max(0, t.seconds) }));
     }
 
     const targetMaxLevel = req.body.maxLevel
-      ? Math.min(4, Math.max(1, parseInt(req.body.maxLevel, 10)))
+      ? Math.max(1, parseInt(req.body.maxLevel, 10))
       : (roomLevelTimers.length > 0 ? roomLevelTimers.length : 4);
 
     const roomCustomTime = roomLevelTimers[0]?.seconds || (req.body.customTimeSeconds ? Math.max(0, parseInt(req.body.customTimeSeconds, 10)) : 0);
@@ -232,7 +233,7 @@ router.post('/create-ai', async (req, res, next) => {
         ((!Array.isArray(q.options) || q.options.length === 0) && Boolean(q.directAnswer || q.correctAnswer));
 
       let lvl = parseInt(q.level, 10);
-      if (isNaN(lvl) || lvl < 1 || lvl > 4) lvl = 1;
+      if (isNaN(lvl) || lvl < 1) lvl = 1;
 
       const sec = ['GK', 'Technical', 'Reasoning', 'Aptitude', 'Mixed'].includes(q.section)
         ? q.section
@@ -311,10 +312,11 @@ router.post('/create-ai', async (req, res, next) => {
 
     // Insert questions strictly isolated to this room
     const inserted = await Question.insertMany(questionDocs);
-    // FIX 3: Dynamic level count based on actual questions extracted/provided
+    // Dynamic level count based on rule-based quiz structure and actual questions
+    const structure = calculateQuizStructure(questionDocs.length);
     const maxQuestionLevel = questionDocs.length > 0 ? Math.max(...questionDocs.map((q) => q.level || 1), 1) : 1;
-    const explicitMaxLevel = req.body.maxLevel ? Math.min(4, Math.max(1, parseInt(req.body.maxLevel, 10))) : null;
-    const calculatedMaxLevel = explicitMaxLevel ? Math.min(explicitMaxLevel, maxQuestionLevel) : maxQuestionLevel;
+    const explicitMaxLevel = req.body.maxLevel ? Math.max(1, parseInt(req.body.maxLevel, 10)) : null;
+    const calculatedMaxLevel = explicitMaxLevel || structure.totalLevels || maxQuestionLevel;
 
     // Parse per-level timer overrides: [{ level, seconds }, ...]
     let roomLevelTimers = [];
@@ -1516,8 +1518,9 @@ router.get('/:roomCode/questions', async (req, res, next) => {
       roomQuestions = await Question.find({ level: targetLevel, ...defaultFilter }).lean();
     }
 
-    // If level filter provided and matching questions exist, filter by level
-    const maxLvl = room.maxLevel || Math.max(...Object.keys(LEVELS).map(Number));
+    // Dynamic level ceiling from room.maxLevel or calculated structure from question count
+    const struct = calculateQuizStructure(roomQuestions.length);
+    const maxLvl = room.maxLevel || struct.totalLevels || Math.max(...roomQuestions.map((q) => q.level || 1), 1);
     let filteredQuestions = roomQuestions;
     if (!isNaN(targetLevel) && targetLevel >= 1 && targetLevel <= maxLvl) {
       const levelMatches = roomQuestions.filter((q) => q.level === targetLevel);

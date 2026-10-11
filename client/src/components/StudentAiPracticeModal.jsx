@@ -5,6 +5,7 @@ import GuidanceDrawer, { GUIDES } from './GuidanceDrawer';
 import AntiCheatModal from './AntiCheatModal';
 import { checkDirectAnswerCorrectness } from '../utils/scoringHelper';
 import { useTabSwitchMonitor, MAX_TAB_SWITCH_ALLOWED } from '../utils/antiCheat';
+import { calculateQuizStructure } from '../config';
 
 const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_IMAGES = 10;
@@ -503,7 +504,7 @@ export default function StudentAiPracticeModal({
           options: q.questionType === 'direct' ? [] : ensureValidMcqOptions(q),
           correctAnswerIndex: typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : 0,
           directAnswer: q.directAnswer || '',
-          level: [1, 2, 3, 4].includes(q.level) ? q.level : ((idx % 3) + 1),
+          level: (Number.isInteger(q.level) && q.level >= 1) ? q.level : ((idx % 3) + 1),
           section: q.section || 'Technical',
           difficulty: q.difficulty || 'medium',
           explanation: q.explanation || 'Based on standard conceptual principles.',
@@ -858,7 +859,8 @@ export default function StudentAiPracticeModal({
     // ── Dual Persistence: Save to LocalStorage & MongoDB ────────────────────
     const studentMobile = candidateMobile.trim();
     const studentName = candidateName.trim() || 'Student';
-    const calculatedTotalLevels = Math.max(...questions.map((q) => Number(q.level) || 1), 1);
+    const practiceStructure = calculateQuizStructure(questions.length);
+    const calculatedTotalLevels = practiceStructure.totalLevels || Math.max(...questions.map((q) => Number(q.level) || 1), 1);
 
     const attemptId = `practice_${studentMobile || 'guest'}_${Date.now()}`;
     const newRecord = {
@@ -1329,10 +1331,9 @@ export default function StudentAiPracticeModal({
                             onChange={(e) => handlePracticeLevelChange(qIdx, e.target.value)}
                             style={{ width: '100px', fontSize: '0.8rem', padding: '3px 6px' }}
                           >
-                            <option value={1}>Level 1</option>
-                            <option value={2}>Level 2</option>
-                            <option value={3}>Level 3</option>
-                            <option value={4}>Level 4</option>
+                            {Array.from({ length: Math.max(calculateQuizStructure(questions.length).totalLevels || 1, q.level || 1) }, (_, i) => i + 1).map((lvl) => (
+                              <option key={lvl} value={lvl}>Level {lvl}</option>
+                            ))}
                           </select>
                         </div>
 
