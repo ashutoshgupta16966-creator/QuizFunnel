@@ -655,32 +655,20 @@ export default function Quiz() {
         return;
       }
 
-      // Check progression mode:
-      // In Quiz Room Open Attempt mode: Unconditional sequential progress through all levels without mid-quiz elimination
-      const isRoomOpenAttempt = Boolean(isRoomQuiz && (roomSession?.progressionMode === 'open_attempt' || result.progressionMode === 'open_attempt'));
-
-      if (isRoomOpenAttempt) {
-        if (result.nextLevel) {
-          hasSubmitted.current = false;
-          setSubmitting(false);
-          setAnswers({});
-          setCurrentIndex(0);
-          navigate(`/quiz/${result.nextLevel}`);
-        } else {
-          navigate('/results');
-        }
+      // Both modes (Level-Gated AND Open Attempt) now use the same /level-up transition screen.
+      // The server already ensures:
+      //   - Level-Gated: passed = (score >= cutoff), eliminated if failed
+      //   - Open Attempt: passed = true always (unconditional progression)
+      // So LevelTransition automatically shows the correct screen (success / eliminated)
+      // based purely on result.passed and result.status — no special client-side branching needed.
+      if (result.isLastLevel && result.passed) {
+        // Quiz fully completed — go to results
+        navigate('/results');
       } else {
-        // Level-Gated mode (Live Room level_gated & Standard Quiz):
-        // Show Level Transition screen for all levels!
-        // If last level completed and passed -> go to /results
-        if (result.isLastLevel && result.passed) {
-          navigate('/results');
-        } else {
-          // Success (passed cutoff) or Fail (cutoff not cleared / eliminated) -> show LevelTransition
-          hasSubmitted.current = false;
-          setSubmitting(false);
-          navigate('/level-up');
-        }
+        // Show Level Transition screen (handles both pass and fail cases, both modes)
+        hasSubmitted.current = false;
+        setSubmitting(false);
+        navigate('/level-up');
       }
     } catch (err) {
       hasSubmitted.current = false;

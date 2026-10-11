@@ -369,6 +369,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
         isRoomQuiz: true,
         roomCode: freshRoom.roomCode || code,
         adminName: freshRoom.adminName || '',
+        progressionMode: freshRoom.progressionMode || 'level_gated',
       });
       joinStudentRoomSocket(freshRoom.roomCode || code, freshStudent);
 
@@ -394,6 +395,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
           isRoomQuiz: true,
           roomCode: fallbackCode,
           adminName: approvedPayload?.roomObj?.adminName || '',
+          progressionMode: approvedPayload?.roomObj?.progressionMode || 'level_gated',
         });
         joinStudentRoomSocket(fallbackCode, fallbackStudent);
         onClose();
@@ -1349,11 +1351,14 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
       // 1. Save student in context & localStorage
       saveStudent(student);
 
-      // 2. Set room session in context & localStorage
+      // 2. Set room session in context & localStorage (include progressionMode so Quiz.jsx can detect Open Attempt)
       setRoomSession({
         isRoomQuiz: true,
         roomCode: room.roomCode,
         adminName: room.adminName,
+        progressionMode: room.progressionMode || 'level_gated',
+        subject: room.subject || '',
+        unit: room.unit || '',
       });
 
       // 3. Connect student to room socket

@@ -46,7 +46,7 @@ function Confetti() {
  */
 export default function LevelTransition() {
   const navigate = useNavigate();
-  const { student, lastResult, clearStudent } = useQuiz();
+  const { student, lastResult, clearStudent, roomSession } = useQuiz();
   const [showExitModal, setShowExitModal] = useState(false);
 
   // Intercept browser back button & swipe gestures
@@ -82,12 +82,22 @@ export default function LevelTransition() {
     nextLevelQuestions = null,
     totalLevels: resultTotalLevels,
     status = '',
+    progressionMode: resultProgressionMode = null,
   } = lastResult;
 
-  const isEliminated = !passed || status === 'eliminated';
+  // Open Attempt: prefer result (most current), fall back to roomSession
+  const isOpenAttemptMode =
+    resultProgressionMode === 'open_attempt' ||
+    roomSession?.progressionMode === 'open_attempt';
+
+  // In Open Attempt mode students ALWAYS advance — never show ELIMINATED
+  const isEliminated = (!passed || status === 'eliminated') && !isOpenAttemptMode;
+
   const totalLevelsDisplay = resultTotalLevels || TOTAL_LEVELS;
   const currentLevelNum = nextLevel ? nextLevel - 1 : (student.currentLevel || 1);
   const nextConfig = nextLevel ? LEVELS[nextLevel] : null;
+  // FIX: declare dynamicNextQuestions BEFORE it is referenced in getGenericCutoff below
+  const dynamicNextQuestions = nextLevelQuestions || nextConfig?.questions || 0;
   const dynamicNextCutoff = nextLevel
     ? getGenericCutoff(dynamicNextQuestions, false)
     : 0;
@@ -105,7 +115,7 @@ export default function LevelTransition() {
     navigate('/');
   };
 
-  // ── FAIL CASE: ELIMINATED (Cutoff Not Cleared) ──────────────────────────
+  // ── FAIL CASE: ELIMINATED (Cutoff Not Cleared — Level-Gated mode only) ──────
   if (isEliminated) {
     return (
       <div className="transition-page">
@@ -238,7 +248,10 @@ export default function LevelTransition() {
 
         <p className="transition-score">{score} / {total} correct</p>
         <p className="transition-message">
-          You attempted {total} questions and scored {score}. You've cleared the passing cutoff and can proceed to Level {nextLevel}!
+          {isOpenAttemptMode
+            ? `You completed Level ${currentLevelNum} with ${score} out of ${total} correct. In Open Attempt mode, you always advance to the next level!`
+            : `You attempted ${total} questions and scored ${score}. You've cleared the passing cutoff and can proceed to Level ${nextLevel}!`
+          }
         </p>
 
         {nextConfig && (
@@ -246,7 +259,7 @@ export default function LevelTransition() {
             <strong>Up next:</strong> {nextConfig.label} — {nextConfig.sublabel}
             <br />
             {dynamicNextQuestions} questions · {Math.floor(nextConfig.timeSeconds / 60)} minutes
-            {dynamicNextCutoff > 0 && ` · Need ${dynamicNextCutoff}/${dynamicNextQuestions} to advance`}
+            {!isOpenAttemptMode && dynamicNextCutoff > 0 && ` · Need ${dynamicNextCutoff}/${dynamicNextQuestions} to advance`}
           </div>
         )}
 

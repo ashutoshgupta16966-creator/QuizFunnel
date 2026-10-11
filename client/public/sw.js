@@ -6,13 +6,17 @@
  * - Bypass cache completely for all /api/ and websocket connections
  */
 
-const CACHE_NAME = 'quizfunnel-v1.2';
+const CACHE_NAME = 'quizfunnel-v1.3';
 
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/favicon.svg',
+  '/icon-192x192.png',
+  '/icon-512x512.png',
+  '/icon-maskable-192x192.png',
+  '/icon-maskable-512x512.png',
 ];
 
 // ── Install Event ─────────────────────────────────────────────────────────────

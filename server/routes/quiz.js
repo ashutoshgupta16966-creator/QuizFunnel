@@ -774,6 +774,7 @@ router.post('/submit', async (req, res, next) => {
         isDisqualified: Boolean(isDisqualified),
         isRoom: Boolean(isRoom),
         roomCode: isRoom && roomCode ? roomCode.trim().toUpperCase() : null,
+        progressionMode: roomDoc?.progressionMode || (isRoom ? 'level_gated' : null),
         totalScore: updatedStudent ? updatedStudent.totalScore : score,
         totalTimeTaken: updatedStudent ? updatedStudent.totalTimeTaken : elapsed,
       },
