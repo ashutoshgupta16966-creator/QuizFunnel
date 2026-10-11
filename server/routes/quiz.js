@@ -4,6 +4,7 @@ const Question = require('../models/Question');
 const Student = require('../models/Student');
 const Room = require('../models/Room');
 const LEVELS = require('../config/levels');
+const { calculateDefaultCutoff } = LEVELS;
 const { sanitizeMcqOptions, isGenericPlaceholderOption } = require('../controllers/aiVisionController');
 const { checkDirectAnswerCorrectness } = require('../utils/scoringHelper');
 
@@ -133,9 +134,7 @@ router.get('/questions/:level', async (req, res, next) => {
       }).filter(Boolean);
 
       const qCount = clientQuestions.length;
-      const resumedCutoff = qCount < LEVELS[level].cutoff
-        ? Math.max(1, Math.ceil(qCount * 0.7))
-        : LEVELS[level].cutoff;
+      const resumedCutoff = calculateDefaultCutoff(qCount);
 
       const configTotalLvls = Math.max(...Object.keys(LEVELS).map(Number));
       let resumedTotalLevels = (activeRoom?.maxLevel && activeRoom.maxLevel >= 1)
@@ -303,9 +302,7 @@ router.get('/questions/:level', async (req, res, next) => {
     );
 
     const actualCount = clientQuestions.length;
-    const effectiveCutoff = actualCount < levelConfig.cutoff
-      ? Math.max(1, Math.ceil(actualCount * 0.7))
-      : levelConfig.cutoff;
+    const effectiveCutoff = calculateDefaultCutoff(actualCount);
 
     // Dynamic total level count: from room config or LEVELS config keys
     const configTotalLevels = Math.max(...Object.keys(LEVELS).map(Number));
@@ -393,7 +390,7 @@ router.post('/submit', async (req, res, next) => {
 
     // Validate or auto-recover active session
     let session = student.quizSession;
-    const levelConfig = LEVELS[level] || { questions: answers.length, cutoff: Math.ceil(answers.length * 0.7), timeSeconds: 300 };
+    const levelConfig = LEVELS[level] || { questions: answers.length, cutoff: calculateDefaultCutoff(answers.length), timeSeconds: 300 };
 
     if (!session || session.level !== level) {
       console.warn(`[POST /submit] Reconstructing missing/mismatched quizSession for student ${mobile} at level ${level}...`);
@@ -544,9 +541,7 @@ router.post('/submit', async (req, res, next) => {
     }
 
     const sessionCount = session.questions?.length || levelConfig.questions;
-    const dynamicCutoff = sessionCount < levelConfig.cutoff
-      ? Math.max(1, Math.ceil(sessionCount * 0.7))
-      : levelConfig.cutoff;
+    const dynamicCutoff = calculateDefaultCutoff(sessionCount);
 
     // Progression Mode & Cutoff Evaluation:
     // In Open Attempt mode: unconditional progression without mid-quiz elimination.

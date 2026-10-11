@@ -469,11 +469,32 @@ CRITICAL RULES:
 3. If "questionType" is "direct":
    - "options" should be empty [].
    - "directAnswer" MUST be a non-empty string that EXACTLY matches what a correct solve of the question produces (accounting for standard equivalent formats like "42" vs "42.0" where applicable) — NEVER an inaccurate, rounded, or approximate value.
-4. "level" MUST be an integer from 1 to 4:
-   - Level 1: Basic concepts & definitions
-   - Level 2: Intermediate / application
-   - Level 3: Advanced / problem solving & code tracing
-   - Level 4: Final Round / complex analysis
+4. "level" MUST be an integer from 1 to 4, assigned using EXACTLY ONE of the following two paths:
+
+   ── PATH A — STRUCTURED DOCUMENT (USE THIS PATH WHEN APPLICABLE) ──────────
+   If the document has ANY explicit section headers, labels, part headings, or counts that group questions
+   (e.g. "Traffic Rules: 20 MCQs", "Section A — Basic (20 Questions)", "Part B: 15 Advanced",
+   "Level 3: 10 Expert MCQs", "Foundation Round", "Section 2 — Intermediate", etc.):
+   • STRICTLY keep ALL questions in that section in the SAME level. Do NOT redistribute or rebalance.
+   • Map sections to levels in document order:
+     – 1st section/part/group → Level 1
+     – 2nd section/part/group → Level 2
+     – 3rd section/part/group → Level 3
+     – 4th section/part/group → Level 4
+   • If the document uses words like "Basic / Standard / Foundation" → Level 1;
+     "Intermediate / Moderate / Advanced" → Level 2;
+     "Expert / Hard / Final Round" → Level 3 (or Level 4 if there is a 4th group).
+   • CRITICAL: If a section says it has N questions (e.g. "20 MCQs"), EVERY question in that section
+     must get the same level. Never split a section across multiple levels.
+
+   ── PATH B — UNSTRUCTURED DOCUMENT (FALLBACK ONLY) ──────────────────────────
+   Use this path ONLY IF the document has NO section headers, labels, or grouping indicators at all.
+   In that case, assign levels based on individual question difficulty:
+   – Level 1: Basic concepts & definitions (easy)
+   – Level 2: Intermediate / application (medium)
+   – Level 3: Advanced / problem solving & code tracing (hard)
+   – Level 4: Complex analysis / final round (hardest)
+
 5. "section" MUST be one of: ["Technical", "GK", "Reasoning", "Aptitude", "Mixed"].
 6. "difficulty" MUST be one of: ["easy", "medium", "hard"].
 7. Preserve formatting, mathematical formulas, code blocks, or special symbols accurately in "questionText".`;

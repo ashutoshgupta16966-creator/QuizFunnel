@@ -164,6 +164,11 @@ export default function Quiz() {
   // Prevent double-submit (timer + manual button race + tab switch)
   const hasSubmitted = useRef(false);
 
+  // ── Guard: prevent re-running loadQuestions for an already-loaded level ──
+  // Without this, any navigation re-render (e.g. Guard effect at line 192) can
+  // call loadQuestions() again, which wipes answers via setAnswers({}).
+  const loadedLevelRef = useRef(null);
+
   // ── Reset Timer and State on Level Change ────────────────────────────────
   // Guarantees that each level starts with its own configured countdown time
   // and prevents carrying over previous level's timer state.
@@ -174,6 +179,7 @@ export default function Quiz() {
     setTimerSetupSecs(configForLevel.timeSeconds % 60);
     setStartedAt(null);
     hasSubmitted.current = false;
+    loadedLevelRef.current = null; // reset so loadQuestions re-runs for the new level
     setSubmitting(false);
   }, [levelNum]);
 
@@ -285,10 +291,17 @@ export default function Quiz() {
         // Only restore if this saved state belongs to this level (or unassigned)
         if (parsed?.currentLevel === undefined || parsed?.currentLevel === levelNum) {
           if (parsed?.answers && typeof parsed.answers === 'object') {
-            setAnswers(parsed.answers);
-            if (Object.keys(parsed.answers).length > 0) {
-              setShowTimerSetup(false);
-            }
+            // ── Merge restore: never overwrite in-memory answers with stale storage ──
+            // If the student has already answered questions in this render cycle
+            // (via handleAnswer's synchronous localStorage write), those answers take
+            // priority. We merge storage → memory (memory wins on conflict).
+            setAnswers((prev) => {
+              const merged = { ...parsed.answers, ...prev }; // prev (memory) wins
+              if (Object.keys(merged).length > 0) {
+                setShowTimerSetup(false);
+              }
+              return merged;
+            });
           }
           if (typeof parsed?.currentIndex === 'number' && parsed.currentIndex < qs.length) {
             setCurrentIndex(parsed.currentIndex);
@@ -378,7 +391,13 @@ export default function Quiz() {
     return () => window.removeEventListener('api:retry', handler);
   }, []);
 
-  const loadQuestions = async () => {
+  const loadQuestions = async (force = false) => {
+    // ── Guard: skip if we already loaded questions for this level ────────────
+    // This prevents accidental answer-state wipes when the navigation guard effect
+    // re-triggers this function during a scroll/swipe-induced re-render.
+    if (!force && loadedLevelRef.current === levelNum && questions.length > 0) {
+      return;
+    }
     try {
       setLoading(true);
       setLoadError(null);
@@ -410,7 +429,13 @@ export default function Quiz() {
 
       const { questions: qs, startedAt: sAt, subject: resSub, unit: resUn, customTimeSeconds: resCustomTime, timeSeconds: resTime, totalLevels: apiTotalLevels } = resData.data;
       setQuestions(qs);
-      setAnswers({});
+      // ── Preserve existing answers: only reset if there are no in-memory answers ──
+      // A plain setAnswers({}) would wipe any answers that were restored from
+      // localStorage before loadQuestions finished (race condition on mobile).
+      setAnswers((prev) => {
+        if (prev && Object.keys(prev).length > 0) return prev; // already has data — keep it
+        return {}; // fresh start for a brand-new level
+      });
       setCurrentIndex(0);
       if (resSub) setQuizSubject(resSub);
       if (resUn) setQuizUnit(resUn);
@@ -427,6 +452,8 @@ export default function Quiz() {
       }
 
       setStartedAt(new Date(sAt || Date.now()));
+      // Mark this level as loaded — prevents accidental re-fetch
+      loadedLevelRef.current = levelNum;
       restoreSavedProgress(qs);
     } catch (err) {
       // If room quiz and standard questions endpoint had an error, fallback to getRoomQuestions
@@ -447,6 +474,7 @@ export default function Quiz() {
             setShowTimerSetup(false);
 
             setStartedAt(new Date());
+            loadedLevelRef.current = levelNum; // mark loaded in fallback path too
             restoreSavedProgress(qs);
             return;
           }
@@ -479,9 +507,29 @@ export default function Quiz() {
           selectedText: String(val).trim(),
         };
       }
+
+      // ── Synchronous localStorage write ───────────────────────────────────
+      // Immediately persist the updated answer map so a scroll/swipe event
+      // that triggers a re-render BEFORE the React batch flush cannot ever
+      // see a stale (empty) answers object and wipe progress.
+      try {
+        if (progressKey) {
+          const saved = localStorage.getItem(progressKey);
+          const parsed = saved ? JSON.parse(saved) : {};
+          localStorage.setItem(progressKey, JSON.stringify({ ...parsed, answers: next, updatedAt: Date.now() }));
+        }
+        if (roomSessionKey) {
+          const saved = localStorage.getItem(roomSessionKey);
+          const parsed = saved ? JSON.parse(saved) : {};
+          const updated = { ...parsed, answers: next, updatedAt: Date.now() };
+          localStorage.setItem(roomSessionKey, JSON.stringify(updated));
+          localStorage.setItem(`quiz_session_${roomSessionKey}`, JSON.stringify(updated));
+        }
+      } catch { /* noop — storage full */ }
+
       return next;
     });
-  }, [isRoomClosed, isAntiCheatTerminal]);
+  }, [isRoomClosed, isAntiCheatTerminal, progressKey, roomSessionKey]);
 
   // Helper to check if a question has been answered (supports MCQ index and direct string)
   const isQuestionAnswered = useCallback((qId) => {
@@ -803,6 +851,23 @@ export default function Quiz() {
     onViolation: handleSwitchViolation,
   });
 
+  // ── Pull-to-Refresh Lock (active question screen only) ───────────────────
+  // Blocks native browser pull-to-refresh reloading gesture across Chrome, Brave,
+  // Safari, and WebViews while keeping normal vertical page scrolling 100% smooth.
+  useEffect(() => {
+    if (!isQuestionsActive) return;
+
+    const prevHtmlOverscroll = document.documentElement.style.overscrollBehaviorY;
+    const prevBodyOverscroll = document.body.style.overscrollBehaviorY;
+
+    document.documentElement.style.overscrollBehaviorY = 'none';
+    document.body.style.overscrollBehaviorY = 'none';
+
+    return () => {
+      document.documentElement.style.overscrollBehaviorY = prevHtmlOverscroll || '';
+      document.body.style.overscrollBehaviorY = prevBodyOverscroll || '';
+    };
+  }, [isQuestionsActive]);
 
   // ── Waiting Lobby: Instructions Modal State ───────────────────────────────
   const [showLobbyInstructions, setShowLobbyInstructions] = useState(false);

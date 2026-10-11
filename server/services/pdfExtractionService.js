@@ -182,6 +182,86 @@ function parseQuestionsFromRawText(text) {
     rawBlocks.push(currentBlock);
   }
 
+  // ── Section-Heading Detection ────────────────────────────────────────────
+  // Scan for explicit group/part/section headings in the raw text before parsing
+  // individual questions. Each heading defines a level for all questions that follow
+  // until the next heading (PATH A from the AI prompt rules).
+  //
+  // Examples matched:
+  //   "Section A: Traffic Rules (20 MCQs)" → level 1 (first heading)
+  //   "Part 2 — Intermediate"              → level 2 (second heading)
+  //   "Advanced Questions: 15 MCQs"        → level 2
+  //   "Level 3: Expert Round"              → level 3
+  //   "Expert / Hard Questions"            → level 3
+
+  const sectionHeadingRegex = /^(?:section|part|round|group|level|set|block)\s*[:\-–]?\s*(?:[a-z0-9]+\s*[:\-–]?\s*)?.{0,60}$/i;
+  const difficultyKeywords = {
+    1: /\b(basic|standard|foundation|easy|beginner|general|introduction|simple|fundamental|level\s*1|section\s*[a1]|part\s*[a1])\b/i,
+    2: /\b(intermediate|moderate|medium|average|standard|level\s*2|section\s*[b2]|part\s*[b2])\b/i,
+    3: /\b(advanced|hard|difficult|expert|complex|level\s*3|section\s*[c3]|part\s*[c3])\b/i,
+    4: /\b(final|hardest|toughest|challenging|level\s*4|section\s*[d4]|part\s*[d4]|expert\s*final)\b/i,
+  };
+
+  // Build a map: questionNumber → level, based on section headings in the raw text
+  const questionLevelMap = {};
+  let currentSectionLevel = null;
+  let sectionOrder = 0; // increments on each new heading found (1st→L1, 2nd→L2, …)
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.length < 3) continue;
+
+    // Skip lines that match question starters (they are questions, not headings)
+    if (qStartRegex.test(trimmed)) continue;
+
+    // A line qualifies as a section heading if it looks like a header
+    // (no leading question number, not an option line, reasonably short)
+    const isLikelyHeading =
+      !optRegex.test(trimmed) &&
+      !ansRegex.test(trimmed) &&
+      !expRegex.test(trimmed) &&
+      trimmed.length < 120 &&
+      sectionHeadingRegex.test(trimmed);
+
+    if (isLikelyHeading) {
+      // Try to detect difficulty level from the heading text
+      let detectedLevel = null;
+      for (const [lvl, rx] of Object.entries(difficultyKeywords)) {
+        if (rx.test(trimmed)) { detectedLevel = parseInt(lvl, 10); break; }
+      }
+      if (detectedLevel === null) {
+        // No keyword match — assign based on ordinal position of this heading
+        sectionOrder++;
+        detectedLevel = Math.min(4, sectionOrder);
+      } else {
+        sectionOrder = Math.max(sectionOrder, detectedLevel);
+      }
+      currentSectionLevel = detectedLevel;
+    }
+
+    // Tag the most-recent question block with this section's level
+    if (currentSectionLevel !== null && rawBlocks.length > 0) {
+      const lastBlock = rawBlocks[rawBlocks.length - 1];
+      if (lastBlock && questionLevelMap[lastBlock.number] === undefined) {
+        questionLevelMap[lastBlock.number] = currentSectionLevel;
+      }
+    }
+  }
+
+  // Also tag any blocks added after the final line was parsed
+  if (currentBlock) {
+    rawBlocks.push(currentBlock);
+  }
+  if (currentSectionLevel !== null) {
+    for (const block of rawBlocks) {
+      if (questionLevelMap[block.number] === undefined) {
+        questionLevelMap[block.number] = currentSectionLevel;
+      }
+    }
+  }
+
+  const hasSectionHeadings = Object.keys(questionLevelMap).length > 0;
+
   // Build structured questions matching QuestionSchema
   const questions = [];
   const letterToIndex = { A: 0, B: 1, C: 2, D: 3, 1: 0, 2: 1, 3: 2, 4: 3 };
@@ -222,8 +302,15 @@ function parseQuestionsFromRawText(text) {
       }
     }
 
-    // Level assignment (1 to 4 distributed)
-    const level = (i % 4) + 1;
+    // ── Level assignment ─────────────────────────────────────────────────
+    // PATH A: if section headings were detected, use the section-level map.
+    // PATH B: fallback to distributing questions evenly across 4 levels.
+    let level;
+    if (hasSectionHeadings && questionLevelMap[block.number] !== undefined) {
+      level = questionLevelMap[block.number]; // PATH A
+    } else {
+      level = (i % 4) + 1; // PATH B: round-robin (unchanged fallback)
+    }
 
     questions.push({
       questionText: qText,
