@@ -213,7 +213,7 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack, 
         )}
         {isDisqualified && (
           <p style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.875rem', marginTop: '0.35rem' }}>
-            ⚠️ Terminated due to exceeding the maximum allowed limit of 4 tab switches.
+            ⚠️ Terminated due to exceeding the maximum allowed limit of 3 tab switches.
           </p>
         )}
         <p className="detail-hero-meta">
@@ -255,7 +255,7 @@ export default function AttemptDetailView({ attemptDetail, studentData, onBack, 
           <div className="detail-metric-card" style={{ borderColor: isDisqualified ? 'rgba(239,68,68,0.4)' : 'rgba(251,191,36,0.4)' }}>
             <span className="detail-metric-label">⚠️ Tab Switches</span>
             <span className="detail-metric-val" style={{ color: isDisqualified ? '#f87171' : '#fbbf24' }}>
-              {attemptDetail.tabSwitchCount} / 4
+              {attemptDetail.tabSwitchCount} / 3
             </span>
           </div>
         )}

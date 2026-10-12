@@ -1,22 +1,22 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * Authoritative cooldown window (4.5 seconds = 4500ms) to ignore rapid-fire
+ * Authoritative cooldown window (3 seconds = 3000ms) to ignore rapid-fire
  * visibilitychange/blur/focus events from a single tab switch or app switch.
  */
-export const TAB_SWITCH_COOLDOWN_MS = 4500;
+export const TAB_SWITCH_COOLDOWN_MS = 3000;
 
 /**
  * Maximum tab switches allowed across all quiz modes before terminal disqualification.
  */
-export const MAX_TAB_SWITCH_ALLOWED = 4;
+export const MAX_TAB_SWITCH_ALLOWED = 3;
 
 /**
  * Pure evaluation function for tab-switch throttling.
  * Returns whether the event should be ignored (throttled) and the updated timestamp.
  *
  * @param {number} lastSwitchTime - Timestamp of the last counted tab-switch (in ms)
- * @param {number} [cooldownMs=4500] - Cooldown duration in ms
+ * @param {number} [cooldownMs=3000] - Cooldown duration in ms
  * @param {number} [now=Date.now()] - Current timestamp in ms
  * @returns {{ isThrottled: boolean, updatedTime: number }}
  */
@@ -38,12 +38,12 @@ export function checkTabSwitchThrottle(lastSwitchTime, cooldownMs = TAB_SWITCH_C
  * - Self Practice (AI-Generated & Manual Question Sets)
  * - Mobile & Desktop browsers
  *
- * Enforces a strict 4.5-second debounce cooldown window to prevent rapid-fire false positives.
+ * Enforces a strict 3-second debounce cooldown window to prevent rapid-fire false positives.
  *
  * @param {Object} options
  * @param {boolean} options.enabled - Whether monitoring is currently active
  * @param {Function} options.onViolation - Callback invoked when a genuine tab switch is detected
- * @param {number} [options.cooldownMs=4500] - Cooldown duration in ms
+ * @param {number} [options.cooldownMs=3000] - Cooldown duration in ms
  */
 export function useTabSwitchMonitor({
   enabled = true,
@@ -65,7 +65,7 @@ export function useTabSwitchMonitor({
       const now = Date.now();
       const { isThrottled, updatedTime } = checkTabSwitchThrottle(lastSwitchTimeRef.current, cooldownMs, now);
       if (isThrottled) {
-        // Within 4.5s cooldown: ignore duplicate events from the same tab-switch cycle
+        // Within 3s cooldown: ignore duplicate events from the same tab-switch cycle
         return;
       }
       lastSwitchTimeRef.current = updatedTime;

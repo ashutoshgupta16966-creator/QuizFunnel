@@ -317,7 +317,7 @@ export default function StudentAiPracticeModal({
   }, [timerRunning, isTimedSession]);
 
   // ── Tab-Switch Detection ─────────────────────────────────────────────────
-  // Uses the shared 4.5-second cooldown hook so a single physical tab-switch
+  // Uses the shared 3-second cooldown hook so a single physical tab-switch
   // (which fires both visibilitychange + blur in rapid succession) is only
   // counted once — identical behaviour to Quiz.jsx, zero code duplication.
   const handlePracticeSwitchViolation = () => {
@@ -328,7 +328,7 @@ export default function StudentAiPracticeModal({
       const clampedCount = Math.min(nextCount, MAX_TAB_SWITCH_ALLOWED);
 
       if (nextCount >= MAX_TAB_SWITCH_ALLOWED) {
-        // 4th switch → terminal disqualification
+        // 3rd switch → terminal disqualification
         hasSubmittedPractice.current = true;
         setTimerRunning(false);
         setIsAntiCheatTerminal(true);
@@ -340,7 +340,7 @@ export default function StudentAiPracticeModal({
         return clampedCount;
       }
 
-      // Warnings 1–3: show modal with remaining count
+      // Warnings 1–2: show modal with remaining count
       setShowAntiCheatModal(true);
       return clampedCount;
     });

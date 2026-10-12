@@ -732,7 +732,7 @@ export default function Quiz() {
   }, [isRoomQuiz, roomQuizStarted, startCountdown, student?.mobile]);
 
   // ── Tab-Switching & Visibility Monitoring ───────────────────────────────
-  // Shared 4.5-second cooldown hook prevents a single physical tab-switch from
+  // Shared 3-second cooldown hook prevents a single physical tab-switch from
   // being counted multiple times due to rapid-fire visibilitychange + blur events.
   const handleSwitchViolation = useCallback(() => {
     if (hasSubmitted.current || isAntiCheatTerminal) return;
@@ -750,7 +750,7 @@ export default function Quiz() {
       }
 
       if (nextCount >= MAX_TAB_SWITCH_ALLOWED) {
-        // 4th detection: immediately stop quiz timers, invalidate input handlers, route to disqualification flow
+        // 3rd detection: immediately stop quiz timers, invalidate input handlers, route to disqualification flow
         hasSubmitted.current = true;
         setIsAntiCheatTerminal(true);
         setShowAntiCheatModal(true);
@@ -812,7 +812,7 @@ export default function Quiz() {
         // Switches 1 to (MAX-1): show warning toast with remaining attempts
         setToast({
           type: 'warning',
-          message: `Warning ${clampedCount}/${MAX_TAB_SWITCH_ALLOWED}: Switching tabs is monitored. ${MAX_TAB_SWITCH_ALLOWED}th switch will auto-disqualify.`,
+          message: `Warning ${clampedCount}/${MAX_TAB_SWITCH_ALLOWED}: Switching tabs is monitored. ${MAX_TAB_SWITCH_ALLOWED === 3 ? '3rd' : `${MAX_TAB_SWITCH_ALLOWED}th`} switch will auto-disqualify.`,
           duration: 4000,
         });
         setShowAntiCheatModal(true);

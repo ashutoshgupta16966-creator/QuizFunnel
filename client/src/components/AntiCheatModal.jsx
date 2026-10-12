@@ -1,7 +1,7 @@
 export default function AntiCheatModal({
   isOpen,
   count = 1,
-  maxLimit = 4,
+  maxLimit = 3,
   isLimitReached = false,
   onAcknowledge,
   onTerminalProceed,
@@ -20,7 +20,7 @@ export default function AntiCheatModal({
 
         <h3 className="anti-cheat-title">
           {isLimitReached
-            ? 'Violation: Tab-Switch Limit Exceeded (4/4)'
+            ? 'Violation: Tab-Switch Limit Exceeded (3/3)'
             : 'Tab Switching Detected!'}
         </h3>
 
@@ -39,7 +39,7 @@ export default function AntiCheatModal({
             <>
               Leaving the test window or switching browser tabs is strictly monitored.
               You have <strong>{remaining} warning{remaining === 1 ? '' : 's'}</strong> remaining.
-              The <strong>{maxLimit}th switch</strong> will automatically
+              The <strong>3rd switch</strong> will automatically
               disqualify you from this quiz.
             </>
           )}
