@@ -842,35 +842,33 @@ export default function Quiz() {
   });
 
   // ── Restore Unrestricted Vertical Scrolling on Active Question Screen ───
-  // Guarantees document.body and document.documentElement never carry scroll/touch locks,
-  // enabling effortless, smooth vertical scrolling across Chrome, Brave, Safari, and mobile WebViews.
+  // Guarantees document.body, document.documentElement, and quiz containers never carry
+  // scroll/touch locks, enabling effortless, smooth vertical scrolling across Chrome, Brave, Safari, and mobile WebViews.
   useEffect(() => {
-    document.documentElement.style.overflow = '';
-    document.documentElement.style.overflowY = 'auto';
-    document.documentElement.style.overscrollBehavior = '';
-    document.documentElement.style.overscrollBehaviorY = '';
-    document.documentElement.style.touchAction = '';
-    document.body.style.overflow = '';
-    document.body.style.overflowY = 'auto';
-    document.body.style.overscrollBehavior = '';
-    document.body.style.overscrollBehaviorY = '';
-    document.body.style.touchAction = '';
-    document.body.style.position = '';
-    document.body.style.height = '';
-
-    return () => {
+    const unblockScroll = () => {
+      // Clear any overflow:hidden or position:fixed locks on root & body
       document.documentElement.style.overflow = '';
-      document.documentElement.style.overflowY = '';
-      document.documentElement.style.overscrollBehavior = '';
-      document.documentElement.style.overscrollBehaviorY = '';
-      document.documentElement.style.touchAction = '';
+      document.documentElement.style.overflowX = 'hidden';
+      document.documentElement.style.overflowY = 'auto';
+      document.documentElement.style.touchAction = 'pan-y';
+
       document.body.style.overflow = '';
-      document.body.style.overflowY = '';
-      document.body.style.overscrollBehavior = '';
-      document.body.style.overscrollBehaviorY = '';
-      document.body.style.touchAction = '';
+      document.body.style.overflowX = 'hidden';
+      document.body.style.overflowY = 'auto';
       document.body.style.position = '';
       document.body.style.height = '';
+      document.body.style.touchAction = 'pan-y';
+    };
+
+    unblockScroll();
+
+    // Guard against any external modal or drawer temporarily dirtying body.style.overflow
+    const interval = setInterval(unblockScroll, 800);
+
+    return () => {
+      clearInterval(interval);
+      document.documentElement.style.touchAction = '';
+      document.body.style.touchAction = '';
     };
   }, [isQuestionsActive]);
 
@@ -1342,7 +1340,18 @@ export default function Quiz() {
   const allAnswered     = answeredCount === questions.length;
 
   return (
-    <div className="quiz-page">
+    <div
+      className="quiz-page"
+      style={{
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+        touchAction: 'pan-y',
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
       {/* ── Sticky header: Level Badge, Room Tag, Student Name, Theme Toggle ── */}
       <header className="quiz-header">
         <div className="quiz-header-left">

@@ -9,15 +9,17 @@ import { useEffect } from 'react';
  *   guide   {object}   — { title, icon, sections: [{ heading, items: [string] }] }
  */
 export default function GuidanceDrawer({ isOpen, onClose, guide }) {
-  // Trap focus & block body scroll while open
+  // Note: body scroll is intentionally NOT locked when the drawer opens.
+  // The drawer sits above a click-through backdrop and has its own internal scroll.
+  // Locking body.overflow=hidden on the quiz page prevents students from scrolling
+  // the question screen on mobile after the drawer is dismissed.
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    // Always ensure body scroll is free when drawer state changes
+    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
     return () => {
       document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
     };
   }, [isOpen]);
 
@@ -31,7 +33,7 @@ export default function GuidanceDrawer({ isOpen, onClose, guide }) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [isOpen, onClose]);
 
-  if (!guide) return null;
+  if (!guide || !isOpen) return null;
 
   return (
     <>

@@ -56,6 +56,10 @@ html {
   scroll-behavior: smooth;
   height: auto;
   min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 body {
   font-family: 'Outfit', system-ui, sans-serif;
@@ -67,6 +71,7 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   line-height: 1.65;
+  touch-action: pan-y;
 }
 #root {
   min-height: 100%;
@@ -345,15 +350,33 @@ a { color: inherit; }
    QUIZ PAGE
    ============================================================ */
 .quiz-page {
-  flex: 1;
-  min-height: 100%;
+  flex: 1 1 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  padding-bottom: 7rem;
+  padding-bottom: 8rem;
   max-width: 100vw;
   box-sizing: border-box;
   width: 100%;
   position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: auto;
+}
+
+/* Ensure mobile vertical scrolling is never locked or frozen on quiz screens */
+.quiz-page * {
+  touch-action: pan-y;
+}
+
+.quiz-page button,
+.quiz-page input,
+.quiz-page select,
+.quiz-page a {
+  touch-action: manipulation;
 }
 
 /* Sticky header: Level Badge, Room Tag, Student Name, Theme Toggle */
@@ -8261,9 +8284,11 @@ a { color: inherit; }
   transform: translateX(100%);
   transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+  pointer-events: none;
 }
 .guidance-drawer.open {
   transform: translateX(0);
+  pointer-events: all;
 }
 
 /* ── Header ───────────────────────────────────────────────────────────────── */
