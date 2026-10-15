@@ -19,21 +19,71 @@ router.get('/students', async (req, res, next) => {
     const filter = {};
 
     if (branch) filter.branch = branch;
-    if (status) filter.status = status;
-    if (search) {
+    if (status) {
       filter.$or = [
+        { status },
+        { 'attemptHistory.status': status },
+      ];
+    }
+    if (search) {
+      const searchOr = [
         { name:   { $regex: search, $options: 'i' } },
         { mobile: { $regex: search, $options: 'i' } },
       ];
+      if (filter.$or) {
+        filter.$and = [
+          { $or: filter.$or },
+          { $or: searchOr },
+        ];
+        delete filter.$or;
+      } else {
+        filter.$or = searchOr;
+      }
     }
 
     const students = await Student.find(filter)
       // Exclude heavy fields (shuffle maps, full answer arrays)
       .select('-quizSession -levels.answers -__v')
-      .sort({ currentLevel: -1, totalScore: -1, createdAt: 1 })
+      .sort({ currentLevel: -1, totalScore: -1, createdAt: -1 })
       .lean();
 
-    res.json({ success: true, count: students.length, data: students });
+    // Map each student to ensure levels, totalScore, and totalTimeTaken reflect their best or latest completed attempt if current attempt is empty
+    const mapped = students.map((s) => {
+      let levels = Array.isArray(s.levels) && s.levels.length > 0 ? s.levels : [];
+      let totalScore = s.totalScore || 0;
+      let totalTime = s.totalTimeTaken || 0;
+      let statusVal = s.status;
+      let currentLevel = s.currentLevel;
+
+      // If active levels are empty but attemptHistory exists, pull latest/best completed attempt
+      if (levels.length === 0 && Array.isArray(s.attemptHistory) && s.attemptHistory.length > 0) {
+        const latestAttempt = [...s.attemptHistory].reverse()[0];
+        if (latestAttempt) {
+          totalScore = latestAttempt.totalScore ?? totalScore;
+          totalTime = latestAttempt.totalTimeTaken ?? totalTime;
+          statusVal = latestAttempt.status || statusVal;
+          currentLevel = latestAttempt.levelReached || currentLevel;
+          if (Array.isArray(latestAttempt.levelsSummary) && latestAttempt.levelsSummary.length > 0) {
+            levels = latestAttempt.levelsSummary.map((lvl) => ({
+              level: lvl.level,
+              score: lvl.score || 0,
+              timeTaken: lvl.timeTaken || 0,
+            }));
+          }
+        }
+      }
+
+      return {
+        ...s,
+        levels,
+        totalScore,
+        totalTimeTaken: totalTime,
+        status: statusVal,
+        currentLevel,
+      };
+    });
+
+    res.json({ success: true, count: mapped.length, data: mapped });
   } catch (err) {
     next(err);
   }
@@ -41,7 +91,7 @@ router.get('/students', async (req, res, next) => {
 
 /**
  * GET /api/admin/leaderboard
- * Returns only Level-4 completers, sorted by:
+ * Returns Level-4 completers (from current run or attemptHistory), sorted by:
  *   1. totalScore DESC  (highest score wins)
  *   2. totalTimeTaken ASC  (faster time wins on tie)
  *
@@ -49,26 +99,55 @@ router.get('/students', async (req, res, next) => {
  */
 router.get('/leaderboard', async (req, res, next) => {
   try {
-    const completers = await Student.find({ status: 'completed' })
-      .select('name mobile branch totalScore totalTimeTaken levels completedAt')
-      // MongoDB sort: score DESC, time ASC
-      .sort({ totalScore: -1, totalTimeTaken: 1 })
+    const completers = await Student.find({
+      $or: [
+        { status: 'completed' },
+        { 'attemptHistory.status': 'completed' },
+        { 'attemptHistory.levelReached': { $gte: 4 } },
+        { currentLevel: { $gte: 4 }, 'levels.level': 4 },
+      ],
+    })
+      .select('name mobile branch totalScore totalTimeTaken levels attemptHistory status completedAt')
       .lean();
 
-    const ranked = completers.map((s, idx) => ({
-      rank: idx + 1,
-      name: s.name,
-      mobile: s.mobile,
-      branch: s.branch,
-      totalScore: s.totalScore,
-      totalTimeTaken: s.totalTimeTaken,
-      // Break out individual level scores for display
-      l1Score: s.levels.find((l) => l.level === 1)?.score ?? null,
-      l2Score: s.levels.find((l) => l.level === 2)?.score ?? null,
-      l3Score: s.levels.find((l) => l.level === 3)?.score ?? null,
-      l4Score: s.levels.find((l) => l.level === 4)?.score ?? null,
-      completedAt: s.completedAt,
-    }));
+    const ranked = completers.map((s) => {
+      const completedHistory = (s.attemptHistory || []).filter(
+        (a) => a.status === 'completed' || (a.levelReached && a.levelReached >= 4)
+      );
+      let bestScore = s.totalScore || 0;
+      let bestTime = s.totalTimeTaken || 0;
+      let levels = Array.isArray(s.levels) ? s.levels : [];
+      let completedAt = s.completedAt;
+
+      for (const att of completedHistory) {
+        if (att.totalScore > bestScore || (att.totalScore === bestScore && att.totalTimeTaken < bestTime)) {
+          bestScore = att.totalScore;
+          bestTime = att.totalTimeTaken;
+          if (Array.isArray(att.levelsSummary) && att.levelsSummary.length > 0) {
+            levels = att.levelsSummary;
+          }
+          if (att.attemptDate) completedAt = att.attemptDate;
+        }
+      }
+
+      return {
+        name: s.name,
+        mobile: s.mobile,
+        branch: s.branch,
+        totalScore: bestScore,
+        totalTimeTaken: bestTime,
+        l1Score: levels.find((l) => l.level === 1)?.score ?? null,
+        l2Score: levels.find((l) => l.level === 2)?.score ?? null,
+        l3Score: levels.find((l) => l.level === 3)?.score ?? null,
+        l4Score: levels.find((l) => l.level === 4)?.score ?? null,
+        completedAt,
+      };
+    })
+    .sort((a, b) => {
+      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+      return a.totalTimeTaken - b.totalTimeTaken;
+    })
+    .map((item, idx) => ({ ...item, rank: idx + 1 }));
 
     res.json({ success: true, data: ranked });
   } catch (err) {
@@ -82,17 +161,26 @@ router.get('/leaderboard', async (req, res, next) => {
  */
 router.get('/stats', async (req, res, next) => {
   try {
-    const [total, byStatus] = await Promise.all([
+    const [total, byStatus, completedCount] = await Promise.all([
       Student.countDocuments(),
       Student.aggregate([
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
+      Student.countDocuments({
+        $or: [
+          { status: 'completed' },
+          { 'attemptHistory.status': 'completed' },
+          { 'attemptHistory.levelReached': { $gte: 4 } },
+        ],
+      }),
     ]);
 
-    const stats = { total, inProgress: 0, eliminated: 0, advanced: 0, completed: 0 };
+    const stats = { total, inProgress: 0, eliminated: 0, advanced: 0, completed: completedCount };
     byStatus.forEach(({ _id, count }) => {
       if (_id === 'in-progress') stats.inProgress = count;
-      else if (_id in stats) stats[_id] = count;
+      else if (_id === 'eliminated') stats.eliminated = count;
+      else if (_id === 'advanced') stats.advanced = count;
+      else if (_id in stats && _id !== 'completed') stats[_id] = count;
     });
 
     res.json({ success: true, data: stats });
@@ -112,25 +200,46 @@ router.get('/export', async (req, res, next) => {
       .select('-quizSession -levels.answers -__v')
       .lean();
 
-    const rows = students.map((s) => ({
-      Name:              s.name,
-      Mobile:            s.mobile,
-      Branch:            s.branch,
-      Status:            s.status,
-      CurrentLevel:      s.currentLevel,
-      TotalScore:        s.totalScore,
-      TotalTimeTaken_s:  s.totalTimeTaken,
-      Level1_Score:      s.levels.find((l) => l.level === 1)?.score ?? '',
-      Level1_Time_s:     s.levels.find((l) => l.level === 1)?.timeTaken ?? '',
-      Level2_Score:      s.levels.find((l) => l.level === 2)?.score ?? '',
-      Level2_Time_s:     s.levels.find((l) => l.level === 2)?.timeTaken ?? '',
-      Level3_Score:      s.levels.find((l) => l.level === 3)?.score ?? '',
-      Level3_Time_s:     s.levels.find((l) => l.level === 3)?.timeTaken ?? '',
-      Level4_Score:      s.levels.find((l) => l.level === 4)?.score ?? '',
-      Level4_Time_s:     s.levels.find((l) => l.level === 4)?.timeTaken ?? '',
-      RegisteredAt:      s.startedAt ? new Date(s.startedAt).toISOString() : '',
-      CompletedAt:       s.completedAt ? new Date(s.completedAt).toISOString() : '',
-    }));
+    const rows = students.map((s) => {
+      let levels = Array.isArray(s.levels) && s.levels.length > 0 ? s.levels : [];
+      let totalScore = s.totalScore || 0;
+      let totalTime = s.totalTimeTaken || 0;
+      let statusVal = s.status;
+      let currentLevel = s.currentLevel;
+
+      if (levels.length === 0 && Array.isArray(s.attemptHistory) && s.attemptHistory.length > 0) {
+        const latestAttempt = [...s.attemptHistory].reverse()[0];
+        if (latestAttempt) {
+          totalScore = latestAttempt.totalScore ?? totalScore;
+          totalTime = latestAttempt.totalTimeTaken ?? totalTime;
+          statusVal = latestAttempt.status || statusVal;
+          currentLevel = latestAttempt.levelReached || currentLevel;
+          if (Array.isArray(latestAttempt.levelsSummary) && latestAttempt.levelsSummary.length > 0) {
+            levels = latestAttempt.levelsSummary;
+          }
+        }
+      }
+
+      return {
+        Name:              s.name,
+        Mobile:            s.mobile,
+        Branch:            s.branch,
+        Status:            statusVal,
+        CurrentLevel:      currentLevel,
+        TotalScore:        totalScore,
+        TotalTimeTaken_s:  totalTime,
+        Level1_Score:      levels.find((l) => l.level === 1)?.score ?? '',
+        Level1_Time_s:     levels.find((l) => l.level === 1)?.timeTaken ?? '',
+        Level2_Score:      levels.find((l) => l.level === 2)?.score ?? '',
+        Level2_Time_s:     levels.find((l) => l.level === 2)?.timeTaken ?? '',
+        Level3_Score:      levels.find((l) => l.level === 3)?.score ?? '',
+        Level3_Time_s:     levels.find((l) => l.level === 3)?.timeTaken ?? '',
+        Level4_Score:      levels.find((l) => l.level === 4)?.score ?? '',
+        Level4_Time_s:     levels.find((l) => l.level === 4)?.timeTaken ?? '',
+        RegisteredAt:      s.startedAt ? new Date(s.startedAt).toISOString() : '',
+        CompletedAt:       s.completedAt ? new Date(s.completedAt).toISOString() : '',
+      };
+    });
 
     const parser = new Parser();
     const csv = parser.parse(rows);

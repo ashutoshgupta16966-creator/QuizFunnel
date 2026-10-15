@@ -227,7 +227,7 @@ export default function RoomAdminDashboard() {
       } catch (err) {
         // Silent catch for background poll
       }
-    }, 4000);
+    }, 2500);
 
     return () => clearInterval(interval);
   }, [roomCode, adminPassword]);
@@ -426,7 +426,7 @@ export default function RoomAdminDashboard() {
     return Array.from(map.values());
   }, [room?.participants]);
 
-  const totalJoined = participants.length;
+  const totalJoined = Math.max(participants.length, room?.participantCount || 0);
   const maxCapacity = room?.maxCapacity || 60;
   const capacityPct = Math.min(100, Math.round((totalJoined / maxCapacity) * 100));
 

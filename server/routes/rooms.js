@@ -661,7 +661,14 @@ router.post('/admin/rejoin', async (req, res, next) => {
     const normalizedCode = roomCode.trim().toUpperCase();
     const cleanPhone = adminPhone.toString().replace(/\D/g, '').slice(-10);
 
-    const room = await Room.findOne({ roomCode: normalizedCode }).lean();
+    let room = await Room.findOne({
+      roomCode: normalizedCode,
+      roomPassword: roomPassword.trim(),
+    }).sort({ createdAt: -1 }).lean();
+
+    if (!room) {
+      room = await Room.findOne({ roomCode: normalizedCode }).sort({ createdAt: -1 }).lean();
+    }
 
     if (!room) {
       return res.status(404).json({ success: false, error: 'No room found with that Room Code.' });
@@ -669,7 +676,7 @@ router.post('/admin/rejoin', async (req, res, next) => {
 
     // Verify admin phone
     const storedPhone = room.adminPhone?.toString().replace(/\D/g, '').slice(-10) || '';
-    if (storedPhone !== cleanPhone) {
+    if (storedPhone && storedPhone !== cleanPhone) {
       return res.status(401).json({ success: false, error: 'Admin Phone Number does not match.' });
     }
 
@@ -718,7 +725,13 @@ router.get('/admin/my-rooms', async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Please enter a valid 10-digit phone number.' });
     }
 
-    const rooms = await Room.find({ adminPhone: cleanPhone })
+    const rooms = await Room.find({
+      $or: [
+        { adminPhone: cleanPhone },
+        { adminPhone: { $regex: cleanPhone + '$' } },
+        { adminPhone: adminPhone.trim() },
+      ],
+    })
       .sort({ createdAt: -1 })
       .select('roomCode quizTitle adminName adminPhone roomPassword status maxCapacity participants createdAt updatedAt')
       .lean();
@@ -745,17 +758,46 @@ router.get('/admin/my-rooms', async (req, res, next) => {
       }
     }
 
-    const roomList = rooms.map((r) => ({
-      roomCode: r.roomCode,
-      quizTitle: r.quizTitle || '',
-      adminName: r.adminName,
-      status: r.status,
-      roomPassword: r.roomPassword,
-      maxCapacity: r.maxCapacity || 60,
-      participantCount: (r.participants || []).length,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    }));
+    const Student = require('../models/Student');
+    const roomCodes = rooms.map((r) => r.roomCode.trim().toUpperCase());
+    const studentsInHistory = await Student.find({
+      'attemptHistory.roomCode': { $in: roomCodes },
+    }).select('mobile attemptHistory').lean();
+
+    const historyCountMap = new Map();
+    for (const s of studentsInHistory) {
+      const cleanM = String(s.mobile || '').replace(/\D/g, '').slice(-10);
+      for (const att of (s.attemptHistory || [])) {
+        if (att.roomCode) {
+          const code = att.roomCode.trim().toUpperCase();
+          if (!historyCountMap.has(code)) historyCountMap.set(code, new Set());
+          historyCountMap.get(code).add(cleanM);
+        }
+      }
+    }
+
+    const roomList = rooms.map((r) => {
+      const code = r.roomCode.trim().toUpperCase();
+      const participantMobiles = new Set(
+        (r.participants || []).map((p) => String(p.mobile || '').replace(/\D/g, '').slice(-10)).filter(Boolean)
+      );
+      const fromHistory = historyCountMap.get(code) || new Set();
+      for (const m of fromHistory) participantMobiles.add(m);
+
+      const count = participantMobiles.size || (r.participants || []).length;
+
+      return {
+        roomCode: r.roomCode,
+        quizTitle: r.quizTitle || '',
+        adminName: r.adminName,
+        status: r.status,
+        roomPassword: r.roomPassword,
+        maxCapacity: r.maxCapacity || 60,
+        participantCount: count,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      };
+    });
 
     res.json({
       success: true,
@@ -1600,7 +1642,17 @@ router.get('/:roomCode', async (req, res, next) => {
     const { password } = req.query;
 
     const normalizedCode = roomCode.trim().toUpperCase();
-    const room = await Room.findOne({ roomCode: normalizedCode }).lean();
+    let room = null;
+    if (password && password.trim()) {
+      room = await Room.findOne({ roomCode: normalizedCode, roomPassword: password.trim() })
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+    if (!room) {
+      room = await Room.findOne({ roomCode: normalizedCode })
+        .sort({ createdAt: -1 })
+        .lean();
+    }
 
     if (!room) {
       return res.status(404).json({ success: false, error: 'Room not found.' });

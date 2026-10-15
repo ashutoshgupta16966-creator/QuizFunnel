@@ -87,11 +87,59 @@ RoomSchema.index({ adminPhone: 1, createdAt: -1 });
  * and computed total score and time from active Student.levels or Student.attemptHistory.
  */
 RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, roomCode) {
-  if (!participants || participants.length === 0) return [];
   try {
+    const Student = require('./Student');
+    const normalizedCode = roomCode ? String(roomCode).trim().toUpperCase() : null;
+
+    let pList = Array.isArray(participants) ? [...participants] : [];
+
+    // ── JOIN: Query students who have attempts or active sessions for this roomCode ──
+    if (normalizedCode) {
+      const studentsForRoom = await Student.find({
+        $or: [
+          { 'attemptHistory.roomCode': normalizedCode },
+          { 'attemptHistory.roomCode': roomCode },
+        ],
+      })
+        .select('name branch mobile levels attemptHistory totalScore totalTimeTaken status isDisqualified createdAt updatedAt')
+        .lean();
+
+      // Check for any students in history who are missing from pList
+      const existingMobiles = new Set(
+        pList.map((p) => String(p.mobile || '').replace(/\D/g, '').slice(-10)).filter(Boolean)
+      );
+
+      for (const s of studentsForRoom) {
+        const cleanM = String(s.mobile || '').replace(/\D/g, '').slice(-10);
+        if (!existingMobiles.has(cleanM)) {
+          const matchedAttempt = (s.attemptHistory || [])
+            .slice()
+            .reverse()
+            .find((a) => a.roomCode && a.roomCode.trim().toUpperCase() === normalizedCode);
+
+          pList.push({
+            mobile: cleanM || s.mobile,
+            name: s.name,
+            branch: s.branch,
+            level: matchedAttempt?.levelReached || s.currentLevel || 1,
+            score: matchedAttempt?.totalScore ?? s.totalScore ?? 0,
+            timeTaken: matchedAttempt?.totalTimeTaken ?? s.totalTimeTaken ?? 0,
+            status: matchedAttempt?.status || s.status || 'completed',
+            isDisqualified: Boolean(matchedAttempt?.isDisqualified || s.isDisqualified),
+            levels: matchedAttempt?.levelsSummary || s.levels || [],
+            joinedAt: matchedAttempt?.attemptDate || s.createdAt || new Date(),
+            lastActive: matchedAttempt?.attemptDate || s.updatedAt || new Date(),
+          });
+          existingMobiles.add(cleanM);
+        }
+      }
+    }
+
+    if (pList.length === 0) return [];
+
     // ── Deduplicate participants by unique normalized 10-digit mobile number ──
     const mobileMap = new Map();
-    for (const p of participants) {
+    for (const p of pList) {
       const cleanM = String(p.mobile || '').replace(/\D/g, '').slice(-10);
       if (!cleanM) continue;
       if (!mobileMap.has(cleanM)) {
@@ -116,7 +164,6 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
     }
     participants = Array.from(mobileMap.values());
 
-    const Student = require('./Student');
     const mobiles = participants.map((p) => p.mobile).filter(Boolean);
     const cleanMobiles = participants
       .map((p) => String(p.mobile || '').replace(/\D/g, '').slice(-10))
@@ -149,21 +196,31 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
       let candidateLevels = [];
       let candidateStatus = p.status;
       let candidateLevel = p.level || 1;
+      let candidateScore = null;
+      let candidateTime = null;
 
       if (student) {
         // 1. Check attemptHistory for a completed/final attempt matching this roomCode
         const matchedAttempt = Array.isArray(student.attemptHistory)
-          ? [...student.attemptHistory].reverse().find((a) => !roomCode || a.roomCode === roomCode)
+          ? [...student.attemptHistory].reverse().find((a) => !normalizedCode || (a.roomCode && a.roomCode.trim().toUpperCase() === normalizedCode))
           : null;
 
-        if (matchedAttempt && Array.isArray(matchedAttempt.levelsSummary) && matchedAttempt.levelsSummary.length > 0) {
-          candidateLevels = matchedAttempt.levelsSummary.map((lvl) => ({
-            level: lvl.level,
-            score: lvl.score || 0,
-            timeTaken: lvl.timeTaken || 0,
-          }));
+        if (matchedAttempt) {
+          if (Array.isArray(matchedAttempt.levelsSummary) && matchedAttempt.levelsSummary.length > 0) {
+            candidateLevels = matchedAttempt.levelsSummary.map((lvl) => ({
+              level: lvl.level,
+              score: lvl.score || 0,
+              timeTaken: lvl.timeTaken || 0,
+            }));
+          }
           if (matchedAttempt.status) candidateStatus = matchedAttempt.status;
           if (matchedAttempt.levelReached) candidateLevel = Math.max(candidateLevel, matchedAttempt.levelReached);
+          if (matchedAttempt.totalScore !== undefined && matchedAttempt.totalScore !== null) {
+            candidateScore = matchedAttempt.totalScore;
+          }
+          if (matchedAttempt.totalTimeTaken !== undefined && matchedAttempt.totalTimeTaken !== null) {
+            candidateTime = matchedAttempt.totalTimeTaken;
+          }
         }
 
         // 2. Check active student.levels
@@ -183,13 +240,13 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
         levels = candidateLevels;
       }
 
-      const computedTotalScore = levels.length > 0
-        ? levels.reduce((acc, curr) => acc + (curr.score || 0), 0)
-        : Math.max(p.score || 0, student?.totalScore || 0);
+      const computedTotalScore = candidateScore !== null && candidateScore !== undefined && candidateScore > 0
+        ? candidateScore
+        : (levels.length > 0 ? levels.reduce((acc, curr) => acc + (curr.score || 0), 0) : Math.max(p.score || 0, student?.totalScore || 0));
 
-      const computedTotalTime = levels.length > 0
-        ? levels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0)
-        : Math.max(p.timeTaken || 0, student?.totalTimeTaken || 0);
+      const computedTotalTime = candidateTime !== null && candidateTime !== undefined && candidateTime > 0
+        ? candidateTime
+        : (levels.length > 0 ? levels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0) : Math.max(p.timeTaken || 0, student?.totalTimeTaken || 0));
 
       const finalStatus = (candidateStatus === 'completed' || candidateStatus === 'eliminated' || candidateStatus === 'disqualified')
         ? candidateStatus
@@ -204,7 +261,7 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
       const studentObj = student;
 
       if (studentObj && Array.isArray(studentObj.attemptHistory) && studentObj.attemptHistory.length > 0) {
-        const roomAttempts = studentObj.attemptHistory.filter((a) => !roomCode || a.roomCode === roomCode);
+        const roomAttempts = studentObj.attemptHistory.filter((a) => !normalizedCode || (a.roomCode && a.roomCode.trim().toUpperCase() === normalizedCode));
         const mappedRoomAttempts = roomAttempts.map((att, idx) => ({
           attemptNumber: att.attemptNumber || idx + 1,
           score: att.totalScore ?? 0,
