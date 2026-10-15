@@ -118,51 +118,90 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
 
     const Student = require('./Student');
     const mobiles = participants.map((p) => p.mobile).filter(Boolean);
-    if (mobiles.length === 0) return participants;
+    const cleanMobiles = participants
+      .map((p) => String(p.mobile || '').replace(/\D/g, '').slice(-10))
+      .filter((m) => m && m.length === 10);
 
-    const students = await Student.find({ mobile: { $in: mobiles } })
-      .select('mobile levels attemptHistory')
+    if (mobiles.length === 0 && cleanMobiles.length === 0) return participants;
+
+    const students = await Student.find({
+      $or: [
+        { mobile: { $in: cleanMobiles } },
+        { mobile: { $in: mobiles } },
+      ],
+    })
+      .select('name branch mobile levels attemptHistory totalScore totalTimeTaken status isDisqualified')
       .lean();
-    const studentMap = new Map(students.map((s) => [s.mobile, s]));
+
+    const studentMap = new Map();
+    for (const s of students) {
+      const cleanM = String(s.mobile || '').replace(/\D/g, '').slice(-10);
+      studentMap.set(cleanM, s);
+      studentMap.set(s.mobile, s);
+    }
 
     return participants.map((p) => {
-      let levels = Array.isArray(p.levels) && p.levels.length > 0 ? p.levels : [];
-      if (levels.length === 0) {
-        const student = studentMap.get(p.mobile);
-        if (student) {
-          if (Array.isArray(student.levels) && student.levels.length > 0) {
-            levels = student.levels.map((lvl) => ({
-              level: lvl.level,
-              score: lvl.score || 0,
-              timeTaken: lvl.timeTaken || 0,
-            }));
-          } else if (Array.isArray(student.attemptHistory) && student.attemptHistory.length > 0) {
-            const matchedAttempt = [...student.attemptHistory]
-              .reverse()
-              .find((a) => a.roomCode === roomCode);
-            if (matchedAttempt && Array.isArray(matchedAttempt.levelsSummary)) {
-              levels = matchedAttempt.levelsSummary.map((lvl) => ({
-                level: lvl.level,
-                score: lvl.score || 0,
-                timeTaken: lvl.timeTaken || 0,
-              }));
-            }
-          }
+      const cleanM = String(p.mobile || '').replace(/\D/g, '').slice(-10);
+      const student = studentMap.get(cleanM) || studentMap.get(p.mobile);
+
+      let levels = Array.isArray(p.levels) && p.levels.length > 0 ? [...p.levels] : [];
+
+      let candidateLevels = [];
+      let candidateStatus = p.status;
+      let candidateLevel = p.level || 1;
+
+      if (student) {
+        // 1. Check attemptHistory for a completed/final attempt matching this roomCode
+        const matchedAttempt = Array.isArray(student.attemptHistory)
+          ? [...student.attemptHistory].reverse().find((a) => !roomCode || a.roomCode === roomCode)
+          : null;
+
+        if (matchedAttempt && Array.isArray(matchedAttempt.levelsSummary) && matchedAttempt.levelsSummary.length > 0) {
+          candidateLevels = matchedAttempt.levelsSummary.map((lvl) => ({
+            level: lvl.level,
+            score: lvl.score || 0,
+            timeTaken: lvl.timeTaken || 0,
+          }));
+          if (matchedAttempt.status) candidateStatus = matchedAttempt.status;
+          if (matchedAttempt.levelReached) candidateLevel = Math.max(candidateLevel, matchedAttempt.levelReached);
         }
+
+        // 2. Check active student.levels
+        if (Array.isArray(student.levels) && student.levels.length > candidateLevels.length) {
+          candidateLevels = student.levels.map((lvl) => ({
+            level: lvl.level,
+            score: lvl.score || 0,
+            timeTaken: lvl.timeTaken || 0,
+          }));
+          if (student.status) candidateStatus = student.status;
+          if (student.currentLevel) candidateLevel = Math.max(candidateLevel, student.currentLevel);
+        }
+      }
+
+      // If candidateLevels has more (or more comprehensive) data than p.levels, take it
+      if (candidateLevels.length >= levels.length && candidateLevels.length > 0) {
+        levels = candidateLevels;
       }
 
       const computedTotalScore = levels.length > 0
         ? levels.reduce((acc, curr) => acc + (curr.score || 0), 0)
-        : (p.score || 0);
+        : Math.max(p.score || 0, student?.totalScore || 0);
 
       const computedTotalTime = levels.length > 0
         ? levels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0)
-        : (p.timeTaken || 0);
+        : Math.max(p.timeTaken || 0, student?.totalTimeTaken || 0);
+
+      const finalStatus = (candidateStatus === 'completed' || candidateStatus === 'eliminated' || candidateStatus === 'disqualified')
+        ? candidateStatus
+        : (p.status || candidateStatus || 'in-progress');
+
+      const highestLevel = levels.length > 0 ? Math.max(...levels.map((l) => l.level)) : 1;
+      const finalLevel = Math.max(p.level || 1, candidateLevel, highestLevel);
 
       // Extract prior attempt data if reattempt or history exists
       let previousAttempt = p.previousAttempt || null;
       let allAttempts = Array.isArray(p.attempts) && p.attempts.length > 0 ? [...p.attempts] : [];
-      const studentObj = studentMap.get(p.mobile);
+      const studentObj = student;
 
       if (studentObj && Array.isArray(studentObj.attemptHistory) && studentObj.attemptHistory.length > 0) {
         const roomAttempts = studentObj.attemptHistory.filter((a) => !roomCode || a.roomCode === roomCode);
@@ -211,6 +250,14 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
 
       return {
         ...p,
+        mobile: cleanM || p.mobile,
+        name: p.name || student?.name || 'Student',
+        branch: p.branch || student?.branch || 'CSE',
+        level: finalLevel,
+        score: computedTotalScore,
+        timeTaken: computedTotalTime,
+        status: finalStatus,
+        isDisqualified: Boolean(p.isDisqualified || (student && student.isDisqualified)),
         levels: levels || [],
         computedTotalScore,
         computedTotalTime,

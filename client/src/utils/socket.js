@@ -47,7 +47,12 @@ export function disconnectSocket() {
 export function joinAdminRoomSocket(roomCode, roomPassword, { onJoined, onStudentJoined, onStudentUpdated, onStudentDisqualified, onReattemptRequest, onError }) {
   const s = connectSocket();
 
-  s.emit('admin:join-room', { roomCode, roomPassword });
+  const emitJoin = () => {
+    s.emit('admin:join-room', { roomCode, roomPassword });
+  };
+
+  emitJoin();
+  s.on('connect', emitJoin);
 
   s.on('admin:joined-success', (data) => {
     if (onJoined) onJoined(data);
@@ -74,6 +79,7 @@ export function joinAdminRoomSocket(roomCode, roomPassword, { onJoined, onStuden
   });
 
   return () => {
+    s.off('connect', emitJoin);
     s.off('admin:joined-success');
     s.off('student:joined');
     s.off('student:updated');
@@ -100,7 +106,12 @@ export function emitAdminStartQuiz({ roomCode, roomPassword }) {
 export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReattemptApproved, onReattemptDenied, onQuizStarted } = {}) {
   const s = connectSocket();
 
-  s.emit('student:join-room', { roomCode, student });
+  const emitJoin = () => {
+    s.emit('student:join-room', { roomCode, student });
+  };
+
+  emitJoin();
+  s.on('connect', emitJoin);
 
   if (onRoomClosed) {
     s.on('room:closed', onRoomClosed);
@@ -134,6 +145,7 @@ export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReatt
   }
 
   return () => {
+    s.off('connect', emitJoin);
     if (onRoomClosed) {
       s.off('room:closed', onRoomClosed);
       s.off('room_closed', onRoomClosed);
@@ -157,14 +169,16 @@ export function joinStudentRoomSocket(roomCode, student, { onRoomClosed, onReatt
 /**
  * Student emits live progress update to room.
  */
-export function emitStudentProgress({ roomCode, mobile, level, score, timeTaken, status, isDisqualified }) {
+export function emitStudentProgress({ roomCode, mobile, level, currentLevel, score, timeTaken, status, isDisqualified }) {
   if (!roomCode || !mobile) return;
   const s = getSocket();
+  const actualLevel = level ?? currentLevel ?? 1;
   if (s && s.connected) {
     s.emit('student:progress', {
       roomCode,
       mobile,
-      level,
+      level: actualLevel,
+      currentLevel: actualLevel,
       score,
       timeTaken,
       status,

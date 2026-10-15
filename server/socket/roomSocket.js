@@ -97,9 +97,9 @@ function initRoomSocket(io) {
 
         // Notify admin in this room with current progress if rejoining
         io.to(`room:${normalizedCode}`).emit('student:joined', {
-          mobile: student.mobile,
-          name: student.name,
-          branch: student.branch,
+          mobile: cleanMobile,
+          name: student.name || existingP?.name || 'Student',
+          branch: student.branch || existingP?.branch || 'CSE',
           level: existingP?.level || student.currentLevel || 1,
           score: existingP?.score || 0,
           timeTaken: existingP?.timeTaken || 0,
@@ -114,13 +114,15 @@ function initRoomSocket(io) {
     });
 
     // Student emits live progress update (level up, score change, completion, etc.)
-    socket.on('student:progress', async ({ roomCode, mobile, level, score, timeTaken, status, isDisqualified }) => {
+    socket.on('student:progress', async ({ roomCode, mobile, level, currentLevel, score, timeTaken, status, isDisqualified }) => {
       try {
         if (!roomCode || !mobile) return;
         const normalizedCode = roomCode.trim().toUpperCase();
+        const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
+        const actualLevel = level ?? currentLevel ?? 1;
 
         const Student = require('../models/Student');
-        const student = await Student.findOne({ mobile }).select('name branch levels attemptHistory').lean();
+        const student = await Student.findOne({ mobile: cleanMobile }).select('name branch levels attemptHistory totalScore totalTimeTaken status').lean();
         let levels = [];
         if (student) {
           if (Array.isArray(student.levels) && student.levels.length > 0) {
@@ -143,41 +145,73 @@ function initRoomSocket(io) {
 
         const computedTotalScore = levels.length > 0
           ? levels.reduce((acc, curr) => acc + (curr.score || 0), 0)
-          : (score || 0);
+          : (score ?? student?.totalScore ?? 0);
 
         const computedTotalTime = levels.length > 0
           ? levels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0)
-          : (timeTaken || 0);
+          : (timeTaken ?? student?.totalTimeTaken ?? 0);
 
-        // Broadcast to admin room
+        const finalStatus = status || student?.status || 'in-progress';
+
+        // Broadcast to admin room immediately
         io.to(`room:${normalizedCode}`).emit('student:updated', {
-          mobile,
+          mobile: cleanMobile,
           name: student?.name,
           branch: student?.branch,
-          level,
+          level: actualLevel,
           score: computedTotalScore,
           timeTaken: computedTotalTime,
-          status,
+          status: finalStatus,
           isDisqualified: Boolean(isDisqualified),
           levels,
           lastActive: new Date(),
         });
 
         // Persist update in Room document
-        await Room.updateOne(
-          { roomCode: normalizedCode, 'participants.mobile': mobile },
+        const updateResult = await Room.updateOne(
+          {
+            roomCode: normalizedCode,
+            $or: [
+              { 'participants.mobile': cleanMobile },
+              { 'participants.mobile': mobile },
+            ],
+          },
           {
             $set: {
-              'participants.$.level': level,
+              'participants.$.level': actualLevel,
               'participants.$.score': computedTotalScore,
               'participants.$.timeTaken': computedTotalTime,
-              'participants.$.status': status,
+              'participants.$.status': finalStatus,
               'participants.$.isDisqualified': Boolean(isDisqualified),
               'participants.$.levels': levels,
               'participants.$.lastActive': new Date(),
             },
           }
         );
+
+        // If participant record wasn't present in Room yet, push them
+        if (updateResult.matchedCount === 0) {
+          await Room.updateOne(
+            { roomCode: normalizedCode },
+            {
+              $push: {
+                participants: {
+                  mobile: cleanMobile,
+                  name: student?.name || 'Student',
+                  branch: student?.branch || 'CSE',
+                  level: actualLevel,
+                  score: computedTotalScore,
+                  timeTaken: computedTotalTime,
+                  status: finalStatus,
+                  isDisqualified: Boolean(isDisqualified),
+                  levels,
+                  joinedAt: new Date(),
+                  lastActive: new Date(),
+                },
+              },
+            }
+          );
+        }
       } catch (err) {
         console.error('Socket student:progress error:', err.message);
       }
@@ -188,11 +222,18 @@ function initRoomSocket(io) {
       try {
         if (!roomCode || !mobile) return;
         const normalizedCode = roomCode.trim().toUpperCase();
+        const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
 
-        io.to(`room:${normalizedCode}`).emit('student:disqualified', { mobile });
+        io.to(`room:${normalizedCode}`).emit('student:disqualified', { mobile: cleanMobile });
 
         await Room.updateOne(
-          { roomCode: normalizedCode, 'participants.mobile': mobile },
+          {
+            roomCode: normalizedCode,
+            $or: [
+              { 'participants.mobile': cleanMobile },
+              { 'participants.mobile': mobile },
+            ],
+          },
           {
             $set: {
               'participants.$.status': 'eliminated',
@@ -211,6 +252,30 @@ function initRoomSocket(io) {
       try {
         if (!roomCode) return;
         const normalizedCode = roomCode.trim().toUpperCase();
+
+        const room = await Room.findOne({ roomCode: normalizedCode });
+        if (room) {
+          const enriched = await Room.enrichParticipantsWithLevels(room.participants || [], normalizedCode);
+          room.participants = enriched.map((p) => ({
+            mobile: p.mobile,
+            name: p.name,
+            branch: p.branch,
+            level: p.level || 1,
+            score: p.score ?? p.computedTotalScore ?? 0,
+            timeTaken: p.timeTaken ?? p.computedTotalTime ?? 0,
+            status: p.status || 'in-progress',
+            isDisqualified: Boolean(p.isDisqualified),
+            isReattempt: Boolean(p.isReattempt),
+            previousAttempt: p.previousAttempt || null,
+            attempts: Array.isArray(p.attempts) ? p.attempts : [],
+            levels: Array.isArray(p.levels) ? p.levels : [],
+            joinedAt: p.joinedAt || new Date(),
+            lastActive: p.lastActive || new Date(),
+          }));
+          room.status = 'closed';
+          await room.save();
+        }
+
         io.to(`room:${normalizedCode}`).emit('room_closed', {
           message: 'The Host has ended this room session. 🚪',
         });

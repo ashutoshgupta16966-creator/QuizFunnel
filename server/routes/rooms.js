@@ -1658,6 +1658,25 @@ router.post('/:roomCode/close', async (req, res, next) => {
       return res.status(401).json({ success: false, error: 'Incorrect room password.' });
     }
 
+    // Enrich participant stats before closing to freeze and persist complete final historical records
+    const enriched = await Room.enrichParticipantsWithLevels(room.participants || [], normalizedCode);
+    room.participants = enriched.map((p) => ({
+      mobile: p.mobile,
+      name: p.name,
+      branch: p.branch,
+      level: p.level || 1,
+      score: p.score ?? p.computedTotalScore ?? 0,
+      timeTaken: p.timeTaken ?? p.computedTotalTime ?? 0,
+      status: p.status || 'in-progress',
+      isDisqualified: Boolean(p.isDisqualified),
+      isReattempt: Boolean(p.isReattempt),
+      previousAttempt: p.previousAttempt || null,
+      attempts: Array.isArray(p.attempts) ? p.attempts : [],
+      levels: Array.isArray(p.levels) ? p.levels : [],
+      joinedAt: p.joinedAt || new Date(),
+      lastActive: p.lastActive || new Date(),
+    }));
+
     room.status = 'closed';
     await room.save();
 

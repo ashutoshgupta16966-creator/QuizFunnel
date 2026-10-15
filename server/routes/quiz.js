@@ -697,6 +697,7 @@ router.post('/submit', async (req, res, next) => {
     if (isRoom && roomCode) {
       const normalizedRoomCode = roomCode.trim().toUpperCase();
       try {
+        const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
         const nextLvlNum = passed && !isLastLevel ? level + 1 : level;
         const finalScore = updatedStudent ? updatedStudent.totalScore : score;
         const finalTime = updatedStudent ? updatedStudent.totalTimeTaken : elapsed;
@@ -706,8 +707,14 @@ router.post('/submit', async (req, res, next) => {
           timeTaken: lvl.timeTaken || 0,
         }));
 
-        await Room.updateOne(
-          { roomCode: normalizedRoomCode, 'participants.mobile': mobile },
+        const updateResult = await Room.updateOne(
+          {
+            roomCode: normalizedRoomCode,
+            $or: [
+              { 'participants.mobile': cleanMobile },
+              { 'participants.mobile': mobile },
+            ],
+          },
           {
             $set: {
               'participants.$.level': nextLvlNum,
@@ -721,10 +728,34 @@ router.post('/submit', async (req, res, next) => {
           }
         );
 
+        if (updateResult.matchedCount === 0) {
+          // If participant was somehow missing from room document, add them
+          await Room.updateOne(
+            { roomCode: normalizedRoomCode },
+            {
+              $push: {
+                participants: {
+                  mobile: cleanMobile,
+                  name: student.name,
+                  branch: student.branch,
+                  level: nextLvlNum,
+                  score: finalScore,
+                  timeTaken: finalTime,
+                  status: newStatus,
+                  isDisqualified: Boolean(isDisqualified),
+                  levels: currentLevels,
+                  joinedAt: new Date(),
+                  lastActive: new Date(),
+                },
+              },
+            }
+          );
+        }
+
         const io = req.app.get('io');
         if (io) {
           io.to(`room:${normalizedRoomCode}`).emit('student:updated', {
-            mobile,
+            mobile: cleanMobile,
             name: student.name,
             branch: student.branch,
             level: nextLvlNum,

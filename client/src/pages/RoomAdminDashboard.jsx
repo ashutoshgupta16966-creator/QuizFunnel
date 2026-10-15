@@ -110,9 +110,12 @@ export default function RoomAdminDashboard() {
       },
       onStudentJoined: (newStudent) => {
         setRoom((prev) => {
-          if (!prev) return prev;
-          const existingList = prev.participants || [];
           const newM = String(newStudent.mobile || '').replace(/\D/g, '').slice(-10);
+          const studentNormalized = { ...newStudent, mobile: newM };
+          if (!prev) {
+            return { roomCode, participants: [studentNormalized] };
+          }
+          const existingList = prev.participants || [];
           const exists = existingList.some(
             (p) => String(p.mobile || '').replace(/\D/g, '').slice(-10) === newM
           );
@@ -121,59 +124,66 @@ export default function RoomAdminDashboard() {
               ...prev,
               participants: existingList.map((p) => {
                 if (String(p.mobile || '').replace(/\D/g, '').slice(-10) !== newM) return p;
-                const hasLevels = Array.isArray(newStudent.levels) && newStudent.levels.length > 0;
+                const hasLevels = Array.isArray(studentNormalized.levels) && studentNormalized.levels.length > 0;
                 return {
                   ...p,
-                  ...newStudent,
-                  level: Math.max(p.level || 1, newStudent.level || 1),
-                  score: Math.max(p.score || 0, newStudent.score || 0),
-                  timeTaken: Math.max(p.timeTaken || 0, newStudent.timeTaken || 0),
-                  levels: hasLevels ? newStudent.levels : (p.levels || []),
+                  ...studentNormalized,
+                  level: Math.max(p.level || 1, studentNormalized.level || 1),
+                  score: Math.max(p.score || 0, studentNormalized.score || 0),
+                  timeTaken: Math.max(p.timeTaken || 0, studentNormalized.timeTaken || 0),
+                  levels: hasLevels ? studentNormalized.levels : (p.levels || []),
                 };
               }),
             };
           }
           return {
             ...prev,
-            participants: [newStudent, ...existingList],
+            participants: [studentNormalized, ...existingList],
           };
         });
       },
       onStudentUpdated: (update) => {
         setRoom((prev) => {
-          if (!prev) return prev;
           const updateM = String(update.mobile || '').replace(/\D/g, '').slice(-10);
+          const updateNormalized = { ...update, mobile: updateM };
+          if (!prev) {
+            return { roomCode, participants: [updateNormalized] };
+          }
           const exists = (prev.participants || []).some(
             (p) => String(p.mobile || '').replace(/\D/g, '').slice(-10) === updateM
           );
           if (!exists) {
             return {
               ...prev,
-              participants: [update, ...(prev.participants || [])],
+              participants: [updateNormalized, ...(prev.participants || [])],
             };
           }
           return {
             ...prev,
             participants: (prev.participants || []).map((p) => {
               if (String(p.mobile || '').replace(/\D/g, '').slice(-10) !== updateM) return p;
-              const hasLevels = Array.isArray(update.levels) && update.levels.length > 0;
+              const hasLevels = Array.isArray(updateNormalized.levels) && updateNormalized.levels.length > 0;
               return {
                 ...p,
-                ...update,
-                levels: hasLevels ? update.levels : (p.levels || []),
+                ...updateNormalized,
+                levels: hasLevels ? updateNormalized.levels : (p.levels || []),
               };
             }),
           };
         });
       },
       onStudentDisqualified: ({ mobile }) => {
+        const cleanM = String(mobile || '').replace(/\D/g, '').slice(-10);
         setRoom((prev) => {
           if (!prev) return prev;
           return {
             ...prev,
-            participants: (prev.participants || []).map((p) =>
-              p.mobile === mobile ? { ...p, status: 'eliminated', isDisqualified: true } : p
-            ),
+            participants: (prev.participants || []).map((p) => {
+              const pM = String(p.mobile || '').replace(/\D/g, '').slice(-10);
+              return pM === cleanM || p.mobile === mobile
+                ? { ...p, status: 'eliminated', isDisqualified: true }
+                : p;
+            }),
           };
         });
       },
@@ -192,6 +202,34 @@ export default function RoomAdminDashboard() {
       cleanupSocket();
       disconnectSocket();
     };
+  }, [roomCode, adminPassword]);
+
+  // ── Periodic Background Polling Fallback for Live Participant & Stats Sync ──
+  useEffect(() => {
+    if (!roomCode) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await getRoomDetails(roomCode, adminPassword);
+        if (res.data?.data) {
+          const freshData = res.data.data;
+          setRoom((prev) => {
+            if (!prev) return freshData;
+            return {
+              ...prev,
+              ...freshData,
+              participants: freshData.participants || prev.participants || [],
+            };
+          });
+          if (Array.isArray(freshData.reattemptRequests)) {
+            setPendingRequests(freshData.reattemptRequests);
+          }
+        }
+      } catch (err) {
+        // Silent catch for background poll
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
   }, [roomCode, adminPassword]);
 
   // ── Re-attempt Host Approval Handlers ───────────────────────────────────────
@@ -364,6 +402,15 @@ export default function RoomAdminDashboard() {
         const bestScore = Math.max(existing.score || 0, p.score || 0);
         const bestTime = Math.max(existing.timeTaken || 0, p.timeTaken || 0);
         const bestLevels = (Array.isArray(p.levels) && p.levels.length > 0) ? p.levels : (existing.levels || []);
+        let resolvedStatus = p.status || existing.status;
+        if (p.isDisqualified || existing.isDisqualified) {
+          resolvedStatus = 'eliminated';
+        } else if (p.status === 'completed' || existing.status === 'completed') {
+          resolvedStatus = 'completed';
+        } else if (p.status) {
+          resolvedStatus = p.status;
+        }
+
         map.set(m, {
           ...existing,
           ...p,
@@ -371,7 +418,7 @@ export default function RoomAdminDashboard() {
           score: bestScore,
           timeTaken: bestTime,
           levels: bestLevels,
-          status: (p.status === 'completed' || p.status === 'eliminated' || p.isDisqualified) ? p.status : (existing.status || p.status),
+          status: resolvedStatus,
           isDisqualified: Boolean(existing.isDisqualified || p.isDisqualified),
         });
       }
