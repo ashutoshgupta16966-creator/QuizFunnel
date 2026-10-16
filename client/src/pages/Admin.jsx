@@ -12,9 +12,14 @@ const STATUS_LABELS = {
 
 function formatTime(seconds) {
   if (!seconds && seconds !== 0) return '—';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}m ${s}s`;
+  let s = Number(seconds) || 0;
+  // Convert milliseconds to seconds if value is unreasonably large
+  if (s > 10000) s = Math.round(s / 1000);
+  // Clamp to max 33 minutes (1980 seconds)
+  s = Math.min(Math.max(s, 0), 1980);
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
 // ── Password Gate ─────────────────────────────────────────────────────────────

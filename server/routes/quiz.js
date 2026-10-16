@@ -597,11 +597,19 @@ router.post('/submit', async (req, res, next) => {
       newCurrentLevel = level + 1;
     }
 
-    const elapsed = Number.isFinite(timeTaken) ? timeTaken : levelConfig.timeSeconds;
+    const MAX_TOTAL_SCORE  = 45;
+    const MAX_TOTAL_TIME_S = 1980;
+    const elapsed = Number.isFinite(timeTaken)
+      ? Math.min(Math.max(Math.round(timeTaken > 10000 ? timeTaken / 1000 : timeTaken), 0), MAX_TOTAL_TIME_S)
+      : Math.min(levelConfig.timeSeconds, MAX_TOTAL_TIME_S);
+
+    // Clamp score for this level so cumulative can never exceed MAX_TOTAL_SCORE
+    const prevTotal = student.totalScore || 0;
+    const clampedScore = Math.min(score, Math.max(MAX_TOTAL_SCORE - prevTotal, 0));
 
     const levelAttempt = {
       level,
-      score,
+      score: clampedScore,
       timeTaken: elapsed,
       submittedAt: new Date(),
       answers: scoredAnswers,
@@ -611,7 +619,7 @@ router.post('/submit', async (req, res, next) => {
     const updateDoc = {
       $push: { levels: levelAttempt },
       $set: { status: newStatus, currentLevel: newCurrentLevel, quizSession: null },
-      $inc: { totalScore: score, totalTimeTaken: elapsed },
+      $inc: { totalScore: clampedScore, totalTimeTaken: elapsed },
     };
     if (completedAt) updateDoc.$set.completedAt = completedAt;
 
@@ -619,8 +627,8 @@ router.post('/submit', async (req, res, next) => {
     if (newStatus === 'completed' || newStatus === 'eliminated' || newStatus === 'disqualified' || isDisqualified) {
       const CUMULATIVE_MAX = { 1: 20, 2: 35, 3: 45, 4: 50 };
       const clearedLevel = level;
-      const cumScore = (student.totalScore || 0) + score;
-      const cumTime = (student.totalTimeTaken || 0) + elapsed;
+      const cumScore = Math.min((student.totalScore || 0) + clampedScore, MAX_TOTAL_SCORE);
+      const cumTime  = Math.min((student.totalTimeTaken || 0) + elapsed, MAX_TOTAL_TIME_S);
 
       let maxPossible = 50;
       if (isRoom && roomCode) {

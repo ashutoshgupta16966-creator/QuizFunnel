@@ -7,6 +7,30 @@ const { Parser } = require('@json2csv/plainjs');
 // All routes in this file require admin authentication
 router.use(adminAuth);
 
+// ── Score & Time Guards ────────────────────────────────────────────────────────
+const TOTAL_MAX_SCORE  = 45;   // max achievable quiz score
+const TOTAL_MAX_TIME_S = 1980; // 33 minutes in seconds
+
+/**
+ * Formats seconds into "MM:SS". Handles ms values (>10000) and clamps to max 33:00.
+ */
+function formatTimeMMSS(seconds) {
+  if (!seconds && seconds !== 0) return '00:00';
+  let s = Number(seconds) || 0;
+  if (s > 10000) s = Math.round(s / 1000); // ms → seconds
+  s = Math.min(Math.max(s, 0), TOTAL_MAX_TIME_S);
+  const m   = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+function clampScore(val) { return Math.min(Math.max(Number(val) || 0, 0), TOTAL_MAX_SCORE); }
+function clampTime(val)  {
+  let s = Number(val) || 0;
+  if (s > 10000) s = Math.round(s / 1000);
+  return Math.min(Math.max(s, 0), TOTAL_MAX_TIME_S);
+}
+
 /**
  * GET /api/admin/students
  * Returns all students with their current level, status, and per-level scores.
@@ -73,11 +97,15 @@ router.get('/students', async (req, res, next) => {
         }
       }
 
+      const safeScore = clampScore(totalScore);
+      const safeTime  = clampTime(totalTime);
+
       return {
         ...s,
         levels,
-        totalScore,
-        totalTimeTaken: totalTime,
+        totalScore: safeScore,
+        totalTimeTaken: safeTime,
+        timeTakenFormatted: formatTimeMMSS(safeTime),
         status: statusVal,
         currentLevel,
       };
@@ -130,12 +158,16 @@ router.get('/leaderboard', async (req, res, next) => {
         }
       }
 
+      const safeScore = clampScore(bestScore);
+      const safeTime  = clampTime(bestTime);
+
       return {
         name: s.name,
         mobile: s.mobile,
         branch: s.branch,
-        totalScore: bestScore,
-        totalTimeTaken: bestTime,
+        totalScore: safeScore,
+        totalTimeTaken: safeTime,
+        timeTakenFormatted: formatTimeMMSS(safeTime),
         l1Score: levels.find((l) => l.level === 1)?.score ?? null,
         l2Score: levels.find((l) => l.level === 2)?.score ?? null,
         l3Score: levels.find((l) => l.level === 3)?.score ?? null,
@@ -220,24 +252,28 @@ router.get('/export', async (req, res, next) => {
         }
       }
 
+      const safeScore = clampScore(totalScore);
+      const safeTime  = clampTime(totalTime);
+
       return {
-        Name:              s.name,
-        Mobile:            s.mobile,
-        Branch:            s.branch,
-        Status:            statusVal,
-        CurrentLevel:      currentLevel,
-        TotalScore:        totalScore,
-        TotalTimeTaken_s:  totalTime,
-        Level1_Score:      levels.find((l) => l.level === 1)?.score ?? '',
-        Level1_Time_s:     levels.find((l) => l.level === 1)?.timeTaken ?? '',
-        Level2_Score:      levels.find((l) => l.level === 2)?.score ?? '',
-        Level2_Time_s:     levels.find((l) => l.level === 2)?.timeTaken ?? '',
-        Level3_Score:      levels.find((l) => l.level === 3)?.score ?? '',
-        Level3_Time_s:     levels.find((l) => l.level === 3)?.timeTaken ?? '',
-        Level4_Score:      levels.find((l) => l.level === 4)?.score ?? '',
-        Level4_Time_s:     levels.find((l) => l.level === 4)?.timeTaken ?? '',
-        RegisteredAt:      s.startedAt ? new Date(s.startedAt).toISOString() : '',
-        CompletedAt:       s.completedAt ? new Date(s.completedAt).toISOString() : '',
+        Name:                 s.name,
+        Mobile:               s.mobile,
+        Branch:               s.branch,
+        Status:               statusVal,
+        CurrentLevel:         currentLevel,
+        TotalScore:           safeScore,
+        TotalTimeTaken_s:     safeTime,
+        TotalTimeTaken_MMSS:  formatTimeMMSS(safeTime),
+        Level1_Score:         levels.find((l) => l.level === 1)?.score ?? '',
+        Level1_Time_s:        levels.find((l) => l.level === 1)?.timeTaken ?? '',
+        Level2_Score:         levels.find((l) => l.level === 2)?.score ?? '',
+        Level2_Time_s:        levels.find((l) => l.level === 2)?.timeTaken ?? '',
+        Level3_Score:         levels.find((l) => l.level === 3)?.score ?? '',
+        Level3_Time_s:        levels.find((l) => l.level === 3)?.timeTaken ?? '',
+        Level4_Score:         levels.find((l) => l.level === 4)?.score ?? '',
+        Level4_Time_s:        levels.find((l) => l.level === 4)?.timeTaken ?? '',
+        RegisteredAt:         s.startedAt ? new Date(s.startedAt).toISOString() : '',
+        CompletedAt:          s.completedAt ? new Date(s.completedAt).toISOString() : '',
       };
     });
 

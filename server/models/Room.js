@@ -83,6 +83,27 @@ RoomSchema.index({ adminPhone: 1, roomCode: 1, status: 1 });
 RoomSchema.index({ adminPhone: 1, createdAt: -1 });
 
 /**
+ * Per-level maximum scores for score capping.
+ * Adjust if quiz structure changes.
+ */
+const LEVEL_MAX_SCORES = { 1: 20, 2: 15, 3: 10, 4: 5 };
+const TOTAL_MAX_SCORE  = 45;  // sum of all levels
+const TOTAL_MAX_TIME_S = 1980; // 33 minutes in seconds
+
+/**
+ * Formats seconds into MM:SS. Handles millisecond inputs (>10000) and clamps to TOTAL_MAX_TIME_S.
+ */
+function formatTimeMMSS(seconds) {
+  if (!seconds && seconds !== 0) return '00:00';
+  let s = Number(seconds) || 0;
+  if (s > 10000) s = Math.round(s / 1000); // ms → seconds
+  s = Math.min(Math.max(s, 0), TOTAL_MAX_TIME_S);
+  const m   = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+/**
  * Enriches participant objects with their level-wise breakdown (level, score, timeTaken)
  * and computed total score and time from active Student.levels or Student.attemptHistory.
  */
@@ -305,19 +326,39 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
         allAttempts = [previousAttempt];
       }
 
+      // ── Clamp totals to valid ranges ────────────────────────────────────────
+      let rawScore = Number(computedTotalScore) || 0;
+      let rawTime  = Number(computedTotalTime)  || 0;
+      if (rawTime > 10000) rawTime = Math.round(rawTime / 1000); // ms → s
+      const clampedScore = Math.min(Math.max(rawScore, 0), TOTAL_MAX_SCORE);
+      const clampedTime  = Math.min(Math.max(rawTime, 0), TOTAL_MAX_TIME_S);
+
+      // Clamp per-level scores
+      const clampedLevels = (levels || []).map((lvl) => {
+        const lvlMax = LEVEL_MAX_SCORES[lvl.level] ?? 20;
+        let lvlTime = Number(lvl.timeTaken) || 0;
+        if (lvlTime > 10000) lvlTime = Math.round(lvlTime / 1000);
+        return {
+          level: lvl.level,
+          score: Math.min(Math.max(Number(lvl.score) || 0, 0), lvlMax),
+          timeTaken: Math.min(Math.max(lvlTime, 0), TOTAL_MAX_TIME_S),
+        };
+      });
+
       return {
         ...p,
         mobile: cleanM || p.mobile,
         name: p.name || student?.name || 'Student',
         branch: p.branch || student?.branch || 'CSE',
         level: finalLevel,
-        score: computedTotalScore,
-        timeTaken: computedTotalTime,
+        score: clampedScore,
+        timeTaken: clampedTime,
+        timeTakenFormatted: formatTimeMMSS(clampedTime),
         status: finalStatus,
         isDisqualified: Boolean(p.isDisqualified || (student && student.isDisqualified)),
-        levels: levels || [],
-        computedTotalScore,
-        computedTotalTime,
+        levels: clampedLevels,
+        computedTotalScore: clampedScore,
+        computedTotalTime: clampedTime,
         previousAttempt,
         attempts: allAttempts,
       };

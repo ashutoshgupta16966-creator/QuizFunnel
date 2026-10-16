@@ -8,9 +8,14 @@ import LevelDistributionChart from '../components/LevelDistributionChart';
 
 function formatTimeMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  let s = Number(seconds) || 0;
+  // Convert milliseconds to seconds if value is unreasonably large
+  if (s > 10000) s = Math.round(s / 1000);
+  // Clamp to max 33 minutes (1980 seconds)
+  s = Math.min(Math.max(s, 0), 1980);
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
 export default function RoomAdminDashboard() {
@@ -423,7 +428,19 @@ export default function RoomAdminDashboard() {
         });
       }
     }
-    return Array.from(map.values());
+    // Clamp score and timeTaken for every participant to prevent display overflow
+    const MAX_SCORE = 45;
+    const MAX_TIME_S = 1980;
+    return Array.from(map.values()).map((p) => {
+      let rawScore = Number(p.score || p.computedTotalScore || 0);
+      let rawTime  = Number(p.timeTaken || p.computedTotalTime || 0);
+      if (rawTime > 10000) rawTime = Math.round(rawTime / 1000); // ms → s
+      return {
+        ...p,
+        score: Math.min(Math.max(rawScore, 0), MAX_SCORE),
+        timeTaken: Math.min(Math.max(rawTime, 0), MAX_TIME_S),
+      };
+    });
   }, [room?.participants]);
 
   const totalJoined = Math.max(participants.length, room?.participantCount || 0);

@@ -562,6 +562,9 @@ router.post('/join', async (req, res, next) => {
         student.currentLevel = 1;
         student.levels = [];
         student.quizSession = null;
+        // Reset cumulative totals so the next attempt starts from zero
+        student.totalScore = 0;
+        student.totalTimeTaken = 0;
       }
       await student.save();
     }
