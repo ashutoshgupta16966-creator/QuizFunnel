@@ -7,6 +7,7 @@ const LEVELS = require('../config/levels');
 const { calculateDefaultCutoff, getGenericCutoff, calculateQuizStructure, distributeQuestionsAcrossLevels } = LEVELS;
 const { sanitizeMcqOptions, isGenericPlaceholderOption } = require('../controllers/aiVisionController');
 const { checkDirectAnswerCorrectness } = require('../utils/scoringHelper');
+const { formatTimeMMSS, normalizeSeconds, TOTAL_MAX_SCORE, TOTAL_MAX_TIME_S, LEVEL_MAX_SCORES, clampScore } = require('../utils/dataSanitizer');
 
 /**
  * Fisher-Yates shuffle for 4 option indices.
@@ -597,28 +598,38 @@ router.post('/submit', async (req, res, next) => {
       newCurrentLevel = level + 1;
     }
 
-    const MAX_TOTAL_SCORE  = 45;
-    const MAX_TOTAL_TIME_S = 1980;
-    const elapsed = Number.isFinite(timeTaken)
-      ? Math.min(Math.max(Math.round(timeTaken > 10000 ? timeTaken / 1000 : timeTaken), 0), MAX_TOTAL_TIME_S)
-      : Math.min(levelConfig.timeSeconds, MAX_TOTAL_TIME_S);
+    const maxForLevel = LEVEL_MAX_SCORES[level] ?? 20;
+    const clampedLevelScore = Math.min(Math.max(score, 0), maxForLevel);
 
-    // Clamp score for this level so cumulative can never exceed MAX_TOTAL_SCORE
-    const prevTotal = student.totalScore || 0;
-    const clampedScore = Math.min(score, Math.max(MAX_TOTAL_SCORE - prevTotal, 0));
+    const elapsed = normalizeSeconds(Number.isFinite(timeTaken) ? timeTaken : levelConfig.timeSeconds);
+    const elapsedFormatted = formatTimeMMSS(elapsed);
+
+    // Clamp score for this level so cumulative can never exceed TOTAL_MAX_SCORE (45)
+    const prevTotal = Math.min(Math.max(student.totalScore || 0, 0), TOTAL_MAX_SCORE);
+    const clampedScore = Math.min(clampedLevelScore, Math.max(TOTAL_MAX_SCORE - prevTotal, 0));
 
     const levelAttempt = {
       level,
       score: clampedScore,
       timeTaken: elapsed,
+      timeTakenFormatted: elapsedFormatted,
       submittedAt: new Date(),
       answers: scoredAnswers,
     };
 
+    const cumTime = normalizeSeconds((student.totalTimeTaken || 0) + elapsed);
+    const cumTimeFormatted = formatTimeMMSS(cumTime);
+    const cumScore = Math.min(prevTotal + clampedScore, TOTAL_MAX_SCORE);
+
     // Atomic update: push attempt, clear session, accumulate totals
     const updateDoc = {
       $push: { levels: levelAttempt },
-      $set: { status: newStatus, currentLevel: newCurrentLevel, quizSession: null },
+      $set: {
+        status: newStatus,
+        currentLevel: newCurrentLevel,
+        quizSession: null,
+        timeTakenFormatted: cumTimeFormatted,
+      },
       $inc: { totalScore: clampedScore, totalTimeTaken: elapsed },
     };
     if (completedAt) updateDoc.$set.completedAt = completedAt;
@@ -627,8 +638,6 @@ router.post('/submit', async (req, res, next) => {
     if (newStatus === 'completed' || newStatus === 'eliminated' || newStatus === 'disqualified' || isDisqualified) {
       const CUMULATIVE_MAX = { 1: 20, 2: 35, 3: 45, 4: 50 };
       const clearedLevel = level;
-      const cumScore = Math.min((student.totalScore || 0) + clampedScore, MAX_TOTAL_SCORE);
-      const cumTime  = Math.min((student.totalTimeTaken || 0) + elapsed, MAX_TOTAL_TIME_S);
 
       let maxPossible = 50;
       if (isRoom && roomCode) {
@@ -670,6 +679,7 @@ router.post('/submit', async (req, res, next) => {
         maxPossible,
         accuracyPct,
         totalTimeTaken: cumTime,
+        timeTakenFormatted: cumTimeFormatted,
         status: newStatus,
         isDisqualified: Boolean(isDisqualified),
         quizType: isRoomQuiz ? 'room' : 'normal',
@@ -707,12 +717,14 @@ router.post('/submit', async (req, res, next) => {
       try {
         const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
         const nextLvlNum = passed && !isLastLevel ? level + 1 : level;
-        const finalScore = updatedStudent ? updatedStudent.totalScore : score;
-        const finalTime = updatedStudent ? updatedStudent.totalTimeTaken : elapsed;
+        const finalScore = clampScore(updatedStudent ? updatedStudent.totalScore : cumScore);
+        const finalTime = normalizeSeconds(updatedStudent ? updatedStudent.totalTimeTaken : cumTime);
+        const finalTimeFormatted = formatTimeMMSS(finalTime);
         const currentLevels = (updatedStudent?.levels || []).map((lvl) => ({
           level: lvl.level,
-          score: lvl.score || 0,
-          timeTaken: lvl.timeTaken || 0,
+          score: clampLevelScore(lvl.level, lvl.score),
+          timeTaken: normalizeSeconds(lvl.timeTaken),
+          timeTakenFormatted: formatTimeMMSS(lvl.timeTaken),
         }));
 
         const updateResult = await Room.updateOne(
@@ -728,6 +740,7 @@ router.post('/submit', async (req, res, next) => {
               'participants.$.level': nextLvlNum,
               'participants.$.score': finalScore,
               'participants.$.timeTaken': finalTime,
+              'participants.$.timeTakenFormatted': finalTimeFormatted,
               'participants.$.status': newStatus,
               'participants.$.isDisqualified': Boolean(isDisqualified),
               'participants.$.levels': currentLevels,
@@ -749,6 +762,7 @@ router.post('/submit', async (req, res, next) => {
                   level: nextLvlNum,
                   score: finalScore,
                   timeTaken: finalTime,
+                  timeTakenFormatted: finalTimeFormatted,
                   status: newStatus,
                   isDisqualified: Boolean(isDisqualified),
                   levels: currentLevels,
@@ -769,6 +783,7 @@ router.post('/submit', async (req, res, next) => {
             level: nextLvlNum,
             score: finalScore,
             timeTaken: finalTime,
+            timeTakenFormatted: finalTimeFormatted,
             status: newStatus,
             isDisqualified: Boolean(isDisqualified),
             levels: currentLevels,

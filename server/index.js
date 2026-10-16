@@ -119,6 +119,12 @@ mongoose
     const Room = require('./models/Room');
     Room.cleanupDuplicateParticipants();
 
+    // ── Universal Permanent Data Sanitization (Score <= 45 & MM:SS Time) ────
+    const { runUniversalSanitization } = require('./utils/dataSanitizer');
+    runUniversalSanitization().catch((err) => {
+      console.warn('⚠️ [Data Sanitization Startup Warning]:', err.message);
+    });
+
     server.listen(PORT, () => {
       console.log(`🚀  Server listening on port ${PORT} with Socket.io enabled`);
       console.log(`    Health: http://localhost:${PORT}/health`);

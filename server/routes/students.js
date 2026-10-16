@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const Student = require('../models/Student');
+const { formatTimeMMSS, normalizeSeconds, clampScore, TOTAL_MAX_SCORE } = require('../utils/dataSanitizer');
 
 // In-memory store for SMS OTPs: mobile -> { otp, expiresAt }
 const otpStore = new Map();
@@ -131,20 +132,31 @@ router.post('/verify-results-auth', async (req, res, next) => {
       });
     }
 
+    const safeScore = clampScore(student.totalScore);
+    const safeTime = normalizeSeconds(student.totalTimeTaken);
+
+    const safeHistory = (student.attemptHistory || []).map((att) => ({
+      ...att,
+      totalScore: clampScore(att.totalScore),
+      totalTimeTaken: normalizeSeconds(att.totalTimeTaken),
+      timeTakenFormatted: formatTimeMMSS(att.totalTimeTaken),
+    }));
+
     res.json({
       success: true,
       data: {
-        _id:            student._id,
-        name:           student.name,
-        mobile:         student.mobile,
-        branch:         student.branch,
-        currentLevel:   student.currentLevel,
-        status:         student.status,
-        totalScore:     student.totalScore,
-        totalTimeTaken: student.totalTimeTaken,
-        levels:         student.levels,
-        attemptHistory: student.attemptHistory || [],
-        updatedAt:      student.updatedAt,
+        _id:                student._id,
+        name:               student.name,
+        mobile:             student.mobile,
+        branch:             student.branch,
+        currentLevel:       student.currentLevel,
+        status:             student.status,
+        totalScore:         safeScore,
+        totalTimeTaken:     safeTime,
+        timeTakenFormatted: formatTimeMMSS(safeTime),
+        levels:             student.levels,
+        attemptHistory:     safeHistory,
+        updatedAt:          student.updatedAt,
       },
     });
   } catch (err) {
@@ -421,7 +433,18 @@ router.get('/:mobile/status', async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Student not found.' });
     }
 
-    res.json({ success: true, data: student });
+    const safeScore = clampScore(student.totalScore);
+    const safeTime = normalizeSeconds(student.totalTimeTaken);
+
+    res.json({
+      success: true,
+      data: {
+        ...student,
+        totalScore: safeScore,
+        totalTimeTaken: safeTime,
+        timeTakenFormatted: formatTimeMMSS(safeTime),
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -438,10 +461,11 @@ router.post('/save-practice-attempt', async (req, res, next) => {
     const branch = String(req.body.branch || 'CSE').trim();
     const password = String(req.body.password || '').trim();
 
-    const totalScore = Number(req.body.totalScore ?? req.body.score ?? 0);
+    const totalScore = clampScore(req.body.totalScore ?? req.body.score ?? 0);
     const maxPossible = Number(req.body.maxPossible ?? req.body.totalQuestions ?? 10);
     const accuracyPct = Number(req.body.accuracyPct ?? req.body.accuracy ?? 0);
-    const totalTimeTaken = Number(req.body.totalTimeTaken ?? req.body.timeTaken ?? 0);
+    const totalTimeTaken = normalizeSeconds(req.body.totalTimeTaken ?? req.body.timeTaken ?? 0);
+    const timeTakenFormatted = formatTimeMMSS(totalTimeTaken);
     const subject = String(req.body.subject || 'AI Self-Practice').trim();
     const unit = String(req.body.unit || '').trim();
     const tabSwitchCount = Number(req.body.tabSwitchCount ?? 0);
@@ -480,6 +504,7 @@ router.post('/save-practice-attempt', async (req, res, next) => {
       maxPossible,
       accuracyPct,
       totalTimeTaken,
+      timeTakenFormatted,
       status: isDisqualified ? 'disqualified' : 'completed',
       isDisqualified,
       quizType: 'practice',
@@ -495,6 +520,7 @@ router.post('/save-practice-attempt', async (req, res, next) => {
           level: 1,
           score: totalScore,
           timeTaken: totalTimeTaken,
+          timeTakenFormatted,
           submittedAt: new Date(),
           answers: [],
         },

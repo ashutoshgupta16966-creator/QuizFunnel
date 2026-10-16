@@ -21,11 +21,12 @@ const AnswerSchema = new mongoose.Schema({
  * One entry per submitted level within an attempt.
  */
 const LevelAttemptSchema = new mongoose.Schema({
-  level:       { type: Number, required: true },
-  score:       { type: Number, default: 0 },
-  timeTaken:   { type: Number, default: 0 }, // seconds
-  submittedAt: Date,
-  answers:     [AnswerSchema],
+  level:              { type: Number, required: true },
+  score:              { type: Number, default: 0 },
+  timeTaken:          { type: Number, default: 0 }, // seconds
+  timeTakenFormatted: { type: String, default: '00:00' },
+  submittedAt:        Date,
+  answers:            [AnswerSchema],
 }, { _id: false });
 
 /**
@@ -33,15 +34,16 @@ const LevelAttemptSchema = new mongoose.Schema({
  * Preserves past quiz attempts without overwriting.
  */
 const AttemptHistorySchema = new mongoose.Schema({
-  attemptId:      { type: String, required: true },
-  attemptNumber:  { type: Number, required: true },
-  attemptDate:    { type: Date, default: Date.now },
-  levelReached:   { type: Number, default: 1 },
-  totalScore:     { type: Number, default: 0 },
-  maxPossible:    { type: Number, default: 50 },
-  accuracyPct:    { type: Number, default: 0 },
-  totalTimeTaken: { type: Number, default: 0 }, // seconds
-  status:         { type: String, enum: ['completed', 'eliminated', 'in-progress', 'disqualified'], default: 'in-progress' },
+  attemptId:          { type: String, required: true },
+  attemptNumber:      { type: Number, required: true },
+  attemptDate:        { type: Date, default: Date.now },
+  levelReached:       { type: Number, default: 1 },
+  totalScore:         { type: Number, default: 0 },
+  maxPossible:        { type: Number, default: 50 },
+  accuracyPct:        { type: Number, default: 0 },
+  totalTimeTaken:     { type: Number, default: 0 }, // seconds
+  timeTakenFormatted: { type: String, default: '00:00' },
+  status:             { type: String, enum: ['completed', 'eliminated', 'in-progress', 'disqualified'], default: 'in-progress' },
   isDisqualified: { type: Boolean, default: false },
   quizType:       { type: String, enum: ['normal', 'room', 'practice'], default: 'normal' },
   isRoom:         { type: Boolean, default: false },
@@ -108,8 +110,9 @@ const StudentSchema = new mongoose.Schema({
   quizSession:    QuizSessionSchema,      // active session (null when not in quiz)
 
   // Running totals used for tie-break sorting in the final leaderboard
-  totalScore:     { type: Number, default: 0 },
-  totalTimeTaken: { type: Number, default: 0 }, // seconds
+  totalScore:         { type: Number, default: 0 },
+  totalTimeTaken:     { type: Number, default: 0 }, // seconds
+  timeTakenFormatted: { type: String, default: '00:00' },
 
   startedAt:   { type: Date, default: Date.now },
   completedAt: Date,

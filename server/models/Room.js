@@ -1,30 +1,32 @@
 const mongoose = require('mongoose');
 
 const ParticipantLevelSchema = new mongoose.Schema({
-  level:          { type: Number, required: true },
-  score:          { type: Number, default: 0 },
-  timeTaken:      { type: Number, default: 0 },
+  level:              { type: Number, required: true },
+  score:              { type: Number, default: 0 },
+  timeTaken:          { type: Number, default: 0 },
+  timeTakenFormatted: { type: String, default: '00:00' },
 }, { _id: false });
 
 const ParticipantSchema = new mongoose.Schema({
-  mobile:         { type: String, required: true },
-  name:           { type: String, required: true },
-  branch:         { type: String, default: 'CSE' },
-  level:          { type: Number, default: 1 },
-  score:          { type: Number, default: 0 },
-  timeTaken:      { type: Number, default: 0 },
-  status:         {
+  mobile:             { type: String, required: true },
+  name:               { type: String, required: true },
+  branch:             { type: String, default: 'CSE' },
+  level:              { type: Number, default: 1 },
+  score:              { type: Number, default: 0 },
+  timeTaken:          { type: Number, default: 0 },
+  timeTakenFormatted: { type: String, default: '00:00' },
+  status:             {
     type: String,
     enum: ['in-progress', 'advanced', 'completed', 'eliminated', 'disqualified'],
     default: 'in-progress',
   },
-  isDisqualified: { type: Boolean, default: false },
-  isReattempt:    { type: Boolean, default: false },
-  previousAttempt: { type: mongoose.Schema.Types.Mixed, default: null },
-  attempts:       { type: [mongoose.Schema.Types.Mixed], default: [] },
-  levels:         [ParticipantLevelSchema],
-  joinedAt:       { type: Date, default: Date.now },
-  lastActive:     { type: Date, default: Date.now },
+  isDisqualified:     { type: Boolean, default: false },
+  isReattempt:        { type: Boolean, default: false },
+  previousAttempt:    { type: mongoose.Schema.Types.Mixed, default: null },
+  attempts:           { type: [mongoose.Schema.Types.Mixed], default: [] },
+  levels:             [ParticipantLevelSchema],
+  joinedAt:           { type: Date, default: Date.now },
+  lastActive:         { type: Date, default: Date.now },
 }, { _id: false });
 
 const ReattemptRequestSchema = new mongoose.Schema({
@@ -82,26 +84,14 @@ RoomSchema.index({ adminPhone: 1, roomCode: 1, status: 1 });
 // Index for "My Live Rooms" — fetch all rooms by phone sorted by creation date
 RoomSchema.index({ adminPhone: 1, createdAt: -1 });
 
-/**
- * Per-level maximum scores for score capping.
- * Adjust if quiz structure changes.
- */
-const LEVEL_MAX_SCORES = { 1: 20, 2: 15, 3: 10, 4: 5 };
-const TOTAL_MAX_SCORE  = 45;  // sum of all levels
-const TOTAL_MAX_TIME_S = 1980; // 33 minutes in seconds
-
-/**
- * Formats seconds into MM:SS. Handles millisecond inputs (>10000) and clamps to TOTAL_MAX_TIME_S.
- */
-function formatTimeMMSS(seconds) {
-  if (!seconds && seconds !== 0) return '00:00';
-  let s = Number(seconds) || 0;
-  if (s > 10000) s = Math.round(s / 1000); // ms → seconds
-  s = Math.min(Math.max(s, 0), TOTAL_MAX_TIME_S);
-  const m   = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-}
+const {
+  LEVEL_MAX_SCORES,
+  TOTAL_MAX_SCORE,
+  TOTAL_MAX_TIME_S,
+  formatTimeMMSS,
+  normalizeSeconds,
+  clampScore,
+} = require('../utils/dataSanitizer');
 
 /**
  * Enriches participant objects with their level-wise breakdown (level, score, timeTaken)
@@ -334,21 +324,18 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
       }
 
       // ── Clamp totals to valid ranges ────────────────────────────────────────
-      let rawScore = Number(computedTotalScore) || 0;
-      let rawTime  = Number(computedTotalTime)  || 0;
-      if (rawTime > 10000) rawTime = Math.round(rawTime / 1000); // ms → s
-      const clampedScore = Math.min(Math.max(rawScore, 0), TOTAL_MAX_SCORE);
-      const clampedTime  = Math.min(Math.max(rawTime, 0), TOTAL_MAX_TIME_S);
+      const clampedScore = clampScore(computedTotalScore);
+      const clampedTime  = normalizeSeconds(computedTotalTime);
 
       // Clamp per-level scores
       const clampedLevels = (levels || []).map((lvl) => {
         const lvlMax = LEVEL_MAX_SCORES[lvl.level] ?? 20;
-        let lvlTime = Number(lvl.timeTaken) || 0;
-        if (lvlTime > 10000) lvlTime = Math.round(lvlTime / 1000);
+        const lvlTime = normalizeSeconds(lvl.timeTaken);
         return {
           level: lvl.level,
           score: Math.min(Math.max(Number(lvl.score) || 0, 0), lvlMax),
-          timeTaken: Math.min(Math.max(lvlTime, 0), TOTAL_MAX_TIME_S),
+          timeTaken: lvlTime,
+          timeTakenFormatted: formatTimeMMSS(lvlTime),
         };
       });
 

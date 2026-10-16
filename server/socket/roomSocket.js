@@ -1,4 +1,5 @@
 const Room = require('../models/Room');
+const { formatTimeMMSS, normalizeSeconds, clampScore } = require('../utils/dataSanitizer');
 
 /**
  * Socket.io room management handlers.
@@ -146,13 +147,18 @@ function initRoomSocket(io) {
           }
         }
 
-        const computedTotalScore = levels.length > 0
-          ? levels.reduce((acc, curr) => acc + (curr.score || 0), 0)
-          : (score ?? student?.totalScore ?? 0);
+        const computedTotalScore = clampScore(
+          levels.length > 0
+            ? levels.reduce((acc, curr) => acc + (curr.score || 0), 0)
+            : (score ?? student?.totalScore ?? 0)
+        );
 
-        const computedTotalTime = levels.length > 0
-          ? levels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0)
-          : (timeTaken ?? student?.totalTimeTaken ?? 0);
+        const computedTotalTime = normalizeSeconds(
+          levels.length > 0
+            ? levels.reduce((acc, curr) => acc + (curr.timeTaken || 0), 0)
+            : (timeTaken ?? student?.totalTimeTaken ?? 0)
+        );
+        const timeTakenFormatted = formatTimeMMSS(computedTotalTime);
 
         const finalStatus = status || student?.status || 'in-progress';
 
@@ -164,6 +170,7 @@ function initRoomSocket(io) {
           level: actualLevel,
           score: computedTotalScore,
           timeTaken: computedTotalTime,
+          timeTakenFormatted,
           status: finalStatus,
           isDisqualified: Boolean(isDisqualified),
           levels,
@@ -184,6 +191,7 @@ function initRoomSocket(io) {
               'participants.$.level': actualLevel,
               'participants.$.score': computedTotalScore,
               'participants.$.timeTaken': computedTotalTime,
+              'participants.$.timeTakenFormatted': timeTakenFormatted,
               'participants.$.status': finalStatus,
               'participants.$.isDisqualified': Boolean(isDisqualified),
               'participants.$.levels': levels,
@@ -205,6 +213,7 @@ function initRoomSocket(io) {
                   level: actualLevel,
                   score: computedTotalScore,
                   timeTaken: computedTotalTime,
+                  timeTakenFormatted,
                   status: finalStatus,
                   isDisqualified: Boolean(isDisqualified),
                   levels,

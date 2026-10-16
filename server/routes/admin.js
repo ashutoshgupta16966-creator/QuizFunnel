@@ -7,29 +7,7 @@ const { Parser } = require('@json2csv/plainjs');
 // All routes in this file require admin authentication
 router.use(adminAuth);
 
-// ── Score & Time Guards ────────────────────────────────────────────────────────
-const TOTAL_MAX_SCORE  = 45;   // max achievable quiz score
-const TOTAL_MAX_TIME_S = 1980; // 33 minutes in seconds
-
-/**
- * Formats seconds into "MM:SS". Handles ms values (>10000) and clamps to max 33:00.
- */
-function formatTimeMMSS(seconds) {
-  if (!seconds && seconds !== 0) return '00:00';
-  let s = Number(seconds) || 0;
-  if (s > 10000) s = Math.round(s / 1000); // ms → seconds
-  s = Math.min(Math.max(s, 0), TOTAL_MAX_TIME_S);
-  const m   = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-}
-
-function clampScore(val) { return Math.min(Math.max(Number(val) || 0, 0), TOTAL_MAX_SCORE); }
-function clampTime(val)  {
-  let s = Number(val) || 0;
-  if (s > 10000) s = Math.round(s / 1000);
-  return Math.min(Math.max(s, 0), TOTAL_MAX_TIME_S);
-}
+const { TOTAL_MAX_SCORE, TOTAL_MAX_TIME_S, formatTimeMMSS, clampScore, normalizeSeconds: clampTime } = require('../utils/dataSanitizer');
 
 /**
  * GET /api/admin/students
