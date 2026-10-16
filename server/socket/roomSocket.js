@@ -11,7 +11,10 @@ function initRoomSocket(io) {
       try {
         if (!roomCode) return;
         const normalizedCode = roomCode.trim().toUpperCase();
-        const room = await Room.findOne({ roomCode: normalizedCode });
+        const room = await Room.findOne({ roomCode: normalizedCode })
+          .select('-questions')
+          .maxTimeMS(6000)
+          .lean();
         if (!room) {
           socket.emit('error:room', { message: 'Room not found' });
           return;

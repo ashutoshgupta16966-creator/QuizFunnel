@@ -119,7 +119,10 @@ export const joinRoom = (data) =>
   api.post('/api/rooms/join', data);
 
 export const getRoomDetails = (roomCode, password) =>
-  api.get(`/api/rooms/${encodeURIComponent(roomCode)}`, { params: { password } });
+  api.get(`/api/rooms/${encodeURIComponent(roomCode)}`, {
+    params: { password },
+    timeout: 30000, // enrichment query can be slow on free-tier Atlas cold starts
+  });
 
 export const closeRoom = (roomCode, data) =>
   api.post(`/api/rooms/${encodeURIComponent(roomCode)}/close`, data);

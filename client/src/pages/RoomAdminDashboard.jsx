@@ -60,25 +60,43 @@ export default function RoomAdminDashboard() {
 
 
   // ── Fetch Initial Room Details ──
-  const fetchDetails = useCallback(async () => {
+  const fetchControllerRef = { current: null };
+  const fetchDetails = useCallback(async (isRefresh = false) => {
     if (!roomCode) return;
+
+    // Cancel any in-flight request
+    if (fetchControllerRef.current) {
+      fetchControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    fetchControllerRef.current = controller;
+
     try {
-      setLoading(true);
+      // Only show full loading spinner on initial load (no room data yet)
+      if (!isRefresh && !room) setLoading(true);
       setError('');
       const res = await getRoomDetails(roomCode, adminPassword);
+      if (controller.signal.aborted) return; // stale response
       setRoom(res.data.data);
       if (Array.isArray(res.data.data?.reattemptRequests)) {
         setPendingRequests(res.data.data.reattemptRequests);
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to load room details. Please check room code.');
+      if (controller.signal.aborted) return; // request was intentionally cancelled
+      const msg = err.response?.data?.error
+        || (err.code === 'ECONNABORTED' ? 'Request timed out. The server may be waking up — please retry in a few seconds.'
+        : 'Failed to load room details. Please check room code.');
+      setError(msg);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [roomCode, adminPassword]);
 
   useEffect(() => {
-    fetchDetails();
+    fetchDetails(false); // initial load
+    return () => {
+      if (fetchControllerRef.current) fetchControllerRef.current.abort();
+    };
   }, [fetchDetails]);
 
   // ── Connect Admin Real-time Socket ──
@@ -520,7 +538,7 @@ export default function RoomAdminDashboard() {
       </header>
 
       <main className="room-dashboard-content">
-        {loading && (
+        {loading && !room && (
           <div className="dashboard-loading-state">
             <div className="spinner" />
             <p>Loading Live Room session…</p>
@@ -530,7 +548,7 @@ export default function RoomAdminDashboard() {
         {error && (
           <div className="dashboard-error-state">
             <p>⚠️ {error}</p>
-            <button className="btn btn-primary" onClick={fetchDetails}>
+            <button className="btn btn-primary" onClick={() => fetchDetails(true)}>
               Retry
             </button>
           </div>

@@ -664,14 +664,11 @@ router.post('/admin/rejoin', async (req, res, next) => {
     const normalizedCode = roomCode.trim().toUpperCase();
     const cleanPhone = adminPhone.toString().replace(/\D/g, '').slice(-10);
 
-    let room = await Room.findOne({
-      roomCode: normalizedCode,
-      roomPassword: roomPassword.trim(),
-    }).sort({ createdAt: -1 }).lean();
-
-    if (!room) {
-      room = await Room.findOne({ roomCode: normalizedCode }).sort({ createdAt: -1 }).lean();
-    }
+    const room = await Room.findOne({ roomCode: normalizedCode })
+      .select('-questions')
+      .sort({ createdAt: -1 })
+      .maxTimeMS(6000)
+      .lean();
 
     if (!room) {
       return res.status(404).json({ success: false, error: 'No room found with that Room Code.' });
@@ -1645,17 +1642,11 @@ router.get('/:roomCode', async (req, res, next) => {
     const { password } = req.query;
 
     const normalizedCode = roomCode.trim().toUpperCase();
-    let room = null;
-    if (password && password.trim()) {
-      room = await Room.findOne({ roomCode: normalizedCode, roomPassword: password.trim() })
-        .sort({ createdAt: -1 })
-        .lean();
-    }
-    if (!room) {
-      room = await Room.findOne({ roomCode: normalizedCode })
-        .sort({ createdAt: -1 })
-        .lean();
-    }
+    const room = await Room.findOne({ roomCode: normalizedCode })
+      .select('-questions')
+      .sort({ createdAt: -1 })
+      .maxTimeMS(6000)
+      .lean();
 
     if (!room) {
       return res.status(404).json({ success: false, error: 'Room not found.' });

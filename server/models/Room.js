@@ -106,6 +106,10 @@ function formatTimeMMSS(seconds) {
 /**
  * Enriches participant objects with their level-wise breakdown (level, score, timeTaken)
  * and computed total score and time from active Student.levels or Student.attemptHistory.
+ *
+ * PERFORMANCE: Uses a single Student query (merged roomCode + mobile lookup) with
+ * maxTimeMS guard and lightweight projections. Index on attemptHistory.roomCode
+ * must exist (see Student.js) to avoid full collection scans.
  */
 RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, roomCode) {
   try {
@@ -113,31 +117,56 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
     const normalizedCode = roomCode ? String(roomCode).trim().toUpperCase() : null;
 
     let pList = Array.isArray(participants) ? [...participants] : [];
+    if (pList.length === 0 && !normalizedCode) return [];
 
-    // ── JOIN: Query students who have attempts or active sessions for this roomCode ──
+    // ── Collect mobile numbers from existing participants ──
+    const existingMobiles = new Set(
+      pList.map((p) => String(p.mobile || '').replace(/\D/g, '').slice(-10)).filter(Boolean)
+    );
+    const mobilesFromParticipants = [...existingMobiles].filter((m) => m && m.length === 10);
+
+    // ── SINGLE QUERY: fetch all relevant students in one DB call ──
+    // Combines the previous two queries (by roomCode + by mobile) into one $or.
+    const queryConditions = [];
+    if (mobilesFromParticipants.length > 0) {
+      queryConditions.push({ mobile: { $in: mobilesFromParticipants } });
+    }
     if (normalizedCode) {
-      const studentsForRoom = await Student.find({
-        $or: [
-          { 'attemptHistory.roomCode': normalizedCode },
-          { 'attemptHistory.roomCode': roomCode },
-        ],
-      })
-        .select('name branch mobile levels attemptHistory totalScore totalTimeTaken status isDisqualified createdAt updatedAt')
+      queryConditions.push({ 'attemptHistory.roomCode': normalizedCode });
+    }
+
+    let allStudents = [];
+    if (queryConditions.length > 0) {
+      allStudents = await Student.find(
+        queryConditions.length === 1 ? queryConditions[0] : { $or: queryConditions }
+      )
+        .select('name branch mobile levels attemptHistory totalScore totalTimeTaken status isDisqualified currentLevel createdAt updatedAt')
+        // Exclude heavy answer arrays — not needed for dashboard display
+        .select('-levels.answers -attemptHistory.levelsSummary.answers')
+        .maxTimeMS(8000) // hard timeout to prevent gateway hangs
         .lean();
+    }
 
-      // Check for any students in history who are missing from pList
-      const existingMobiles = new Set(
-        pList.map((p) => String(p.mobile || '').replace(/\D/g, '').slice(-10)).filter(Boolean)
-      );
+    // ── Build studentMap keyed by normalized 10-digit mobile ──
+    const studentMap = new Map();
+    for (const s of allStudents) {
+      const cleanM = String(s.mobile || '').replace(/\D/g, '').slice(-10);
+      if (cleanM) studentMap.set(cleanM, s);
+      if (s.mobile) studentMap.set(s.mobile, s);
+    }
 
-      for (const s of studentsForRoom) {
+    // ── JOIN: Add students from attemptHistory who are missing from pList ──
+    if (normalizedCode) {
+      for (const s of allStudents) {
         const cleanM = String(s.mobile || '').replace(/\D/g, '').slice(-10);
-        if (!existingMobiles.has(cleanM)) {
-          const matchedAttempt = (s.attemptHistory || [])
-            .slice()
-            .reverse()
-            .find((a) => a.roomCode && a.roomCode.trim().toUpperCase() === normalizedCode);
+        if (existingMobiles.has(cleanM)) continue; // already in pList
 
+        const matchedAttempt = (s.attemptHistory || [])
+          .slice()
+          .reverse()
+          .find((a) => a.roomCode && a.roomCode.trim().toUpperCase() === normalizedCode);
+
+        if (matchedAttempt || s.mobile) {
           pList.push({
             mobile: cleanM || s.mobile,
             name: s.name,
@@ -185,29 +214,7 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
     }
     participants = Array.from(mobileMap.values());
 
-    const mobiles = participants.map((p) => p.mobile).filter(Boolean);
-    const cleanMobiles = participants
-      .map((p) => String(p.mobile || '').replace(/\D/g, '').slice(-10))
-      .filter((m) => m && m.length === 10);
-
-    if (mobiles.length === 0 && cleanMobiles.length === 0) return participants;
-
-    const students = await Student.find({
-      $or: [
-        { mobile: { $in: cleanMobiles } },
-        { mobile: { $in: mobiles } },
-      ],
-    })
-      .select('name branch mobile levels attemptHistory totalScore totalTimeTaken status isDisqualified')
-      .lean();
-
-    const studentMap = new Map();
-    for (const s of students) {
-      const cleanM = String(s.mobile || '').replace(/\D/g, '').slice(-10);
-      studentMap.set(cleanM, s);
-      studentMap.set(s.mobile, s);
-    }
-
+    // ── Enrich each participant with Student data ──
     return participants.map((p) => {
       const cleanM = String(p.mobile || '').replace(/\D/g, '').slice(-10);
       const student = studentMap.get(cleanM) || studentMap.get(p.mobile);
@@ -365,7 +372,12 @@ RoomSchema.statics.enrichParticipantsWithLevels = async function (participants, 
     });
   } catch (err) {
     console.error('Error enriching participants with levels:', err.message);
-    return participants;
+    // Graceful fallback: return raw participants with clamped scores instead of nothing
+    return (Array.isArray(participants) ? participants : []).map((p) => ({
+      ...p,
+      score: Math.min(Math.max(Number(p.score) || 0, 0), TOTAL_MAX_SCORE),
+      timeTaken: Math.min(Math.max(Number(p.timeTaken) || 0, 0), TOTAL_MAX_TIME_S),
+    }));
   }
 };
 

@@ -118,4 +118,9 @@ const StudentSchema = new mongoose.Schema({
 // Compound index for leaderboard: score DESC, time ASC (tie-breaker)
 StudentSchema.index({ totalScore: -1, totalTimeTaken: 1 });
 
+// Index on attemptHistory.roomCode — used by enrichParticipantsWithLevels to find
+// students who participated in a specific room. Without this, MongoDB does a full
+// collection scan on every room dashboard load.
+StudentSchema.index({ 'attemptHistory.roomCode': 1 });
+
 module.exports = mongoose.model('Student', StudentSchema);
