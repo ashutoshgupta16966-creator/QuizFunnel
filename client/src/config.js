@@ -15,7 +15,7 @@ export const LEVELS = {
   2: {
     questions: 15,
     cutoff: 10,
-    timeSeconds: 720,   // 12 min
+    timeSeconds: 600,   // 10 min
     label: 'Level 2',
     sublabel: 'Intermediate Round',
     sections: ['Technical', 'Reasoning', 'Aptitude'],

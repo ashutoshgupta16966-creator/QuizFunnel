@@ -1546,7 +1546,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                       if (!adminForm.roomCode) handleAutoGenerateCode();
                     }}
                   >
-                    Create Room →
+                    Create room already Existed Questions →
                   </button>
                   <button
                     type="button"
@@ -1564,7 +1564,7 @@ export default function RoomRoleModal({ isOpen, onClose, homeFormData = {}, init
                     }}
                     title="Generate an instant quiz from a question paper photo or PDF using AI"
                   >
-                    AI Quiz Generator 🤖✨
+                    Create room for my Own Question
                   </button>
                 </div>
               </div>

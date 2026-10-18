@@ -207,7 +207,7 @@ module.exports = {
   2: {
     questions: 15,
     cutoff: 10,            // minimum correct to advance
-    timeSeconds: 720,      // 12 minutes
+    timeSeconds: 600,      // 10 minutes
     sections: ['Technical', 'Reasoning', 'Aptitude'],
     questionsPerSection: 5,
     label: 'Level 2 — Intermediate',
