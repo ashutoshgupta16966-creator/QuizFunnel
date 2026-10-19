@@ -54,3 +54,14 @@ QuizFunnel/
 │   └── package.json
 ├── .env                    # Environment variables
 └── README.md               # Project documentation
+``` 
+---
+
+## 👤 Author
+
+**Ashutosh Gupta**
+B.Tech Computer Science Engineering, GL Bajaj Group of Institutions, Mathura 
+
+- LinkedIn: https://www.linkedin.com/in/ashutosh-gupta-910148381
+
+---
