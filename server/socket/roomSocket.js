@@ -1,4 +1,5 @@
 const Room = require('../models/Room');
+const db2 = require('../db2');
 const { formatTimeMMSS, normalizeSeconds, clampScore } = require('../utils/dataSanitizer');
 
 /**
@@ -286,6 +287,9 @@ function initRoomSocket(io) {
           }));
           room.status = 'closed';
           await room.save();
+
+          // Db2 dual-write: update room status to closed (fire-and-forget, non-blocking)
+          try { db2.saveRoom(room); } catch (e) { console.warn('[Db2] socket admin:close-room hook error:', e.message); }
         }
 
         io.to(`room:${normalizedCode}`).emit('room_closed', {

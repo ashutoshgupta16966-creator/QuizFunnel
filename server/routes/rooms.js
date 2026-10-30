@@ -4,6 +4,7 @@ const multer = require('multer');
 const Room = require('../models/Room');
 const Student = require('../models/Student');
 const Question = require('../models/Question');
+const db2 = require('../db2');
 const LEVELS = require('../config/levels');
 const { calculateQuizStructure, distributeQuestionsAcrossLevels, getGenericCutoff } = LEVELS;
 const { parseQuizDocumentWithGemini, sanitizeMcqOptions, isGenericPlaceholderOption, cleanOptionPrefix } = require('../controllers/aiVisionController');
@@ -81,6 +82,9 @@ router.post('/create', async (req, res, next) => {
       levelTimers: roomLevelTimers,
       participants: [],
     });
+
+    // Db2 dual-write: save room (fire-and-forget, non-blocking)
+    try { db2.saveRoom(room); } catch (e) { console.warn('[Db2] saveRoom hook error:', e.message); }
 
     res.status(201).json({
       success: true,
@@ -346,6 +350,9 @@ router.post('/create-ai', async (req, res, next) => {
       questions: inserted,
       participants: [],
     });
+
+    // Db2 dual-write: save AI room (fire-and-forget, non-blocking)
+    try { db2.saveRoom(room); } catch (e) { console.warn('[Db2] saveRoom hook error:', e.message); }
 
     res.status(201).json({
       success: true,
@@ -617,6 +624,9 @@ router.post('/join', async (req, res, next) => {
     if (io) {
       io.to(`room:${normalizedCode}`).emit('student:joined', participantDoc);
     }
+
+    // Db2 dual-write: save participant (fire-and-forget, non-blocking)
+    try { db2.saveParticipant(normalizedCode, participantDoc); } catch (e) { console.warn('[Db2] saveParticipant hook error:', e.message); }
 
     res.json({
       success: true,
@@ -1725,6 +1735,9 @@ router.post('/:roomCode/close', async (req, res, next) => {
 
     room.status = 'closed';
     await room.save();
+
+    // Db2 dual-write: update room status to closed (fire-and-forget, non-blocking)
+    try { db2.saveRoom(room); } catch (e) { console.warn('[Db2] saveRoom close hook error:', e.message); }
 
     const io = req.app.get('io');
     if (io) {

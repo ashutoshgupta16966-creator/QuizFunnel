@@ -3,6 +3,7 @@ const router = express.Router();
 const Question = require('../models/Question');
 const Student = require('../models/Student');
 const Room = require('../models/Room');
+const db2 = require('../db2');
 const LEVELS = require('../config/levels');
 const { calculateDefaultCutoff, getGenericCutoff, calculateQuizStructure, distributeQuestionsAcrossLevels } = LEVELS;
 const { sanitizeMcqOptions, isGenericPlaceholderOption } = require('../controllers/aiVisionController');
@@ -525,6 +526,14 @@ router.post('/submit', async (req, res, next) => {
       }
     }
 
+    // Db2 dual-write: save submitted answers (fire-and-forget, non-blocking)
+    try {
+      const effectiveRoom = (isRoom && roomCode) ? String(roomCode).trim().toUpperCase() : 'STANDARD';
+      db2.saveAnswers(effectiveRoom, mobile, level, scoredAnswers);
+    } catch (e) {
+      console.warn('[Db2] saveAnswers hook error:', e.message);
+    }
+
     // ── DYNAMIC LEVEL TERMINATION & CUTOFF CHECK ─────────────────────────
     // Derive total levels from room config or question count — never hardcode 4.
     const configLevelsMax = Math.max(...Object.keys(LEVELS).filter((k) => !isNaN(Number(k))).map(Number));
@@ -710,6 +719,23 @@ router.post('/submit', async (req, res, next) => {
 
     // Fetch updated totals after calculation
     const updatedStudent = await Student.findOne({ mobile }).lean();
+
+    // Db2 dual-write: save participant result (fire-and-forget, non-blocking)
+    try {
+      const effectiveRoom = (isRoom && roomCode) ? String(roomCode).trim().toUpperCase() : 'STANDARD';
+      db2.saveResult(effectiveRoom, {
+        mobile,
+        name: updatedStudent?.name || student.name,
+        level,
+        score: clampedScore,
+        timeTaken: elapsed,
+        status: newStatus,
+        isDisqualified: Boolean(isDisqualified),
+        levels: updatedStudent?.levels || [levelAttempt],
+      });
+    } catch (e) {
+      console.warn('[Db2] saveResult hook error:', e.message);
+    }
 
     // ── If this is a live Room Quiz session, update Room participant & broadcast ──
     if (isRoom && roomCode) {

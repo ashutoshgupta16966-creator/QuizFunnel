@@ -4,6 +4,7 @@ import { getRoomDetails, closeRoom, getRoomAnalytics, approveReattempt, denyReat
 import { joinAdminRoomSocket, disconnectSocket, emitAdminStartQuiz } from '../utils/socket';
 import ThemeToggle from '../components/ThemeToggle';
 import LevelDistributionChart from '../components/LevelDistributionChart';
+import Db2StatsPanel from '../components/Db2StatsPanel';
 
 
 function formatTimeMMSS(seconds) {
@@ -636,6 +637,9 @@ export default function RoomAdminDashboard() {
                 )}
               </div>
             </div>
+
+            {/* Optional IBM Db2 Secondary Storage Stats Panel (hidden if Db2 disabled) */}
+            <Db2StatsPanel roomCode={room.roomCode} />
 
             {/* ── Admin "START QUIZ FOR ALL" Banner ── */}
             {room.status === 'active' && (

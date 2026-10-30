@@ -11,6 +11,8 @@ const quizRouter = require('./routes/quiz');
 const adminRouter = require('./routes/admin');
 const feedbackRouter = require('./routes/feedback');
 const roomsRouter = require('./routes/rooms');
+const db2Router = require('./routes/db2');
+const db2 = require('./db2');
 const { initRoomSocket } = require('./socket/roomSocket');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -63,6 +65,7 @@ app.use('/api/quiz',     quizRouter);
 app.use('/api/admin',    adminRouter);
 app.use('/api/feedback', feedbackRouter);
 app.use('/api/rooms',    roomsRouter);
+app.use('/api/db2',      db2Router);
 
 // AI Question Generation Top-Level Route
 const { generateAndPopulateQuestions } = require('./controllers/aiQuestionController');
@@ -128,6 +131,11 @@ mongoose
     server.listen(PORT, () => {
       console.log(`🚀  Server listening on port ${PORT} with Socket.io enabled`);
       console.log(`    Health: http://localhost:${PORT}/health`);
+
+      // Initialize IBM Db2 add-on if DB2_ENABLED=true (non-blocking, fail-safe)
+      db2.initDb2().catch((err) => {
+        console.warn('⚠️ [Db2 Startup Warning]:', err.message);
+      });
     });
   })
   .catch((err) => {

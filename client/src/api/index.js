@@ -200,4 +200,14 @@ export const exportCSV = (password) =>
     responseType: 'blob',
   });
 
+// ── IBM Db2 endpoints (optional) ─────────────────────────────────────────────
+export const getDb2Health = () =>
+  api.get('/api/db2/health');
+
+export const getDb2Stats = (roomId) =>
+  api.get(`/api/db2/stats/${encodeURIComponent(roomId)}`);
+
+export const getDb2Leaderboard = (roomId) =>
+  api.get(`/api/db2/leaderboard/${encodeURIComponent(roomId)}`);
+
 export default api;
