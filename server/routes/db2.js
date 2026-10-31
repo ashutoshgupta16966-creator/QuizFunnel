@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db2 = require('../db2');
+const adminAuth = require('../middleware/adminAuth');
 
 /**
  * GET /api/db2/health
@@ -14,6 +15,30 @@ router.get('/health', (req, res) => {
     connected,
     timestamp: new Date().toISOString(),
   });
+});
+
+/**
+ * GET /api/db2/security-log
+ * Returns last 50 security log entries from Db2. Admin only.
+ */
+router.get('/security-log', adminAuth, async (req, res) => {
+  try {
+    const data = await db2.getSecurityLog(50);
+    res.json({
+      success: true,
+      enabled: db2.DB2_ENABLED,
+      connected: db2.isReady(),
+      data,
+    });
+  } catch (err) {
+    res.json({
+      success: true,
+      enabled: db2.DB2_ENABLED,
+      connected: false,
+      data: [],
+      error: err.message,
+    });
+  }
 });
 
 /**

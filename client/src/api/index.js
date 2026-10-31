@@ -44,6 +44,10 @@ api.interceptors.response.use(
   }
 );
 
+// ── Security & CAPTCHA endpoints ─────────────────────────────────────────────
+export const getCaptcha = () =>
+  api.get('/api/captcha');
+
 // ── Student endpoints ────────────────────────────────────────────────────────
 export const registerStudent = (data) =>
   api.post('/api/students/register', data);
@@ -142,8 +146,8 @@ export const denyReattempt = (roomCode, data) =>
 export const checkReattemptStatus = (roomCode, mobile) =>
   api.get(`/api/rooms/${encodeURIComponent(roomCode)}/reattempt-status`, { params: { mobile } });
 
-export const getAdminRooms = (adminPhone, adminPIN) =>
-  api.get('/api/rooms/admin/my-rooms', { params: { adminPhone, adminPIN } });
+export const getAdminRooms = (adminPhone, adminPIN, captcha = {}) =>
+  api.get('/api/rooms/admin/my-rooms', { params: { adminPhone, adminPIN, ...captcha } });
 
 export const sendAdminOtp = (data) =>
   api.post('/api/rooms/admin/send-otp', data);
@@ -185,6 +189,9 @@ export const updateAiQuestionAnswer = (payload) =>
 // ── Admin endpoints ──────────────────────────────────────────────────────────
 const adminHeaders = (password) => ({ Authorization: `Bearer ${password}` });
 
+export const loginAdmin = (data) =>
+  api.post('/api/admin/login', data);
+
 export const getAdminStudents = (password, filters = {}) =>
   api.get('/api/admin/students', { headers: adminHeaders(password), params: filters });
 
@@ -209,5 +216,8 @@ export const getDb2Stats = (roomId) =>
 
 export const getDb2Leaderboard = (roomId) =>
   api.get(`/api/db2/leaderboard/${encodeURIComponent(roomId)}`);
+
+export const getDb2SecurityLog = (password) =>
+  api.get('/api/db2/security-log', { headers: adminHeaders(password) });
 
 export default api;

@@ -148,6 +148,15 @@ const CREATE_TABLES_SQL = [
     SAVED_AT       TIMESTAMP    DEFAULT CURRENT TIMESTAMP,
     CONSTRAINT PK_RESULTS PRIMARY KEY (ROOM_ID, PARTICIPANT_ID, LEVEL_NUM)
   )`,
+
+  // SECURITY_LOG — failed attempts and lockout events
+  `CREATE TABLE SECURITY_LOG (
+    ID                  VARCHAR(50)  NOT NULL PRIMARY KEY,
+    EVENT_TYPE          VARCHAR(50)  NOT NULL,
+    MOBILE_OR_USERNAME  VARCHAR(100) NOT NULL,
+    IP                  VARCHAR(100) DEFAULT '',
+    CREATED_AT          TIMESTAMP    DEFAULT CURRENT TIMESTAMP
+  )`,
 ];
 
 async function createTablesIfNotExist() {
@@ -415,6 +424,54 @@ async function getStats(roomId) {
   }
 }
 
+/**
+ * Log a security event (failed attempt or lockout) to SECURITY_LOG table.
+ * Fire and forget inside try/catch.
+ */
+function logSecurityEvent(eventType, mobileOrUsername, ip) {
+  if (!_ready) return;
+  try {
+    const id = 'sec_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+    const sql = 'INSERT INTO SECURITY_LOG (ID, EVENT_TYPE, MOBILE_OR_USERNAME, IP) VALUES (?, ?, ?, ?)';
+    const params = [
+      String(id),
+      String(eventType || 'FAILED_ATTEMPT'),
+      String(mobileOrUsername || 'unknown').slice(0, 100),
+      String(ip || '').slice(0, 100),
+    ];
+    query(sql, params).catch((err) => console.warn('[Db2] logSecurityEvent error:', err.message));
+  } catch (err) {
+    console.warn('[Db2] logSecurityEvent exception:', err.message);
+  }
+}
+
+/**
+ * Retrieve the last N security log entries.
+ */
+async function getSecurityLog(limit = 50) {
+  if (!_ready) return [];
+  try {
+    const sql = `
+      SELECT ID, EVENT_TYPE, MOBILE_OR_USERNAME, IP, CREATED_AT
+      FROM SECURITY_LOG
+      ORDER BY CREATED_AT DESC
+      FETCH FIRST ? ROWS ONLY
+    `;
+    const { rows, error } = await query(sql, [Number(limit) || 50]);
+    if (error) return [];
+    return (rows || []).map((r) => ({
+      id: r.ID || r.id,
+      eventType: r.EVENT_TYPE || r.event_type,
+      mobileOrUsername: r.MOBILE_OR_USERNAME || r.mobile_or_username,
+      ip: r.IP || r.ip || '',
+      createdAt: r.CREATED_AT || r.created_at,
+    }));
+  } catch (err) {
+    console.warn('[Db2] getSecurityLog error:', err.message);
+    return [];
+  }
+}
+
 /* --- Exports -------------------------------------------------------------- */
 
 module.exports = {
@@ -428,4 +485,6 @@ module.exports = {
   saveResult,
   getLeaderboard,
   getStats,
+  logSecurityEvent,
+  getSecurityLog,
 };

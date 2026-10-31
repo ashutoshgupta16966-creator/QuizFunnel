@@ -15,8 +15,11 @@ const db2Router = require('./routes/db2');
 const db2 = require('./db2');
 const { initRoomSocket } = require('./socket/roomSocket');
 const errorHandler = require('./middleware/errorHandler');
+const { generateCaptcha } = require('./utils/security');
 
 const app = express();
+app.set('trust proxy', 1);
+
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
@@ -58,6 +61,12 @@ const io = new Server(server, {
 });
 app.set('io', io);
 initRoomSocket(io);
+
+// ── Captcha Endpoint ─────────────────────────────────────────────────────────
+app.get('/api/captcha', (_req, res) => {
+  const captcha = generateCaptcha();
+  res.json(captcha);
+});
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/students', studentsRouter);

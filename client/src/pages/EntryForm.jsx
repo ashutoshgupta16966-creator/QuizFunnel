@@ -18,6 +18,8 @@ import ExitConfirmModal from '../components/ExitConfirmModal';
 import RoomRoleModal from '../components/RoomRoleModal';
 import StudentAiPracticeModal from '../components/StudentAiPracticeModal';
 import GuidanceDrawer, { GUIDES } from '../components/GuidanceDrawer';
+import Captcha from '../components/Captcha';
+import { useLockout } from '../utils/useLockout';
 
 function formatTimeMMSS(seconds) {
   if (!seconds && seconds !== 0) return '00:00';
@@ -87,6 +89,20 @@ export default function EntryForm() {
   // Guidance Drawer state (ℹ️ Guide pill — screen-specific help)
   const [showGuide, setShowGuide] = useState(false);
   const [activeGuide, setActiveGuide] = useState(GUIDES.home);
+
+  // --- CAPTCHA & LOCKOUT: registration form ---
+  const [regCaptchaId, setRegCaptchaId] = useState('');
+  const [regCaptchaAnswer, setRegCaptchaAnswer] = useState('');
+  const [regCaptchaError, setRegCaptchaError] = useState('');
+  const [regCaptchaRefresh, setRegCaptchaRefresh] = useState(0);
+  const { isLocked: regLocked, retryAfter: regRetryAfter, lockForSeconds: regLockFor } = useLockout('home_register');
+
+  // --- CAPTCHA & LOCKOUT: My Results auth form ---
+  const [authCaptchaId, setAuthCaptchaId] = useState('');
+  const [authCaptchaAnswer, setAuthCaptchaAnswer] = useState('');
+  const [authCaptchaError, setAuthCaptchaError] = useState('');
+  const [authCaptchaRefresh, setAuthCaptchaRefresh] = useState(0);
+  const { isLocked: authLocked, retryAfter: authRetryAfter, lockForSeconds: authLockFor } = useLockout('results_auth');
 
   // Navigation state ref for hardware & gesture back button handling
   const navigationStateRef = useRef({
@@ -333,6 +349,8 @@ export default function EntryForm() {
         branch:           form.branch,
         password:         form.password.trim(),
         confirmDuplicate: isConfirmed,
+        captchaId:        regCaptchaId,
+        captchaAnswer:    regCaptchaAnswer,
       });
       const student = res.data.data;
       saveStudent(student);
@@ -344,6 +362,15 @@ export default function EntryForm() {
       } else {
         setShowDuplicateModal(false);
         setServerError(err.response?.data?.error || 'Something went wrong. Please try again.');
+      }
+      if (err.response?.status === 429) {
+        regLockFor(err.response.data.retryAfter || 15);
+      }
+      if (err.response?.data?.captchaFailed) {
+        setRegCaptchaError(err.response.data.error);
+        setRegCaptchaRefresh(p => p + 1);
+      } else {
+        setRegCaptchaRefresh(p => p + 1);
       }
     } finally {
       setLoading(false);
@@ -391,6 +418,8 @@ export default function EntryForm() {
       const res = await verifyResultsAuth({
         mobile: authForm.mobile.trim(),
         password: authForm.password.trim(),
+        captchaId: authCaptchaId,
+        captchaAnswer: authCaptchaAnswer,
       });
       const studentData = res.data.data;
       setAuthedStudentData(studentData);
@@ -491,6 +520,15 @@ export default function EntryForm() {
       setModalMode('dashboard');
     } catch (err) {
       setAuthError(err.response?.data?.error || 'Invalid Mobile Number or Password/PIN.');
+      if (err.response?.status === 429) {
+        authLockFor(err.response.data.retryAfter || 15);
+      }
+      if (err.response?.data?.captchaFailed) {
+        setAuthCaptchaError(err.response.data.error);
+        setAuthCaptchaRefresh(p => p + 1);
+      } else {
+        setAuthCaptchaRefresh(p => p + 1);
+      }
     } finally {
       setAuthLoading(false);
     }
@@ -829,11 +867,28 @@ export default function EntryForm() {
             <div className="server-error" role="alert">{serverError}</div>
           )}
 
+          {regLocked && (
+            <div className="lockout-countdown-banner">
+              <span className="lockout-icon">🔒</span>
+              Too many attempts. Try again in {regRetryAfter}s
+            </div>
+          )}
+          <Captcha
+            captchaId={regCaptchaId}
+            setCaptchaId={setRegCaptchaId}
+            captchaAnswer={regCaptchaAnswer}
+            setCaptchaAnswer={setRegCaptchaAnswer}
+            disabled={loading || regLocked}
+            error={regCaptchaError}
+            refreshTrigger={regCaptchaRefresh}
+            idPrefix="register"
+          />
+
           <button
             type="submit"
             id="start-quiz-btn"
             className="btn btn-primary form-submit-btn"
-            disabled={loading}
+            disabled={loading || regLocked}
           >
             {loading ? <><span className="btn-spinner" />Checking…</> : 'Start the Quiz →'}
           </button>
@@ -936,10 +991,27 @@ export default function EntryForm() {
 
                   {authError && <div className="server-error" role="alert">{authError}</div>}
 
+                  {authLocked && (
+                    <div className="lockout-countdown-banner">
+                      <span className="lockout-icon">🔒</span>
+                      Too many attempts. Try again in {authRetryAfter}s
+                    </div>
+                  )}
+                  <Captcha
+                    captchaId={authCaptchaId}
+                    setCaptchaId={setAuthCaptchaId}
+                    captchaAnswer={authCaptchaAnswer}
+                    setCaptchaAnswer={setAuthCaptchaAnswer}
+                    disabled={loading || authLocked}
+                    error={authCaptchaError}
+                    refreshTrigger={authCaptchaRefresh}
+                    idPrefix="results-auth"
+                  />
+
                   <button
                     type="submit"
                     className="btn btn-primary form-submit-btn"
-                    disabled={authLoading}
+                    disabled={authLoading || authLocked}
                   >
                     {authLoading ? <><span className="btn-spinner" />Authenticating…</> : 'View Attempt History →'}
                   </button>

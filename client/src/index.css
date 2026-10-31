@@ -8895,3 +8895,186 @@ body.light-mode .guidance-drawer-backdrop { background: rgba(15, 23, 42, 0.5); }
   background: var(--border-2);
 }
 
+
+
+/* ── CAPTCHA & Security Lockout Styles ───────────────────────────────── */
+.captcha-wrapper {
+  margin-bottom: 1.25rem;
+}
+
+.captcha-display-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.captcha-svg-container {
+  flex: 1;
+  background: #ffffff;
+  border: 2px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 2px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  min-height: 52px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.captcha-svg-container svg {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  display: block;
+}
+
+.captcha-loading-text {
+  color: #64748B;
+  font-size: 0.825rem;
+  font-weight: 500;
+}
+
+.captcha-refresh-btn {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  transition: all var(--t-fast);
+}
+
+.captcha-refresh-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary-glow);
+  transform: rotate(30deg);
+}
+
+.captcha-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.refresh-icon.spinning {
+  display: inline-block;
+  animation: captcha-spin 0.8s linear infinite;
+}
+
+@keyframes captcha-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.captcha-input-container {
+  width: 100%;
+}
+
+.captcha-input {
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* ── Live Lockout Banner ─────────────────────────────────────────────── */
+.lockout-countdown-banner {
+  background: rgba(247, 37, 133, 0.15);
+  border: 2px solid var(--danger);
+  border-radius: var(--r-md);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  animation: lockout-pulse 1.5s ease-in-out infinite;
+}
+
+[data-theme="light"] .lockout-countdown-banner {
+  background: #FFF1F2;
+  border-color: #E11D48;
+  color: #9F1239;
+}
+
+.lockout-countdown-banner .lockout-icon {
+  font-size: 1.25rem;
+}
+
+@keyframes lockout-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+/* ── Db2 Security Log Table on Admin Page ────────────────────────────── */
+.db2-security-panel {
+  margin-top: 2.5rem;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1.5rem;
+}
+
+.db2-security-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.db2-security-table-wrapper {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.db2-security-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.db2-security-table th {
+  text-align: left;
+  padding: 0.65rem 0.75rem;
+  background: var(--surface-2);
+  color: var(--text-soft);
+  font-weight: 700;
+  border-bottom: 2px solid var(--border);
+}
+
+.db2-security-table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border-2);
+  color: var(--text);
+}
+
+.db2-badge-fail {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--r-full);
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--warning);
+}
+
+.db2-badge-lock {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--r-full);
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(247, 37, 133, 0.15);
+  color: var(--danger);
+}

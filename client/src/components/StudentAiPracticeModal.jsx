@@ -3,6 +3,7 @@ import { parseAiQuizDocument, savePracticeAttempt, generateMcqOptions } from '..
 import ThemeToggle from './ThemeToggle';
 import GuidanceDrawer, { GUIDES } from './GuidanceDrawer';
 import AntiCheatModal from './AntiCheatModal';
+import Captcha from './Captcha';
 import { checkDirectAnswerCorrectness } from '../utils/scoringHelper';
 import { useTabSwitchMonitor, MAX_TAB_SWITCH_ALLOWED } from '../utils/antiCheat';
 import { calculateQuizStructure } from '../config';
@@ -229,6 +230,12 @@ export default function StudentAiPracticeModal({
   const [showAntiCheatModal, setShowAntiCheatModal] = useState(false);
   const [isAntiCheatTerminal, setIsAntiCheatTerminal] = useState(false);
   const hasSubmittedPractice = useRef(false); // Guard against double-submit
+
+  // ── CAPTCHA: Self Practice start ──
+  const [practiceCaptchaId, setPracticeCaptchaId]       = useState('');
+  const [practiceCaptchaAnswer, setPracticeCaptchaAnswer] = useState('');
+  const [practiceCaptchaError, setPracticeCaptchaError]   = useState('');
+  const [practiceCaptchaRefresh, setPracticeCaptchaRefresh] = useState(0);
 
   // Lock scroll when modal is open and safely release when closed
   useEffect(() => {
@@ -486,6 +493,8 @@ export default function StudentAiPracticeModal({
     try {
       const formData = new FormData();
       files.forEach((item) => formData.append('files', item.file));
+      formData.append('captchaId', practiceCaptchaId);
+      formData.append('captchaAnswer', practiceCaptchaAnswer);
 
       const res = await parseAiQuizDocument(formData);
       clearTimeout(msgTimer1);
@@ -525,6 +534,12 @@ export default function StudentAiPracticeModal({
     } catch (err) {
       clearTimeout(msgTimer1);
       clearTimeout(msgTimer2);
+      if (err.response?.data?.captchaFailed) {
+        setPracticeCaptchaError(err.response.data.error || 'Captcha incorrect. Please try again.');
+        setPracticeCaptchaRefresh(p => p + 1);
+        return;
+      }
+      setPracticeCaptchaRefresh(p => p + 1);
       setUploadError(err.response?.data?.error || err.message || 'AI document extraction failed. Please try again.');
     } finally {
       setIsParsing(false);

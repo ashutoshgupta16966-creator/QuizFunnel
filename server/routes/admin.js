@@ -4,7 +4,70 @@ const Student = require('../models/Student');
 const adminAuth = require('../middleware/adminAuth');
 const { Parser } = require('@json2csv/plainjs');
 
-// All routes in this file require admin authentication
+const {
+  verifyCaptcha,
+  checkLockout,
+  recordFailedAttempt,
+  resetLockout,
+  getLockoutKey,
+} = require('../utils/security');
+
+/**
+ * POST /api/admin/login
+ * Admin authentication endpoint with CAPTCHA and lockout protection.
+ * Accepts { username, password, captchaId, captchaAnswer }.
+ */
+router.post('/login', async (req, res) => {
+  try {
+    const { username, password, captchaId, captchaAnswer } = req.body;
+    const adminUser = String(username || 'admin').trim().toLowerCase();
+    const lockoutKey = getLockoutKey(adminUser, req);
+
+    const lockoutStatus = checkLockout(lockoutKey);
+    if (lockoutStatus.locked) {
+      return res.status(429).json({
+        success: false,
+        error: `Too many attempts. Try again in ${lockoutStatus.retryAfter}s`,
+        retryAfter: lockoutStatus.retryAfter,
+      });
+    }
+
+    const captchaResult = verifyCaptcha(captchaId, captchaAnswer);
+    if (!captchaResult.ok) {
+      return res.status(400).json({
+        success: false,
+        captchaFailed: true,
+        error: captchaResult.error,
+      });
+    }
+
+    if (!password || password.trim() !== process.env.ADMIN_PASSWORD) {
+      const failResult = recordFailedAttempt(lockoutKey, 'ADMIN_LOGIN_FAIL', adminUser, req.ip);
+      if (failResult.locked) {
+        return res.status(429).json({
+          success: false,
+          error: `Too many attempts. Try again in ${failResult.retryAfter}s`,
+          retryAfter: failResult.retryAfter,
+        });
+      }
+      return res.status(401).json({
+        success: false,
+        error: 'Incorrect password. Please try again.',
+      });
+    }
+
+    resetLockout(lockoutKey);
+
+    res.json({
+      success: true,
+      message: 'Admin authenticated successfully.',
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// All routes below require admin authentication
 router.use(adminAuth);
 
 const { TOTAL_MAX_SCORE, TOTAL_MAX_TIME_S, formatTimeMMSS, clampScore, normalizeSeconds: clampTime } = require('../utils/dataSanitizer');

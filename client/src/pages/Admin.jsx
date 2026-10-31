@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getAdminStudents, getAdminStats, getLeaderboard, exportCSV } from '../api';
+import { getAdminStudents, getAdminStats, getLeaderboard, exportCSV, loginAdmin, getDb2SecurityLog } from '../api';
 import QrModal from '../components/QrModal';
 import ThemeToggle from '../components/ThemeToggle';
+import Captcha from '../components/Captcha';
+import { useLockout } from '../utils/useLockout';
 
 const STATUS_LABELS = {
   'in-progress': 'In Progress',

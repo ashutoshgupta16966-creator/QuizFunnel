@@ -5,6 +5,15 @@ const Room = require('../models/Room');
 const Student = require('../models/Student');
 const Question = require('../models/Question');
 const db2 = require('../db2');
+const {
+  verifyCaptcha,
+  checkLockout,
+  recordFailedAttempt,
+  resetLockout,
+  checkOtpRateLimit,
+  recordOtpRequest,
+  getLockoutKey,
+} = require('../utils/security');
 const LEVELS = require('../config/levels');
 const { calculateQuizStructure, distributeQuestionsAcrossLevels, getGenericCutoff } = LEVELS;
 const { parseQuizDocumentWithGemini, sanitizeMcqOptions, isGenericPlaceholderOption, cleanOptionPrefix } = require('../controllers/aiVisionController');
@@ -400,9 +409,29 @@ router.post('/verify', async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Room not found or is no longer active.' });
     }
 
+    const idKey = req.body.mobile ? String(req.body.mobile).replace(/\D/g, '').slice(-10) : normalizedCode;
+    const verifyLockoutKey = getLockoutKey(idKey, req);
+    const verifyLockoutStatus = checkLockout(verifyLockoutKey);
+    if (verifyLockoutStatus.locked) {
+      return res.status(429).json({
+        success: false,
+        error: `Too many attempts. Try again in ${verifyLockoutStatus.retryAfter}s`,
+        retryAfter: verifyLockoutStatus.retryAfter,
+      });
+    }
+
     if (room.roomPassword !== roomPassword.trim()) {
+      const failResult = recordFailedAttempt(verifyLockoutKey, 'ROOM_PASSWORD_FAIL', idKey, req.ip);
+      if (failResult.locked) {
+        return res.status(429).json({
+          success: false,
+          error: `Too many attempts. Try again in ${failResult.retryAfter}s`,
+          retryAfter: failResult.retryAfter,
+        });
+      }
       return res.status(401).json({ success: false, error: 'Incorrect Room Password.' });
     }
+    resetLockout(verifyLockoutKey);
 
     const currentCount = (room.participants || []).length;
     const isFull = currentCount >= (room.maxCapacity || 60);
@@ -429,7 +458,7 @@ router.post('/verify', async (req, res, next) => {
  */
 router.post('/join', async (req, res, next) => {
   try {
-    const { roomCode, roomPassword, name, mobile, branch, password } = req.body;
+    const { roomCode, roomPassword, name, mobile, branch, password, captchaId, captchaAnswer } = req.body;
 
     if (!roomCode?.trim() || !roomPassword?.trim()) {
       return res.status(400).json({ success: false, error: 'Room Code and Room Password are required.' });
@@ -444,6 +473,25 @@ router.post('/join', async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Mobile number must be exactly 10 digits.' });
     }
 
+    const lockoutKey = getLockoutKey(cleanMobile, req);
+    const lockoutStatus = checkLockout(lockoutKey);
+    if (lockoutStatus.locked) {
+      return res.status(429).json({
+        success: false,
+        error: `Too many attempts. Try again in ${lockoutStatus.retryAfter}s`,
+        retryAfter: lockoutStatus.retryAfter,
+      });
+    }
+
+    const captchaResult = verifyCaptcha(captchaId, captchaAnswer);
+    if (!captchaResult.ok) {
+      return res.status(400).json({
+        success: false,
+        captchaFailed: true,
+        error: captchaResult.error,
+      });
+    }
+
     const normalizedCode = roomCode.trim().toUpperCase();
     const room = await Room.findOne({ roomCode: normalizedCode });
 
@@ -453,8 +501,17 @@ router.post('/join', async (req, res, next) => {
 
     // Room password verifies entry access credentials
     if (room.roomPassword !== roomPassword.trim()) {
+      const failResult = recordFailedAttempt(lockoutKey, 'ROOM_PASSWORD_FAIL', cleanMobile, req.ip);
+      if (failResult.locked) {
+        return res.status(429).json({
+          success: false,
+          error: `Too many attempts. Try again in ${failResult.retryAfter}s`,
+          retryAfter: failResult.retryAfter,
+        });
+      }
       return res.status(401).json({ success: false, error: 'Incorrect Room Password.' });
     }
+    resetLockout(lockoutKey);
 
     // ── Student Identity Uniqueness ──────────────────────────────────────────
     // In a Quiz Room, a student is uniquely identified by (ROOM CODE + PHONE NUMBER).
@@ -690,10 +747,29 @@ router.post('/admin/rejoin', async (req, res, next) => {
       return res.status(401).json({ success: false, error: 'Admin Phone Number does not match.' });
     }
 
+    const rejoinLockoutKey = getLockoutKey(cleanPhone, req);
+    const rejoinLockoutStatus = checkLockout(rejoinLockoutKey);
+    if (rejoinLockoutStatus.locked) {
+      return res.status(429).json({
+        success: false,
+        error: `Too many attempts. Try again in ${rejoinLockoutStatus.retryAfter}s`,
+        retryAfter: rejoinLockoutStatus.retryAfter,
+      });
+    }
+
     // Verify room password
     if (room.roomPassword !== roomPassword.trim()) {
+      const failResult = recordFailedAttempt(rejoinLockoutKey, 'ROOM_PASSWORD_FAIL', cleanPhone, req.ip);
+      if (failResult.locked) {
+        return res.status(429).json({
+          success: false,
+          error: `Too many attempts. Try again in ${failResult.retryAfter}s`,
+          retryAfter: failResult.retryAfter,
+        });
+      }
       return res.status(401).json({ success: false, error: 'Incorrect Room Password.' });
     }
+    resetLockout(rejoinLockoutKey);
 
     const enrichedParticipants = await enrichParticipantsWithLevels(room.participants || [], normalizedCode);
 
@@ -722,18 +798,39 @@ router.post('/admin/rejoin', async (req, res, next) => {
  * Requires Admin Phone Number + PIN for host verification.
  * Used for the "My Live Rooms" history hub in the admin role modal.
  */
-router.get('/admin/my-rooms', async (req, res, next) => {
+const handleMyRoomsAccess = async (req, res, next) => {
   try {
-    const { adminPhone, adminPIN } = req.query;
+    const { adminPhone, adminPIN, captchaId, captchaAnswer } = { ...req.query, ...req.body };
+
+    const cleanPhone = adminPhone ? adminPhone.trim().replace(/\D/g, '').slice(-10) : '';
+    const myRoomsLockoutKey = getLockoutKey(cleanPhone, req);
+
+    const lockoutStatus = checkLockout(myRoomsLockoutKey);
+    if (lockoutStatus.locked) {
+      return res.status(429).json({
+        success: false,
+        error: `Too many attempts. Try again in ${lockoutStatus.retryAfter}s`,
+        retryAfter: lockoutStatus.retryAfter,
+      });
+    }
+
+    const captchaResult = verifyCaptcha(captchaId, captchaAnswer);
+    if (!captchaResult.ok) {
+      return res.status(400).json({
+        success: false,
+        captchaFailed: true,
+        error: captchaResult.error,
+      });
+    }
 
     if (!adminPhone?.trim()) {
       return res.status(400).json({ success: false, error: 'Phone number is required.' });
     }
 
-    const cleanPhone = adminPhone.trim().replace(/\D/g, '').slice(-10);
     if (!/^\d{10}$/.test(cleanPhone)) {
       return res.status(400).json({ success: false, error: 'Please enter a valid 10-digit phone number.' });
     }
+
 
     const rooms = await Room.find({
       $or: [
@@ -761,11 +858,20 @@ router.get('/admin/my-rooms', async (req, res, next) => {
     if (adminPIN && adminPIN.trim()) {
       const pinMatches = rooms.some((r) => r.roomPassword === adminPIN.trim());
       if (!pinMatches) {
+        const failResult = recordFailedAttempt(myRoomsLockoutKey, 'MY_ROOMS_AUTH_FAIL', cleanPhone, req.ip);
+        if (failResult.locked) {
+          return res.status(429).json({
+            success: false,
+            error: `Too many attempts. Try again in ${failResult.retryAfter}s`,
+            retryAfter: failResult.retryAfter,
+          });
+        }
         return res.status(401).json({
           success: false,
           error: 'Incorrect Host PIN for this phone number.',
         });
       }
+      resetLockout(myRoomsLockoutKey);
     }
 
     const Student = require('../models/Student');
@@ -820,12 +926,15 @@ router.get('/admin/my-rooms', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+};
 
 /**
  * POST /api/rooms/admin/send-otp
  * Generates and stores a 4-digit Demo OTP for Host PIN recovery.
  */
+router.get('/admin/my-rooms', handleMyRoomsAccess);
+router.post('/admin/my-rooms', handleMyRoomsAccess);
+
 router.post('/admin/send-otp', async (req, res, next) => {
   try {
     const { adminPhone } = req.body;
@@ -837,6 +946,16 @@ router.post('/admin/send-otp', async (req, res, next) => {
     if (!/^\d{10}$/.test(cleanPhone)) {
       return res.status(400).json({ success: false, error: 'Please enter a valid 10-digit phone number.' });
     }
+
+    const rateCheck = checkOtpRateLimit(cleanPhone);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `Too many OTP requests. Maximum 3 requests per 10 minutes. Try again in ${rateCheck.retryAfter}s.`,
+        retryAfter: rateCheck.retryAfter,
+      });
+    }
+    recordOtpRequest(cleanPhone);
 
     const roomCount = await Room.countDocuments({ adminPhone: cleanPhone });
     if (roomCount === 0) {

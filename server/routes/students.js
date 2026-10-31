@@ -2,6 +2,15 @@ const express = require('express');
 const router  = express.Router();
 const Student = require('../models/Student');
 const { formatTimeMMSS, normalizeSeconds, clampScore, TOTAL_MAX_SCORE } = require('../utils/dataSanitizer');
+const {
+  verifyCaptcha,
+  checkLockout,
+  recordFailedAttempt,
+  resetLockout,
+  checkOtpRateLimit,
+  recordOtpRequest,
+  getLockoutKey,
+} = require('../utils/security');
 
 // In-memory store for SMS OTPs: mobile -> { otp, expiresAt }
 const otpStore = new Map();
@@ -16,7 +25,16 @@ const otpStore = new Map();
  */
 router.post('/register', async (req, res, next) => {
   try {
-    const { name, mobile, branch, password, confirmDuplicate } = req.body;
+    const { name, mobile, branch, password, confirmDuplicate, captchaId, captchaAnswer } = req.body;
+
+    const captchaResult = verifyCaptcha(captchaId, captchaAnswer);
+    if (!captchaResult.ok) {
+      return res.status(400).json({
+        success: false,
+        captchaFailed: true,
+        error: captchaResult.error,
+      });
+    }
 
     if (!name || !mobile || !branch || !password) {
       return res.status(400).json({
@@ -103,7 +121,7 @@ router.post('/register', async (req, res, next) => {
  */
 router.post('/verify-results-auth', async (req, res, next) => {
   try {
-    const { mobile, password } = req.body;
+    const { mobile, password, captchaId, captchaAnswer } = req.body;
 
     if (!mobile || !password) {
       return res.status(400).json({
@@ -112,8 +130,37 @@ router.post('/verify-results-auth', async (req, res, next) => {
       });
     }
 
+    const cleanMobile = String(mobile || '').trim().replace(/\D/g, '').slice(-10);
+    const lockoutKey = getLockoutKey(cleanMobile, req);
+
+    const lockoutStatus = checkLockout(lockoutKey);
+    if (lockoutStatus.locked) {
+      return res.status(429).json({
+        success: false,
+        error: `Too many attempts. Try again in ${lockoutStatus.retryAfter}s`,
+        retryAfter: lockoutStatus.retryAfter,
+      });
+    }
+
+    const captchaResult = verifyCaptcha(captchaId, captchaAnswer);
+    if (!captchaResult.ok) {
+      return res.status(400).json({
+        success: false,
+        captchaFailed: true,
+        error: captchaResult.error,
+      });
+    }
+
     let student = await Student.findOne({ mobile });
     if (!student) {
+      const failResult = recordFailedAttempt(lockoutKey, 'RESULTS_AUTH_FAIL', cleanMobile, req.ip);
+      if (failResult.locked) {
+        return res.status(429).json({
+          success: false,
+          error: `Too many attempts. Try again in ${failResult.retryAfter}s`,
+          retryAfter: failResult.retryAfter,
+        });
+      }
       return res.status(401).json({
         success: false,
         error: 'Invalid Mobile Number or Password/PIN.',
@@ -126,11 +173,22 @@ router.post('/verify-results-auth', async (req, res, next) => {
       student.password = cleanPwd;
       await student.save();
     } else if (student.password !== cleanPwd) {
+      const failResult = recordFailedAttempt(lockoutKey, 'RESULTS_AUTH_FAIL', cleanMobile, req.ip);
+      if (failResult.locked) {
+        return res.status(429).json({
+          success: false,
+          error: `Too many attempts. Try again in ${failResult.retryAfter}s`,
+          retryAfter: failResult.retryAfter,
+        });
+      }
       return res.status(401).json({
         success: false,
         error: 'Invalid Mobile Number or Password/PIN.',
       });
     }
+
+    // Successful login resets lockout
+    resetLockout(lockoutKey);
 
     const safeScore = clampScore(student.totalScore);
     const safeTime = normalizeSeconds(student.totalTimeTaken);
@@ -303,6 +361,17 @@ router.post('/send-otp', async (req, res, next) => {
         error: 'Please enter a valid 10-digit mobile number.',
       });
     }
+
+    const cleanMobile = String(mobile || '').trim().replace(/\D/g, '').slice(-10);
+    const rateCheck = checkOtpRateLimit(cleanMobile);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `Too many OTP requests. Maximum 3 requests per 10 minutes. Try again in ${rateCheck.retryAfter}s.`,
+        retryAfter: rateCheck.retryAfter,
+      });
+    }
+    recordOtpRequest(cleanMobile);
 
     const student = await Student.findOne({ mobile });
     if (!student) {
